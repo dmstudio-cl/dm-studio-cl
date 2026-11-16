@@ -31,13 +31,13 @@ body_class: portal-page
     </div>
     <div class="pins" id="pins" aria-label="Comentarios en el modelo"></div>
     <div class="ptools" role="toolbar" aria-label="Herramientas del visor">
-      <button type="button" class="ptool" data-tool="pin" aria-pressed="false" title="Haz clic en el mueble para dejar un comentario en ese punto">＋ Comentar en el modelo</button>
+      <button type="button" class="ptool" data-tool="pin" aria-pressed="false" title="También puedes hacer doble clic (o mantener presionado en el celular) sobre el modelo">＋ Comentar en el modelo</button>
       <button type="button" class="ptool" data-view="tres-cuartos">3/4</button>
       <button type="button" class="ptool" data-view="frente">Frente</button>
       <button type="button" class="ptool" data-view="planta">Planta</button>
       <button type="button" class="ptool" data-tool="room" aria-pressed="true">Muros</button>
     </div>
-    <p class="pin-hint" id="pinhint" hidden>Haz clic sobre el mueble donde quieres comentar · <kbd>Esc</kbd> para cancelar</p>
+    <p class="pin-hint" id="pinhint" hidden>Toca el punto del modelo que quieres comentar · <kbd>Esc</kbd> para cancelar</p>
     <form class="pin-pop" id="pinpop" hidden>
       <label for="pintext" class="eyebrow" style="margin:0 0 6px">Comentario en <span id="pinmod"></span></label>
       <textarea id="pintext" rows="3" required placeholder="Ej: ¿se puede subir esta repisa 5 cm?"></textarea>
@@ -52,7 +52,7 @@ body_class: portal-page
         <ol class="chat-list" id="chatlist" aria-live="polite"></ol>
         <form class="chat-form" id="chatform">
           <label for="chatinput" class="sr-only">Mensaje</label>
-          <textarea id="chatinput" rows="1" placeholder="Escribe un mensaje o pregunta…" required></textarea>
+          <textarea id="chatinput" rows="1" placeholder="Escribe un mensaje…" required></textarea>
           <button class="btn btn-primary" type="submit">Enviar</button>
         </form>
       </div>

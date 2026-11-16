@@ -131,30 +131,69 @@ export async function startApp(api) {
     if (b.dataset.tool === 'room') b.setAttribute('aria-pressed', String(scene.toggleRoom()));
     if (b.dataset.tool === 'pin') setPinMode(!pinMode);
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setPinMode(false); $('#pinpop').hidden = true; } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setPinMode(false); closePinPop(); } });
 
-  // Distingue clic de arrastre para no crear pines al girar la cámara
-  let down = null;
-  scene.canvas.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
-  scene.canvas.addEventListener('pointerup', (e) => {
-    if (!pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
-    const p = scene.pick(e.clientX, e.clientY);
-    if (!p) return;
+  // Abre el cuadro de comentario en el punto del modelo bajo (x, y).
+  const ghost = document.createElement('span');
+  ghost.className = 'pin pin-ghost'; ghost.textContent = '+'; ghost.hidden = true;
+  function closePinPop() { $('#pinpop').hidden = true; pending = null; ghost.hidden = true; }
+  function openPinAt(clientX, clientY) {
+    const p = scene.pick(clientX, clientY);
+    if (!p) return false;
     pending = p;
     const pop = $('#pinpop');
     const r = $('#pcanvas').getBoundingClientRect();
-    pop.style.left = Math.min(e.clientX - r.left, r.width - 300) + 'px';
-    pop.style.top = Math.min(e.clientY - r.top + 12, r.height - 170) + 'px';
-    $('#pinmod').textContent = p.modulo || 'el mueble';
+    const w = Math.min(290, r.width - 24);
+    pop.style.width = w + 'px';
+    pop.style.left = Math.max(12, Math.min(clientX - r.left - w / 2, r.width - w - 12)) + 'px';
+    const below = clientY - r.top + 22;
+    pop.style.top = (below + 180 < r.height ? below : Math.max(12, clientY - r.top - 200)) + 'px';
+    $('#pinmod').textContent = p.modulo || 'este punto';
     pop.hidden = false;
-    $('#pintext').focus();
+    placeGhost();
+    $('#pintext').focus({ preventScroll: true });
+    return true;
+  }
+  function placeGhost() {
+    if (!pending) return;
+    const s = scene.toScreen(pending);
+    ghost.style.transform = `translate(${s.x}px, ${s.y}px)`;
+    ghost.hidden = !s.visible;
+  }
+
+  // Formas de comentar: doble clic (mouse), mantener presionado (táctil)
+  // o el botón "Comentar en el modelo" + un clic.
+  const cv = scene.canvas;
+  let down = null, press = null, pressed = false;
+  const cancelPress = () => { clearTimeout(press); press = null; };
+  cv.addEventListener('pointerdown', (e) => {
+    down = { x: e.clientX, y: e.clientY }; pressed = false;
+    cancelPress();
+    if (e.pointerType !== 'mouse' && e.isPrimary) {
+      press = setTimeout(() => {
+        press = null;
+        if (openPinAt(down.x, down.y)) { pressed = true; navigator.vibrate?.(15); }
+      }, 550);
+    }
   });
-  $('#pinpop [data-cancel]').addEventListener('click', () => { $('#pinpop').hidden = true; });
+  cv.addEventListener('pointermove', (e) => {
+    if (press && down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) cancelPress();
+  });
+  cv.addEventListener('pointercancel', cancelPress);
+  cv.addEventListener('pointerup', (e) => {
+    cancelPress();
+    if (pressed) return; // ya se abrió con long tap
+    if (!pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    if (openPinAt(e.clientX, e.clientY)) setPinMode(false);
+  });
+  cv.addEventListener('dblclick', (e) => { e.preventDefault(); openPinAt(e.clientX, e.clientY); });
+  cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
+  $('#pinpop [data-cancel]').addEventListener('click', closePinPop);
   $('#pinpop').addEventListener('submit', async (e) => {
     e.preventDefault();
     const texto = $('#pintext').value.trim(); if (!texto || !pending) return;
     await send({ texto, tipo: 'pin', pin: pending });
-    $('#pintext').value = ''; $('#pinpop').hidden = true; setPinMode(false);
+    $('#pintext').value = ''; closePinPop(); setPinMode(false);
   });
 
   // ----- mensajes, chat y pines
@@ -164,10 +203,12 @@ export async function startApp(api) {
   function paintPins() {
     const pins = mensajes.filter((m) => m.tipo === 'pin' && m.pin);
     pinsEl.innerHTML = pins.map((m) => `<button type="button" class="pin${m.resuelto ? ' done' : ''}${m.autor === 'estudio' ? ' studio' : ''}" data-id="${m.id}" title="${esc(m.texto)}">${pinNumber(m)}</button>`).join('');
+    pinsEl.append(ghost);
     placePins();
   }
   function placePins() {
-    pinsEl.querySelectorAll('.pin').forEach((el) => {
+    placeGhost();
+    pinsEl.querySelectorAll('.pin[data-id]').forEach((el) => {
       const m = mensajes.find((x) => String(x.id) === el.dataset.id);
       const pin = typeof m.pin === 'string' ? JSON.parse(m.pin) : m.pin;
       const s = scene.toScreen(pin);
@@ -187,13 +228,11 @@ export async function startApp(api) {
     const list = $('#chatlist');
     const me = isOwner ? 'estudio' : 'cliente';
     list.innerHTML = mensajes.length ? mensajes.map((m) => `
-      <li class="msg ${m.autor === me ? 'mine' : ''} ${m.tipo}" data-id="${m.id}">
-        <div class="bubble">
-          ${m.tipo === 'pin' ? `<b class="mono">📍 ${pinNumber(m)}</b> ` : ''}${m.tipo === 'cambios' ? '<b>Cambios solicitados:</b> ' : ''}${m.tipo === 'aprobacion' ? '<b>✓ Propuesta aprobada.</b> ' : ''}${esc(m.texto)}
-        </div>
+      <li class="msg ${m.autor === me ? 'mine' : ''} ${m.autor === 'estudio' ? 'from-studio' : ''} t-${m.tipo}" data-id="${m.id}">
+        <div class="bubble">${m.tipo === 'pin' ? `<b class="mono">📍 ${pinNumber(m)}</b> ` : ''}${m.tipo === 'cambios' ? '<b>Cambios solicitados:</b> ' : ''}${m.tipo === 'aprobacion' ? '<b>✓ Propuesta aprobada.</b> ' : ''}${esc(m.texto)}</div>
         <small class="muted">${m.autor === 'estudio' ? 'DM Studio' : esc(proyecto.cliente?.nombre || 'Cliente')} · ${fecha(m.creado)}${m.tipo === 'pin' && m.resuelto ? ' · resuelto' : ''}
         ${isOwner && m.tipo === 'pin' && !m.resuelto ? ` · <button type="button" class="link-btn" data-resolve="${m.id}">Marcar resuelto</button>` : ''}</small>
-      </li>`).join('') : '<li class="small muted" style="padding:12px">Aún no hay mensajes. Escríbenos cualquier duda o marca un punto del modelo para comentarlo.</li>';
+      </li>`).join('') : '<li class="small muted" style="padding:12px">Aún no hay mensajes. Escríbenos cualquier duda, o haz doble clic sobre el modelo (en el celular, mantén el dedo presionado) para comentar un punto exacto.</li>';
     list.scrollTop = list.scrollHeight;
     const unread = mensajes.filter((m) => m.autor !== me && m.creado > lastSeen()).length;
     $('#chatbadge').hidden = !unread || $('#chat').dataset.open === 'true'; $('#chatbadge').textContent = unread;

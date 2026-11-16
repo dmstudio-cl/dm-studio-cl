@@ -50,8 +50,11 @@
   background: var(--red-accent); color: #fff; border: 2px solid var(--bone); font: 600 .72rem var(--mono); display: grid; place-items: center;
   box-shadow: 0 4px 14px rgba(0, 0, 0, .5);
 }
-.pin.studio { background: #2f5d8a; }
+.pin.studio { background: var(--red); border-color: #e9b8b5; }
 .pin.done { background: #3b5a44; opacity: .75; }
+.pin.pin-ghost { pointer-events: none; background: var(--bone); color: var(--ink); font-size: .95rem; animation: pin-drop .25s ease-out; }
+@keyframes pin-drop { from { opacity: 0; margin-top: -10px; } }
+.papp-stage canvas { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; }
 
 .chat { position: absolute; left: 14px; right: 14px; bottom: 14px; z-index: 7; max-width: 560px; background: rgba(14, 14, 17, .94); backdrop-filter: blur(12px); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; }
 .chat-head { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: 0; color: var(--bone); padding: 12px 16px; font: 500 .88rem var(--sans); cursor: pointer; text-align: left; }
@@ -66,8 +69,9 @@
 .msg.mine { align-self: flex-end; align-items: flex-end; }
 .msg .bubble { background: var(--ink-3); border: 1px solid var(--line); padding: 9px 12px; border-radius: 12px; font-size: .9rem; white-space: pre-wrap; transition: box-shadow .3s; }
 .msg.mine .bubble { background: #2a2622; border-color: rgba(169, 125, 77, .35); }
-.msg.cambios .bubble { border-color: var(--red-accent); }
-.msg.aprobacion .bubble { border-color: var(--ok); }
+.msg.from-studio .bubble { background: var(--red); border-color: rgba(180, 50, 46, .55); color: var(--bone-2); }
+.msg.t-cambios .bubble { border-color: var(--red-accent); }
+.msg.t-aprobacion .bubble { border-color: var(--ok); }
 .msg small { font-size: .7rem; }
 .msg.flash .bubble { box-shadow: 0 0 0 2px var(--bone); }
 .chat-form { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--line); }

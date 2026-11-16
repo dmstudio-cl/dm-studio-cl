@@ -101,7 +101,9 @@ export function createScene(el) {
       const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
       const ray = new THREE.Raycaster();
       ray.setFromCamera(ndc, camera);
-      const hit = ray.intersectObject(current.furniture, true)[0];
+      const targets = [current.furniture];
+      if (current.room && current.room.visible) targets.push(current.room);
+      const hit = ray.intersectObjects(targets, true)[0];
       if (!hit) return null;
       let mod = hit.object; while (mod && !mod.userData.modulo) mod = mod.parent;
       return { x: +hit.point.x.toFixed(1), y: +hit.point.y.toFixed(1), z: +hit.point.z.toFixed(1), modulo: mod?.userData.modulo || '' };
