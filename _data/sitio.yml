@@ -8,7 +8,7 @@ instagram: "https://www.instagram.com/dm_studio.cl/"
 ciudad: "Chile"
 
 # Web3Forms: access key pública del formulario (es pública por diseño, no es un secreto).
-web3forms_key: ""
+web3forms_key: "bd64edf4-bd61-4588-a935-8cfd6bc0fb1c"
 
 # Link de cobro MACH general (opcional). Los links de Mercado Pago van en cada producto.
 mach_link: ""

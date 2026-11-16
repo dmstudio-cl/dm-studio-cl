@@ -109,7 +109,7 @@ anticipo      = 50% × precio_final
 ## Pendientes del dueño
 - Interpretación exacta de la fórmula de precio y lista de costos unitarios.
 - Catálogo Masisa 2026: fuente en `C:\DesarrolloWeb\cotizador-dmstudio\LOOKBOOK MELAMINA-.pdf` (146 págs.; cada color tiene una página con la muestra a página completa, el nombre arriba a la izquierda y el código de textura abajo, seguida de una página de ambiente). El PDF no trae capa de texto: nombres y códigos se transcriben a mano. Las muestras tienen una marca de agua "MASISA" tenue, así que hay que recortar una zona limpia para la textura 3D. Falta el catálogo de tiradores y cubiertas.
-- Worker de OAuth: el dueño lo editó directo en el dashboard de Cloudflare. Hay que pasar su código a un repo (con wrangler) antes de extenderlo.
+- Worker de OAuth (`https://dmstudio-cms-auth.moralesdiego905.workers.dev`): corregido y desplegado el 2026-11-16. Copia del código en `C:\DesarrolloWeb\dmstudio-worker` (aún sin repo). Variables: `GITHUB_CLIENT_ID` y `GITHUB_CLIENT_SECRET`. El editor del dashboard no acepta pegar desde la automatización: el dueño pega el código y presiona Deploy.
 - Número de WhatsApp Empresa, access key de Web3Forms y correo destino.
 - Código o acceso al Worker de OAuth existente.
 - Selección de fotos para el portafolio (o permitir exportar todas las de cada carpeta de proyecto).

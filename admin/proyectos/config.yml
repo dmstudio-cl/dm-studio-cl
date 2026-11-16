@@ -4,7 +4,7 @@ backend:
   name: github
   repo: dmstudio-cl/proyectos-clientes          # [PENDIENTE] crear repo privado
   branch: main
-  base_url: https://REEMPLAZAR-WORKER.workers.dev   # [PENDIENTE] URL del Worker de OAuth
+  base_url: https://dmstudio-cms-auth.moralesdiego905.workers.dev
   auth_endpoint: auth
   commit_messages:
     create: "Proyecto: crear «{{slug}}»"
