@@ -14,7 +14,7 @@ web3forms_key: "bd64edf4-bd61-4588-a935-8cfd6bc0fb1c"
 mach_link: ""
 
 # URL base del Cloudflare Worker (OAuth de Decap + API del portal de clientes).
-worker_url: ""
+worker_url: "https://dmstudio-cms-auth.moralesdiego905.workers.dev"
 
 # Sitio hermano
 dev_url: "https://dmstudio-dev.github.io/dm-studio-dev/"

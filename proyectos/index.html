@@ -3,7 +3,9 @@ layout: default
 title: Portal de clientes
 description: Acceso privado para clientes de DM Studio.
 sitemap: false
+body_class: portal-page
 ---
+<link rel="stylesheet" href="{{ '/assets/css/portal.css' | relative_url }}">
 <div class="portal-gate" data-portal>
   <div class="gate-card">
     <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="DM Studio" width="96" height="96">
@@ -18,6 +20,95 @@ sitemap: false
       <button class="btn btn-red btn-block" type="submit">Entrar</button>
       <p class="form-status" role="status" aria-live="polite"></p>
     </form>
-    <p class="small muted">¿No tienes clave? <a href="{{ '/a-medida/' | relative_url }}">Solicita una cotización</a>.</p>
+    <p class="small muted">¿No tienes clave? <a href="{{ '/a-medida/' | relative_url }}">Solicita una cotización</a> · <a href="#demo" data-demo>Ver un proyecto de ejemplo</a></p>
   </div>
 </div>
+
+<div class="papp" id="papp" hidden>
+  <section class="papp-stage">
+    <div class="papp-canvas" id="pcanvas">
+      <div class="viewer-loading" id="ploading">Cargando tu proyecto…</div>
+    </div>
+    <div class="pins" id="pins" aria-label="Comentarios en el modelo"></div>
+    <div class="ptools" role="toolbar" aria-label="Herramientas del visor">
+      <button type="button" class="ptool" data-tool="pin" aria-pressed="false" title="Haz clic en el mueble para dejar un comentario en ese punto">＋ Comentar en el modelo</button>
+      <button type="button" class="ptool" data-view="tres-cuartos">3/4</button>
+      <button type="button" class="ptool" data-view="frente">Frente</button>
+      <button type="button" class="ptool" data-view="planta">Planta</button>
+      <button type="button" class="ptool" data-tool="room" aria-pressed="true">Muros</button>
+    </div>
+    <p class="pin-hint" id="pinhint" hidden>Haz clic sobre el mueble donde quieres comentar · <kbd>Esc</kbd> para cancelar</p>
+    <form class="pin-pop" id="pinpop" hidden>
+      <label for="pintext" class="eyebrow" style="margin:0 0 6px">Comentario en <span id="pinmod"></span></label>
+      <textarea id="pintext" rows="3" required placeholder="Ej: ¿se puede subir esta repisa 5 cm?"></textarea>
+      <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button><button class="btn" type="button" data-cancel>Cancelar</button></div>
+    </form>
+
+    <section class="chat" id="chat" data-open="false">
+      <button type="button" class="chat-head" id="chathead" aria-expanded="false" aria-controls="chatbody">
+        <span>Conversación con DM Studio</span><span class="chat-badge" id="chatbadge" hidden>0</span><span class="chat-caret">▴</span>
+      </button>
+      <div class="chat-body" id="chatbody">
+        <ol class="chat-list" id="chatlist" aria-live="polite"></ol>
+        <form class="chat-form" id="chatform">
+          <label for="chatinput" class="sr-only">Mensaje</label>
+          <textarea id="chatinput" rows="1" placeholder="Escribe un mensaje o pregunta…" required></textarea>
+          <button class="btn btn-primary" type="submit">Enviar</button>
+        </form>
+      </div>
+    </section>
+  </section>
+
+  <aside class="papp-side">
+    <header class="pside-head">
+      <p class="eyebrow" id="pmeta"></p>
+      <h1 id="ptitle"></h1>
+      <p class="muted small" id="pclient"></p>
+    </header>
+
+    <div class="pprice panel">
+      <div class="row"><span class="muted">Total</span><span class="ptotal" id="ptotal">—</span></div>
+      <div class="row"><span class="muted">Anticipo 50%</span><span class="mono" id="panticipo">—</span></div>
+      <p class="small muted" id="pvalid"></p>
+      <p class="small note note-red" id="pdemo" hidden>Proyecto de ejemplo: el precio es ficticio. En tu proyecto real el precio se calcula con tus medidas y terminaciones.</p>
+    </div>
+
+    <div class="ptabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="melamina">Melamina</button>
+      <button role="tab" aria-selected="false" data-tab="tirador">Tiradores</button>
+      <button role="tab" aria-selected="false" data-tab="cubierta">Cubierta</button>
+      <button role="tab" aria-selected="false" data-tab="detalle">Detalle</button>
+    </div>
+    <div class="ppanel" data-panel="melamina">
+      <div class="filters small-filters" id="melfilters"></div>
+      <div class="swgrid" id="mellist"></div>
+    </div>
+    <div class="ppanel" data-panel="tirador" hidden><div class="optlist" id="tirlist"></div></div>
+    <div class="ppanel" data-panel="cubierta" hidden><div class="optlist" id="cublist"></div></div>
+    <div class="ppanel" data-panel="detalle" hidden>
+      <table class="specs" id="pdims"></table>
+      <h2 class="eyebrow">Recomendados (se compran aparte)</h2>
+      <div class="optlist" id="preclist"></div>
+      <p class="small muted" id="pcond"></p>
+    </div>
+
+    <div class="pselected small mono" id="psel"></div>
+
+    <div class="pactions">
+      <button class="btn btn-red btn-block" id="papprove">Aprobar propuesta</button>
+      <button class="btn btn-block" id="pchanges">Pedir cambios</button>
+      <p class="small muted" id="pstatus" role="status" aria-live="polite"></p>
+    </div>
+  </aside>
+</div>
+
+<dialog class="pdialog" id="papprovedlg">
+  <form method="dialog" class="form">
+    <p class="eyebrow">Confirmar aprobación</p>
+    <h2>¿Aprobar esta propuesta?</h2>
+    <div id="papsummary" class="small"></div>
+    <p class="small muted" id="papcond"></p>
+    <label class="small"><input type="checkbox" id="papcheck" required> Acepto las condiciones y el anticipo del 50% para iniciar la fabricación.</label>
+    <div class="actions"><button class="btn btn-red" value="ok" id="papok">Aprobar</button><button class="btn" value="cancel" formnovalidate>Volver</button></div>
+  </form>
+</dialog>

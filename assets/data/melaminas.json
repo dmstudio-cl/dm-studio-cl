@@ -1,0 +1,6 @@
+---
+layout: null
+sitemap: false
+---
+{%- assign lista = site.data.melaminas | default: empty -%}
+[{%- for m in lista -%}{"id":{{ m.id | jsonify }},"nombre":{{ m.nombre | jsonify }},"linea":{{ m.linea | jsonify }},"textura":{{ m.textura | jsonify }},"tipo":{{ m.tipo | jsonify }},"hex":{{ m.hex | jsonify }},"imagen":{{ m.imagen | relative_url | jsonify }}}{% unless forloop.last %},{% endunless %}{%- endfor -%}]

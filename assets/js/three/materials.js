@@ -75,6 +75,32 @@ export function woodMaterial(key = 'roble', opts = {}) {
   return mat;
 }
 
+// Melamina a partir del catálogo: unicolor = color liso con leve textura de rugosidad;
+// madera/fantasía = imagen del lookbook repetida a escala real (≈ texCm por repetición).
+const loader = new THREE.TextureLoader();
+export function melaminaMaterial(m) {
+  if (!m) return flatMaterial('#e9e6e0', { roughness: .6 });
+  const k = 'mel:' + m.id;
+  if (cache.has(k)) return cache.get(k);
+  let mat;
+  if (m.tipo === 'unicolor' || !m.imagen) {
+    mat = new THREE.MeshStandardMaterial({ color: m.hex || '#ddd', roughness: .58, metalness: 0 });
+  } else {
+    const map = loader.load(m.imagen, () => window.dispatchEvent(new Event('dm:texture')));
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.wrapS = map.wrapT = THREE.MirroredRepeatWrapping; // evita costuras visibles en el borde del recorte
+    map.anisotropy = 8;
+    // En las imágenes del lookbook la veta es vertical (eje V de la imagen). worldUV pone el eje
+    // de la veta de la pieza en U, así que se rota la textura 90° para alinear ambas.
+    map.center.set(.5, .5);
+    map.rotation = Math.PI / 2;
+    mat = new THREE.MeshStandardMaterial({ map, roughness: .55, metalness: 0 });
+    mat.userData.texCm = m.tipo === 'madera' ? 45 : 60;
+  }
+  cache.set(k, mat);
+  return mat;
+}
+
 // Material liso (melamina unicolor, metal, etc.)
 export function flatMaterial(color, { roughness = .55, metalness = 0 } = {}) {
   const k = 'flat' + color + roughness + metalness;
@@ -84,7 +110,7 @@ export function flatMaterial(color, { roughness = .55, metalness = 0 } = {}) {
 
 // Recalcula UVs por proyección de caja en coordenadas de la pieza (cm), así la veta
 // queda a escala real sin importar el tamaño. grain: 'x' | 'y' | 'z' = eje de la veta.
-export function worldUV(geometry, grain = 'x') {
+export function worldUV(geometry, grain = 'x', texCm = TEX_CM) {
   const pos = geometry.attributes.position, nor = geometry.attributes.normal;
   const uv = new Float32Array(pos.count * 2);
   const v = new THREE.Vector3(), n = new THREE.Vector3();
@@ -97,8 +123,8 @@ export function worldUV(geometry, grain = 'x') {
     // U debe seguir el eje de la veta cuando éste está en el plano
     let [a, b] = plane;
     if (b === grain) [a, b] = [b, a];
-    uv[i * 2] = pick(v, a) / TEX_CM;
-    uv[i * 2 + 1] = pick(v, b) / TEX_CM;
+    uv[i * 2] = pick(v, a) / texCm;
+    uv[i * 2 + 1] = pick(v, b) / texCm;
   }
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   return geometry;

@@ -1,0 +1,77 @@
+{
+  "id": "demo",
+  "titulo": "Cocina de ejemplo",
+  "version": 1,
+  "estado": "propuesta",
+  "vigencia": "2026-12-31",
+  "cliente": { "nombre": "Cliente de ejemplo" },
+  "tipo": "melamina",
+  "espacio": { "largo": 360, "ancho": 260, "alto": 250 },
+  "modulos": [
+    {
+      "nombre": "Base cajonera", "tipo": "base", "ancho": 60, "alto": 90, "profundidad": 58, "zocalo": 10,
+      "x": 0, "z": 0, "rotacion": "0", "cubierta": true,
+      "columnas": [ { "ancho": 60, "frentes": [ { "tipo": "cajon", "alto": 20 }, { "tipo": "cajon", "alto": 30 }, { "tipo": "cajon", "alto": 30 } ] } ]
+    },
+    {
+      "nombre": "Base lavaplatos", "tipo": "base", "ancho": 90, "alto": 90, "profundidad": 58, "zocalo": 10,
+      "x": 60, "z": 0, "rotacion": "0", "cubierta": true,
+      "columnas": [ { "ancho": 90, "frentes": [ { "tipo": "puerta_doble", "alto": 80 } ] } ]
+    },
+    {
+      "nombre": "Base encimera", "tipo": "base", "ancho": 60, "alto": 90, "profundidad": 58, "zocalo": 10,
+      "x": 150, "z": 0, "rotacion": "0", "cubierta": true,
+      "columnas": [ { "ancho": 60, "frentes": [ { "tipo": "cajon", "alto": 20 }, { "tipo": "puerta", "alto": 60, "bisagra": "derecha" } ] } ]
+    },
+    {
+      "nombre": "Base esquina", "tipo": "base", "ancho": 60, "alto": 90, "profundidad": 58, "zocalo": 10,
+      "x": 210, "z": 0, "rotacion": "0", "cubierta": true,
+      "columnas": [ { "ancho": 60, "frentes": [ { "tipo": "puerta", "alto": 80, "bisagra": "derecha" } ] } ]
+    },
+    {
+      "nombre": "Torre despensa", "tipo": "torre", "ancho": 60, "alto": 220, "profundidad": 58, "zocalo": 10,
+      "x": 270, "z": 0, "rotacion": "0", "cubierta": false,
+      "columnas": [ { "ancho": 60, "frentes": [ { "tipo": "puerta", "alto": 140, "bisagra": "derecha" }, { "tipo": "puerta", "alto": 70, "bisagra": "derecha" } ] } ]
+    },
+    {
+      "nombre": "Aéreos", "tipo": "aereo", "ancho": 270, "alto": 70, "profundidad": 33, "zocalo": 0, "elevacion": 150,
+      "x": 0, "z": 0, "rotacion": "0", "cubierta": false,
+      "columnas": [
+        { "ancho": 60, "frentes": [ { "tipo": "puerta", "alto": 70, "bisagra": "izquierda" } ] },
+        { "ancho": 90, "frentes": [ { "tipo": "puerta_doble", "alto": 70 } ] },
+        { "ancho": 60, "frentes": [ { "tipo": "campana", "alto": 70 } ] },
+        { "ancho": 60, "frentes": [ { "tipo": "puerta", "alto": 70, "bisagra": "derecha" } ] }
+      ]
+    },
+    {
+      "nombre": "Base lateral", "tipo": "base", "ancho": 120, "alto": 90, "profundidad": 58, "zocalo": 10,
+      "x": 0, "z": 178, "rotacion": "90", "cubierta": true,
+      "columnas": [
+        { "ancho": 60, "frentes": [ { "tipo": "puerta", "alto": 80, "bisagra": "izquierda" } ] },
+        { "ancho": 60, "frentes": [ { "tipo": "cajon", "alto": 40 }, { "tipo": "cajon", "alto": 40 } ] }
+      ]
+    }
+  ],
+  "opciones": {
+    "melaminas": [],
+    "tiradores": [
+      { "id": "barra-negra", "nombre": "Barra negra 16 cm", "forma": "barra", "color": "#161616", "largo": 16 },
+      { "id": "barra-acero", "nombre": "Barra acero 16 cm", "forma": "barra", "color": "#b9bcc0", "color_nombre": "acero", "largo": 16 },
+      { "id": "perfil-aluminio", "nombre": "Perfil aluminio", "forma": "perfil", "color": "#c9cbce", "color_nombre": "aluminio" },
+      { "id": "boton-laton", "nombre": "Botón latón", "forma": "boton", "color": "#b08d57", "color_nombre": "latón dorado" },
+      { "id": "sin", "nombre": "Sin tirador (apertura push)", "forma": "sin" }
+    ],
+    "cubiertas": [
+      { "id": "cuarzo-blanco", "nombre": "Cuarzo blanco", "color": "#e8e5df" },
+      { "id": "piedra-gris", "nombre": "Piedra gris", "color": "#8d8a85" },
+      { "id": "granito-negro", "nombre": "Granito negro", "color": "#1d1d1f" },
+      { "id": "roble", "nombre": "Madera roble", "color": "#a07446" }
+    ]
+  },
+  "seleccion": { "melamina": "", "tirador": "barra-negra", "cubierta": "cuarzo-blanco" },
+  "recomendados": [
+    { "tipo": "encimera", "nombre": "Encimera a gas 4 platos, 60 cm (ejemplo)", "url": "https://www.sodimac.cl/", "medida": "60 cm" },
+    { "tipo": "campana", "nombre": "Campana telescópica inox 60 cm (ejemplo)", "url": "https://www.sodimac.cl/", "medida": "60 cm" }
+  ],
+  "condiciones": "Precio en CLP. Anticipo del 50% para iniciar la fabricación; saldo contra entrega e instalación. Plazo estimado: 25 días hábiles desde el anticipo."
+}

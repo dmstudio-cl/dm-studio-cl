@@ -1,7 +1,14 @@
 # CLAUDE.md - DM Studio Mobiliario (dmstudio.cl)
 
 > Documento vivo de decisiones acordadas con el dueño (Daniel). Si algo aquí contradice una idea nueva, preguntar antes de cambiarlo.
-> Estado (2026-11-16): está construida la base del sitio público (home, portafolio, catálogo, ficha, carrito, a medida, entrada del portal, dos paneles de Decap y visor Three.js). Falta la fase 2: Worker + D1, visor paramétrico del portal y catálogo Masisa. Los puntos **[PENDIENTE]** requieren respuesta del dueño.
+> Estado (2026-11-16): está construida la base del sitio público (home, portafolio, catálogo, ficha, carrito, a medida, dos paneles de Decap y visor Three.js).
+> Fase 2 lista en código:
+> - Portal `/proyectos/` con generador paramétrico (`assets/js/three/mueble.js`), terminaciones, pines, chat y aprobación. Demo pública en `/proyectos/#demo`; vista del estudio en `/proyectos/#estudio`.
+> - Catálogo Masisa: 62 colores en `_data/melaminas.yml`.
+> - API del Worker en `C:\DesarrolloWeb\dmstudio-worker`, con pruebas.
+> - Repo privado `dmstudio-cl/proyectos-clientes` y base D1 `dmstudio-portal` (binding `DB`) creados.
+>
+> Los puntos **[PENDIENTE]** requieren respuesta del dueño.
 > Commits: el dueño aprueba cada uno. Mensaje en español con tema y detalle de lo hecho.
 
 ## Contexto
