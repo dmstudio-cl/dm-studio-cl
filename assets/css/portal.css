@@ -32,6 +32,9 @@
 .opt i { flex: 0 0 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-style: normal; font-size: .7rem; color: var(--muted); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); text-transform: uppercase; }
 .pselected { color: var(--muted); line-height: 1.7; }
 .pselected b { color: var(--bone); font-weight: 500; }
+.plock { margin: 0; padding: 10px 14px; border: 1px solid rgba(127, 179, 138, .45); border-radius: 10px; background: rgba(127, 179, 138, .08); font-size: .85rem; }
+.is-locked #mellist, .is-locked #tirlist, .is-locked #cublist, .is-locked #melfilters { opacity: .45; cursor: not-allowed; }
+.is-locked #mellist *, .is-locked #tirlist *, .is-locked #cublist * { cursor: not-allowed; }
 .pactions { margin-top: auto; display: grid; gap: 10px; }
 
 .ptools { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 5; pointer-events: none; }
@@ -73,6 +76,11 @@
 .msg.t-cambios .bubble { border-color: var(--red-accent); }
 .msg.t-aprobacion .bubble { border-color: var(--ok); }
 .msg small { font-size: .7rem; }
+.msg small .link-btn { font-size: inherit; }
+.msg-edit { width: min(320px, 100%); display: grid; gap: 6px; }
+.msg-edit textarea { width: 100%; resize: vertical; background: var(--ink); color: var(--bone); border: 1px solid var(--bone); border-radius: 10px; padding: 9px 12px; font: inherit; font-size: .9rem; }
+.msg-edit .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.msg-edit .btn { padding: 7px 12px; font-size: .8rem; }
 .msg.flash .bubble { box-shadow: 0 0 0 2px var(--bone); }
 .chat-form { display: flex; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--line); }
 .chat-form textarea { flex: 1; resize: none; background: var(--ink); color: var(--bone); border: 1px solid var(--line-2); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: .9rem; max-height: 120px; }
@@ -83,8 +91,11 @@
 .pdialog h2 { font-size: 1.6rem; }
 
 @media (max-width: 900px) {
-  .papp { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
-  .papp-stage { min-height: 62vh; }
+  /* En el celular el modelo queda fijo arriba y las opciones pasan por debajo,
+     así cada cambio de melamina, tirador o cubierta se ve al instante. */
+  .papp { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; }
+  .papp-stage { position: sticky; top: 64px; z-index: 10; height: 46vh; height: 46svh; min-height: 280px; border-bottom: 1px solid var(--line-2); }
+  .chat-list { max-height: max(120px, calc(46svh - 170px)); }
   .papp-side { border-left: 0; border-top: 1px solid var(--line); }
   .chat { max-width: none; }
   .swgrid { max-height: none; }

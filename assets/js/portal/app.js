@@ -230,8 +230,8 @@ export async function startApp(api) {
     list.innerHTML = mensajes.length ? mensajes.map((m) => `
       <li class="msg ${m.autor === me ? 'mine' : ''} ${m.autor === 'estudio' ? 'from-studio' : ''} t-${m.tipo}" data-id="${m.id}">
         <div class="bubble">${m.tipo === 'pin' ? `<b class="mono">📍 ${pinNumber(m)}</b> ` : ''}${m.tipo === 'cambios' ? '<b>Cambios solicitados:</b> ' : ''}${m.tipo === 'aprobacion' ? '<b>✓ Propuesta aprobada.</b> ' : ''}${esc(m.texto)}</div>
-        <small class="muted">${m.autor === 'estudio' ? 'DM Studio' : esc(proyecto.cliente?.nombre || 'Cliente')} · ${fecha(m.creado)}${m.tipo === 'pin' && m.resuelto ? ' · resuelto' : ''}
-        ${isOwner && m.tipo === 'pin' && !m.resuelto ? ` · <button type="button" class="link-btn" data-resolve="${m.id}">Marcar resuelto</button>` : ''}</small>
+        <small class="muted">${m.autor === 'estudio' ? 'DM Studio' : esc(proyecto.cliente?.nombre || 'Cliente')} · ${fecha(m.creado)}${m.editado ? ' · editado' : ''}${m.tipo === 'pin' && m.resuelto ? ' · resuelto' : ''}
+        ${isOwner && m.tipo === 'pin' && !m.resuelto ? ` · <button type="button" class="link-btn" data-resolve="${m.id}">Marcar resuelto</button>` : ''}${msgActions(m, me)}</small>
       </li>`).join('') : '<li class="small muted" style="padding:12px">Aún no hay mensajes. Escríbenos cualquier duda, o haz doble clic sobre el modelo (en el celular, mantén el dedo presionado) para comentar un punto exacto.</li>';
     list.scrollTop = list.scrollHeight;
     const unread = mensajes.filter((m) => m.autor !== me && m.creado > lastSeen()).length;
@@ -240,15 +240,69 @@ export async function startApp(api) {
   const seenKey = `dm_seen_${proyecto.id}_${isOwner ? 'o' : 'c'}`;
   const lastSeen = () => { try { return +localStorage.getItem(seenKey) || 0; } catch { return 0; } };
   const markSeen = () => { try { localStorage.setItem(seenKey, Date.now()); } catch { /* */ } };
+  // Editar: solo los propios. Borrar: los propios, o cualquiera si es el estudio.
+  // El registro de la aprobación no se toca.
+  function msgActions(m, me) {
+    if (m.tipo === 'aprobacion') return '';
+    const own = m.autor === me;
+    return (own ? ` · <button type="button" class="link-btn" data-edit="${m.id}">Editar</button>` : '')
+      + (own || isOwner ? ` · <button type="button" class="link-btn" data-del="${m.id}">Borrar</button>` : '');
+  }
+  let editing = null; // id del mensaje en edición (pausa el refresco automático)
+  function startEdit(li, m) {
+    editing = m.id;
+    const bubble = li.querySelector('.bubble');
+    const f = document.createElement('form');
+    f.className = 'msg-edit';
+    f.innerHTML = `<label class="sr-only" for="edit-${m.id}">Editar mensaje</label>
+      <textarea id="edit-${m.id}" rows="2" maxlength="2000" required></textarea>
+      <div class="actions"><button class="btn btn-primary" type="submit">Guardar</button><button class="btn" type="button" data-cancel>Cancelar</button></div>`;
+    const ta = f.querySelector('textarea');
+    ta.value = m.texto;
+    bubble.replaceWith(f);
+    li.querySelector('small').hidden = true;
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+    const done = () => { editing = null; paintChat(); paintPins(); };
+    f.querySelector('[data-cancel]').addEventListener('click', done);
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); done(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); f.requestSubmit(); }
+    });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const t = ta.value.trim(); if (!t) return;
+      if (t === m.texto) return done();
+      f.querySelector('[type=submit]').disabled = true;
+      try { await api.editar(m.id, t); editing = null; await refresh(); }
+      catch (err) { f.querySelector('[type=submit]').disabled = false; alert('No se pudo editar: ' + err.message); }
+    });
+  }
   $('#chatlist').addEventListener('click', async (e) => {
-    const b = e.target.closest('[data-resolve]'); if (!b) return;
-    await api.resolver(+b.dataset.resolve); await refresh();
+    const r = e.target.closest('[data-resolve]');
+    if (r) { await api.resolver(+r.dataset.resolve); await refresh(); return; }
+    const ed = e.target.closest('[data-edit]');
+    if (ed) {
+      if (editing) paintChat();
+      const m = mensajes.find((x) => String(x.id) === ed.dataset.edit);
+      const li = document.querySelector(`#chatlist [data-id="${ed.dataset.edit}"]`);
+      if (m && li) startEdit(li, m);
+      return;
+    }
+    const del = e.target.closest('[data-del]');
+    if (del) {
+      const m = mensajes.find((x) => String(x.id) === del.dataset.del); if (!m) return;
+      const que = m.tipo === 'pin' ? `el comentario 📍 ${pinNumber(m)}` : 'este mensaje';
+      if (!confirm(`¿Borrar ${que}? No se puede deshacer.`)) return;
+      try { await api.borrar(m.id); await refresh(); } catch (err) { alert('No se pudo borrar: ' + err.message); }
+    }
   });
 
   async function refresh() {
     try {
       const r = await api.mensajes();
       mensajes = r.mensajes || [];
+      if (editing && mensajes.some((m) => m.id === editing)) { paintPins(); return; }
+      editing = null;
       paintChat(); paintPins();
     } catch (e) { if (e.code === 401) location.reload(); }
   }
@@ -279,6 +333,9 @@ export async function startApp(api) {
     const ap = proyecto.aprobacion;
     $('#papprove').hidden = !!ap || isOwner;
     $('#pchanges').hidden = !!ap || isOwner;
+    const locked = !!ap && !isOwner;
+    $('#plock').hidden = !locked;
+    document.querySelector('.papp-side').classList.toggle('is-locked', locked);
     if (ap) status(`Aprobado el ${new Date(ap.fecha).toLocaleDateString('es-CL')} · Total ${clp(ap.total)} · Anticipo ${clp(ap.anticipo)}.`);
   }
   paintApproval();

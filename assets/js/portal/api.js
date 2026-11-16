@@ -27,6 +27,8 @@ export function workerApi(token, { owner = null, proyecto = null } = {}) {
     listar: () => call('admin/proyectos'),
     enviar: (msg) => call('mensajes', { method: 'POST', body: JSON.stringify(msg) }),
     resolver: (id) => call('mensajes', { method: 'PATCH', body: JSON.stringify({ id, resuelto: 1 }) }),
+    editar: (id, texto) => call('mensajes', { method: 'PATCH', body: JSON.stringify({ id, texto }) }),
+    borrar: (id) => call('mensajes', { method: 'DELETE' }, { id }),
     aprobar: (sel) => call('aprobar', { method: 'POST', body: JSON.stringify({ seleccion: sel }) }),
   };
 }
@@ -71,6 +73,12 @@ export function demoApi() {
     },
     async resolver(id) {
       const st = dread(); (st.mensajes || []).forEach((m) => { if (m.id === id) m.resuelto = 1; }); dwrite(st); return { ok: true };
+    },
+    async editar(id, texto) {
+      const st = dread(); (st.mensajes || []).forEach((m) => { if (m.id === id) { m.texto = texto; m.editado = Date.now(); } }); dwrite(st); return { ok: true };
+    },
+    async borrar(id) {
+      const st = dread(); st.mensajes = (st.mensajes || []).filter((m) => m.id !== id); dwrite(st); return { ok: true };
     },
     async aprobar(sel) {
       const q = await this.cotizar(sel);
