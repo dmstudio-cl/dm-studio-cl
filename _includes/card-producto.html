@@ -1,0 +1,13 @@
+{% assign p = include.p %}
+<a class="card reveal" href="{{ p.url | relative_url }}" data-cat="{{ p.categoria | slugify }}">
+  <div class="card-media ratio">
+    {% if p.disponible == false %}<span class="tag">Por encargo</span>{% elsif p.ejemplo %}<span class="tag tag-red">Ejemplo</span>{% endif %}
+    {% if p.modelo or p.procedural %}<span class="tag badge-3d">3D</span>{% endif %}
+    {% assign img = p.imagenes | first %}
+    {% if img %}{% include thumb.html src=img %}<img src="{{ thumb | relative_url }}" alt="{{ p.title }}" loading="lazy" decoding="async">{% else %}<img src="{{ '/assets/img/marca/logo-512.webp' | relative_url }}" alt="{{ p.title }}" loading="lazy" style="padding:22%;opacity:.5">{% endif %}
+  </div>
+  <div class="card-body">
+    <h3>{{ p.title }}</h3>
+    {% if p.precio %}<span class="mono" data-clp="{{ p.precio }}">${{ p.precio }}</span>{% else %}<span class="mono">Consultar</span>{% endif %}
+  </div>
+</a>

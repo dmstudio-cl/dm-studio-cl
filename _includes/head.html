@@ -1,0 +1,28 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0b0d">
+{% seo %}
+<link rel="icon" type="image/png" href="{{ '/assets/img/marca/favicon.png' | relative_url }}">
+<link rel="apple-touch-icon" href="{{ '/assets/img/marca/apple-touch-icon.png' | relative_url }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@{{ site.three_version }}/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@{{ site.three_version }}/examples/jsm/"
+  }
+}
+</script>
+<script>
+  window.DM = {
+    base: "{{ site.baseurl }}",
+    whatsapp: "{{ site.data.sitio.whatsapp }}",
+    web3forms: "{{ site.data.sitio.web3forms_key }}",
+    mach: "{{ site.data.sitio.mach_link }}",
+    worker: "{{ site.data.sitio.worker_url }}",
+    three: "{{ site.three_version }}"
+  };
+</script>

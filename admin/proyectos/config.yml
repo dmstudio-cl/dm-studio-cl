@@ -1,0 +1,182 @@
+# Decap CMS · proyectos privados de clientes (repo PRIVADO).
+# Este archivo es público pero no contiene secretos: solo describe el formulario.
+backend:
+  name: github
+  repo: dmstudio-cl/proyectos-clientes          # [PENDIENTE] crear repo privado
+  branch: main
+  base_url: https://REEMPLAZAR-WORKER.workers.dev   # [PENDIENTE] URL del Worker de OAuth
+  auth_endpoint: auth
+  commit_messages:
+    create: "Proyecto: crear «{{slug}}»"
+    update: "Proyecto: actualizar «{{slug}}»"
+    delete: "Proyecto: eliminar «{{slug}}»"
+    uploadMedia: "Proyecto: subir archivo «{{path}}»"
+    deleteMedia: "Proyecto: eliminar archivo «{{path}}»"
+
+locale: es
+media_folder: media
+public_folder: media
+
+collections:
+  - name: proyectos
+    label: Proyectos de clientes
+    label_singular: Proyecto
+    folder: proyectos
+    extension: json
+    format: json
+    create: true
+    slug: "{{year}}-{{slug}}"
+    summary: "{{cliente.nombre}} · {{titulo}} · {{estado}}"
+    sortable_fields: [titulo, estado]
+    fields:
+      - { label: Título del proyecto, name: titulo, widget: string, hint: "Ej: Cocina departamento Ñuñoa" }
+      - label: Clave de acceso
+        name: access_key
+        widget: string
+        pattern: ['^DM-[A-Z0-9]{4}-[A-Z0-9]{4}$', "Formato DM-XXXX-XXXX (mayúsculas y números)"]
+        hint: "Única por cliente. Evita O/0 e I/1. Para revocar el acceso, cambia la clave o marca el proyecto como Archivado."
+      - label: Estado
+        name: estado
+        widget: select
+        default: borrador
+        options:
+          - { label: "Borrador (cliente no puede entrar)", value: borrador }
+          - { label: "Propuesta enviada", value: propuesta }
+          - { label: "Cambios solicitados", value: cambios }
+          - { label: "Aprobado", value: aprobado }
+          - { label: "En fabricación", value: fabricacion }
+          - { label: "Entregado", value: entregado }
+          - { label: "Archivado (acceso revocado)", value: archivado }
+      - { label: Versión de la propuesta, name: version, widget: number, value_type: int, default: 1 }
+      - { label: Precio válido hasta, name: vigencia, widget: datetime, date_format: "DD-MM-YYYY", time_format: false, format: "YYYY-MM-DD", required: false }
+      - label: Cliente
+        name: cliente
+        widget: object
+        fields:
+          - { label: Nombre, name: nombre, widget: string }
+          - { label: Email, name: email, widget: string, required: false }
+          - { label: Teléfono, name: telefono, widget: string, required: false }
+          - { label: Comuna, name: comuna, widget: string, required: false }
+
+      - label: Tipo de modelo
+        name: tipo
+        widget: select
+        default: melamina
+        options:
+          - { label: "Mueble de melamina paramétrico", value: melamina }
+          - { label: "Modelo 3D (.glb)", value: glb }
+      - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false, hint: "Solo si el tipo es 'Modelo 3D'." }
+
+      - label: Módulos (estructura, la define DM Studio)
+        name: modulos
+        widget: list
+        required: false
+        summary: "{{fields.nombre}} · {{fields.ancho}}×{{fields.profundidad}}×{{fields.alto}} cm"
+        hint: "Cada módulo es una caja. Medidas en cm. Posición respecto a la esquina del espacio."
+        fields:
+          - { label: Nombre, name: nombre, widget: string, hint: "Ej: Mueble A, Aéreo sobre encimera" }
+          - { label: Tipo, name: tipo, widget: select, default: base, options: [base, aereo, torre, isla] }
+          - { label: Ancho, name: ancho, widget: number, value_type: float }
+          - { label: Alto, name: alto, widget: number, value_type: float }
+          - { label: Profundidad, name: profundidad, widget: number, value_type: float }
+          - { label: Zócalo, name: zocalo, widget: number, value_type: float, default: 10 }
+          - { label: Altura desde el piso, name: elevacion, widget: number, value_type: float, default: 0, hint: "Para muebles aéreos" }
+          - { label: "Posición X (a lo largo del muro)", name: x, widget: number, value_type: float, default: 0 }
+          - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
+          - { label: Rotación (grados), name: rotacion, widget: select, default: "0", options: ["0", "90", "180", "270"] }
+          - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
+          - label: Columnas (de izquierda a derecha)
+            name: columnas
+            widget: list
+            summary: "{{fields.ancho}} cm · {{fields.frentes}}"
+            fields:
+              - { label: Ancho, name: ancho, widget: number, value_type: float }
+              - label: Frentes (de arriba a abajo)
+                name: frentes
+                widget: list
+                summary: "{{fields.tipo}} {{fields.alto}} cm"
+                fields:
+                  - { label: Tipo, name: tipo, widget: select, options: [puerta, puerta_doble, cajon, panel, abierto, campana] }
+                  - { label: Alto, name: alto, widget: number, value_type: float }
+                  - { label: Bisagra, name: bisagra, widget: select, default: izquierda, options: [izquierda, derecha, arriba, abajo], required: false }
+
+      - label: Opciones visibles para el cliente
+        name: opciones
+        widget: object
+        fields:
+          - { label: Melaminas habilitadas (códigos), name: melaminas, widget: list, required: false, hint: "Vacío = todo el catálogo Masisa" }
+          - { label: Tiradores habilitados, name: tiradores, widget: list, required: false }
+          - { label: Cubiertas habilitadas, name: cubiertas, widget: list, required: false }
+          - { label: Selección inicial de melamina, name: melamina_inicial, widget: string, required: false }
+
+      - label: Recomendaciones (encimeras, campanas…)
+        name: recomendados
+        widget: list
+        required: false
+        hint: "No se cobran: el cliente las compra directo en la tienda."
+        fields:
+          - { label: Tipo, name: tipo, widget: select, options: [encimera, campana, lavaplatos, griferia, otro] }
+          - { label: Nombre, name: nombre, widget: string }
+          - { label: Link, name: url, widget: string }
+          - { label: Medida (cm), name: medida, widget: string, required: false }
+
+      - label: Espacio (opcional)
+        name: espacio
+        widget: object
+        required: false
+        collapsed: true
+        fields:
+          - { label: Largo, name: largo, widget: number, value_type: float, required: false }
+          - { label: Ancho, name: ancho, widget: number, value_type: float, required: false }
+          - { label: Alto, name: alto, widget: number, value_type: float, default: 240, required: false }
+          - { label: Fotos del cliente, name: fotos, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
+
+      - label: Costos internos (NUNCA se muestran al cliente)
+        name: costos
+        widget: list
+        required: false
+        hint: "Materiales e insumos. El Worker suma, aplica luz (20%) y el factor 2.3."
+        summary: "{{fields.cantidad}} × {{fields.item}}"
+        fields:
+          - { label: Ítem, name: item, widget: string, hint: "Ej: plancha melamina, bisagras, correderas, agorex, diluyente, transporte" }
+          - { label: Cantidad, name: cantidad, widget: number, value_type: float, default: 1 }
+          - { label: Precio unitario (CLP), name: unitario, widget: number, value_type: int }
+          - { label: Depende de la melamina elegida, name: por_melamina, widget: boolean, default: false, required: false }
+      - { label: Notas internas, name: notas, widget: text, required: false }
+
+  - name: configuracion
+    label: Configuración de precios
+    files:
+      - name: constantes
+        label: Constantes y costos base
+        file: config/precios.json
+        format: json
+        fields:
+          - { label: Luz (% sobre materiales), name: luz, widget: number, value_type: float, default: 0.2, hint: "0.2 = 20%" }
+          - { label: Factor de precio, name: factor, widget: number, value_type: float, default: 2.3 }
+          - { label: Anticipo, name: anticipo, widget: number, value_type: float, default: 0.5, hint: "0.5 = 50%" }
+          - label: Precio por plancha de melamina
+            name: planchas
+            widget: list
+            required: false
+            fields:
+              - { label: Línea / código, name: codigo, widget: string }
+              - { label: Formato, name: formato, widget: select, options: ["1830x2500", "2140x2500"] }
+              - { label: Espesor (mm), name: espesor, widget: select, options: ["5.5", "15", "18"] }
+              - { label: Precio (CLP), name: precio, widget: number, value_type: int }
+          - label: Tiradores
+            name: tiradores
+            widget: list
+            required: false
+            fields:
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Precio unitario (CLP), name: precio, widget: number, value_type: int }
+              - { label: Imagen, name: imagen, widget: image, required: false }
+          - label: Cubiertas
+            name: cubiertas
+            widget: list
+            required: false
+            fields:
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Precio por metro lineal (CLP), name: precio_ml, widget: number, value_type: int }
+              - { label: Imagen, name: imagen, widget: image, required: false }

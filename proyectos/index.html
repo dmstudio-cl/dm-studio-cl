@@ -1,0 +1,23 @@
+---
+layout: default
+title: Portal de clientes
+description: Acceso privado para clientes de DM Studio.
+sitemap: false
+---
+<div class="portal-gate" data-portal>
+  <div class="gate-card">
+    <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="DM Studio" width="96" height="96">
+    <p class="eyebrow">Portal de clientes</p>
+    <h1 style="font-size:clamp(2rem,5vw,3rem)">Tu proyecto, en 3D</h1>
+    <p class="muted">Ingresa la clave que te enviamos para ver tu mueble, elegir colores, tiradores y cubierta, dejar comentarios y aprobar tu cotización.</p>
+    <form id="portal-form" class="form" autocomplete="off">
+      <div class="field">
+        <label for="key">Clave de acceso</label>
+        <input id="key" name="key" required minlength="8" placeholder="DM-XXXX-XXXX" spellcheck="false" autocapitalize="characters">
+      </div>
+      <button class="btn btn-red btn-block" type="submit">Entrar</button>
+      <p class="form-status" role="status" aria-live="polite"></p>
+    </form>
+    <p class="small muted">¿No tienes clave? <a href="{{ '/a-medida/' | relative_url }}">Solicita una cotización</a>.</p>
+  </div>
+</div>

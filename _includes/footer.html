@@ -1,0 +1,30 @@
+{% assign s = site.data.sitio %}
+<footer class="site-footer">
+  <div class="footer-grid">
+    <div>
+      <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="DM Studio" width="56" height="56" loading="lazy">
+      <p class="mono muted">DM STUDIO · HECHO A MANO EN CHILE</p>
+    </div>
+    <div>
+      <h2 class="eyebrow">Estudio</h2>
+      <a href="{{ '/portafolio/' | relative_url }}">Portafolio</a>
+      <a href="{{ '/catalogo/' | relative_url }}">Catálogo</a>
+      <a href="{{ '/a-medida/' | relative_url }}">Muebles a medida</a>
+      <a href="{{ '/proyectos/' | relative_url }}">Portal de clientes</a>
+    </div>
+    <div>
+      <h2 class="eyebrow">Contacto</h2>
+      {% if s.whatsapp != "" %}<a href="https://wa.me/{{ s.whatsapp }}" target="_blank" rel="noopener">WhatsApp</a>{% endif %}
+      {% if s.email != "" %}<a href="mailto:{{ s.email }}">{{ s.email }}</a>{% endif %}
+      {% if s.instagram != "" %}<a href="{{ s.instagram }}" target="_blank" rel="noopener">Instagram</a>{% endif %}
+    </div>
+    <div class="sibling">
+      <h2 class="eyebrow">Estudio hermano</h2>
+      <a href="{{ s.dev_url }}" target="_blank" rel="noopener" class="sibling-link">
+        <span class="mono">dmstudio<b>.dev</b></span>
+        <small>Desarrollo web · WordPress · OJS/PKP · 3D</small>
+      </a>
+    </div>
+  </div>
+  <p class="mono muted small">© {{ 'now' | date: '%Y' }} DM Studio. Precios en pesos chilenos (CLP).</p>
+</footer>

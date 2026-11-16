@@ -1,0 +1,73 @@
+---
+layout: default
+title: Muebles a medida
+description: Cotiza muebles a medida en melamina o madera maciza, y restauraciones, con DM Studio.
+---
+{% assign s = site.data.sitio %}
+{% capture wa_msg %}Hola DM Studio, quiero cotizar un trabajo en madera / restauración. Les cuento: {% endcapture %}
+<div class="wrap section">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">A medida</p>
+      <h1>Cuéntanos tu proyecto</h1>
+    </div>
+    <p>Revisamos cada solicitud personalmente y te respondemos si podemos tomar el trabajo, con una propuesta y, cuando corresponde, un modelo 3D en tu portal de cliente.</p>
+  </div>
+
+  <div class="split">
+    <section class="panel" id="melamina">
+      <p class="eyebrow">01 · Melamina</p>
+      <h2>Cocinas, closets y guardado</h2>
+      <p class="muted">Trabajamos con melamina Masisa. Si tu proyecto avanza, te enviamos una clave para ver y configurar tu mueble en 3D (color, tiradores y cubierta).</p>
+      <form class="form" data-web3forms data-success="¡Gracias! Revisaremos tu solicitud y te contactaremos.">
+        <input type="hidden" name="subject" value="Nueva solicitud a medida (melamina) · dmstudio.cl">
+        <input type="hidden" name="from_name" value="dmstudio.cl">
+        <input type="checkbox" name="botcheck" class="hp" tabindex="-1" autocomplete="off">
+        <div class="row">
+          <div class="field"><label for="m-nombre">Nombre</label><input id="m-nombre" name="nombre" required autocomplete="name"></div>
+          <div class="field"><label for="m-tel">Teléfono</label><input id="m-tel" name="telefono" type="tel" placeholder="+56 9" autocomplete="tel" pattern="[+0-9 ]{8,16}"></div>
+        </div>
+        <div class="field"><label for="m-email">Email</label><input id="m-email" name="email" type="email" required autocomplete="email"></div>
+        <div class="row">
+          <div class="field">
+            <label for="m-tipo">Tipo de proyecto</label>
+            <select id="m-tipo" name="tipo_proyecto">
+              <option>Mueble de cocina</option>
+              <option>Closet / vestidor</option>
+              <option>Mueble de baño</option>
+              <option>Mueble de guardado / TV</option>
+              <option>Proyecto comercial</option>
+              <option>Otro</option>
+            </select>
+          </div>
+          <div class="field"><label for="m-comuna">Comuna</label><input id="m-comuna" name="comuna"></div>
+        </div>
+        <div class="field"><label for="m-medidas">Medidas aproximadas</label><input id="m-medidas" name="medidas" placeholder="Ej: 240 × 60 × 90 cm"></div>
+        <div class="field">
+          <label for="m-msg">Descripción</label>
+          <textarea id="m-msg" name="mensaje" required placeholder="¿Qué necesitas? Espacio, usos, colores que te gustan…"></textarea>
+        </div>
+        <div class="field"><label for="m-ref">Link de referencia o fotos (opcional)</label><input id="m-ref" name="referencia" type="url" placeholder="https://"><small>Puedes pegar un link de Google Drive, Pinterest o similar.</small></div>
+        <button class="btn btn-primary" type="submit">Enviar solicitud</button>
+        <p class="form-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="panel" id="madera">
+      <p class="eyebrow">02 · Madera y restauración</p>
+      <h2>Madera maciza, piezas únicas y restauración</h2>
+      <p class="muted">Para muebles en madera, piezas de autor o restauraciones, lo más rápido es conversar directo. Mándanos fotos del mueble o del espacio y una breve descripción.</p>
+      <ul class="muted">
+        <li>Fotos del mueble o del lugar donde irá</li>
+        <li>Medidas aproximadas</li>
+        <li>Qué te gustaría lograr y para cuándo</li>
+      </ul>
+      {% if s.whatsapp != "" %}
+        <a class="btn btn-wa" href="https://wa.me/{{ s.whatsapp }}?text={{ wa_msg | url_encode }}" target="_blank" rel="noopener">Escribir por WhatsApp</a>
+      {% else %}
+        <a class="btn btn-wa" aria-disabled="true" title="WhatsApp aún no configurado">Escribir por WhatsApp</a>
+        <p class="small muted" style="margin-top:10px">El WhatsApp estará disponible muy pronto. Mientras tanto, usa el formulario.</p>
+      {% endif %}
+    </section>
+  </div>
+</div>

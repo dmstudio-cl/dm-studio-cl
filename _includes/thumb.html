@@ -1,0 +1,2 @@
+{%- comment -%}Usa la miniatura "-sm.webp" solo para las fotos generadas por el script de exportación; las subidas por Decap se usan tal cual.{%- endcomment -%}
+{%- if include.src contains '/assets/img/portafolio/' -%}{%- assign thumb = include.src | replace: '.webp', '-sm.webp' -%}{%- else -%}{%- assign thumb = include.src -%}{%- endif -%}

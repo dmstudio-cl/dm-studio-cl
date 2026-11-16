@@ -1,0 +1,29 @@
+---
+layout: default
+title: Catálogo
+description: Muebles y objetos de autor disponibles o por encargo. Precios en pesos chilenos.
+---
+{% assign items = site.productos | sort: "orden" %}
+{% assign cats = items | map: "categoria" | uniq | sort %}
+<div class="wrap section">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Catálogo</p>
+      <h1>Piezas disponibles</h1>
+    </div>
+    <p>Todos los precios en CLP. Los modelos personalizables tienen un plazo de fabricación mayor. ¿Buscas otra cosa? <a href="{{ '/a-medida/' | relative_url }}">Cotiza a medida</a>.</p>
+  </div>
+  {% if items.size > 0 %}
+    {% if cats.size > 1 %}
+    <div class="filters" data-filters="#cat-grid" role="group" aria-label="Filtrar por categoría">
+      <button type="button" data-filter="*" aria-pressed="true">Todo</button>
+      {% for c in cats %}<button type="button" data-filter="{{ c | slugify }}" aria-pressed="false">{{ c }}</button>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="grid" id="cat-grid">
+      {% for p in items %}{% include card-producto.html p=p %}{% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">Estamos preparando el catálogo. Mientras tanto, <a href="{{ '/a-medida/' | relative_url }}">cuéntanos qué necesitas</a>.</p>
+  {% endif %}
+</div>

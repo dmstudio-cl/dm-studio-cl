@@ -1,0 +1,50 @@
+# DM Studio · Mobiliario — configuración Jekyll (compatible con GitHub Pages)
+title: DM Studio
+tagline: Mobiliario de autor, hecho a mano en Chile
+description: >-
+  Estudio de diseño y fabricación de mobiliario en madera y melamina en Chile.
+  Catálogo de piezas de autor, muebles a medida y cotizador 3D para clientes.
+lang: es-CL
+locale: es_CL
+
+# Mientras no exista el dominio dmstudio.cl, el sitio vive en
+# https://dmstudio-cl.github.io/dm-studio-cl/ → baseurl "/dm-studio-cl".
+# Al conectar el dominio: url "https://dmstudio.cl" y baseurl "".
+url: "https://dmstudio-cl.github.io"
+baseurl: "/dm-studio-cl"
+
+permalink: pretty
+markdown: kramdown
+timezone: America/Santiago
+
+plugins:
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+collections:
+  productos:
+    output: true
+    permalink: /catalogo/:name/
+  portafolio:
+    output: true
+    permalink: /portafolio/:name/
+
+defaults:
+  - scope: { path: "", type: productos }
+    values: { layout: producto }
+  - scope: { path: "", type: portafolio }
+    values: { layout: proyecto }
+  - scope: { path: "" }
+    values: { layout: default }
+
+# Versión fija de Three.js (import map). Cambiar aquí actualiza todo el sitio.
+three_version: "0.170.0"
+
+exclude:
+  - CLAUDE.md
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor
+  - .jekyll-cache
+  - docker-compose.yml

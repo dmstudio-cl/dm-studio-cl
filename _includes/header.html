@@ -1,0 +1,19 @@
+<header class="site-header">
+  <a class="brand" href="{{ '/' | relative_url }}" aria-label="DM Studio, inicio">
+    <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="" width="36" height="36">
+    <span>DM<b>STUDIO</b></span>
+  </a>
+  <button class="nav-toggle" aria-expanded="false" aria-controls="nav" aria-label="Abrir menú">
+    <span></span><span></span>
+  </button>
+  <nav id="nav" class="nav">
+    {% assign u = page.url %}
+    <a href="{{ '/portafolio/' | relative_url }}" {% if u contains '/portafolio/' %}aria-current="page"{% endif %}>Portafolio</a>
+    <a href="{{ '/catalogo/' | relative_url }}" {% if u contains '/catalogo/' %}aria-current="page"{% endif %}>Catálogo</a>
+    <a href="{{ '/a-medida/' | relative_url }}" {% if u contains '/a-medida/' %}aria-current="page"{% endif %}>A medida</a>
+    <a href="{{ '/proyectos/' | relative_url }}" class="nav-portal" {% if u contains '/proyectos/' %}aria-current="page"{% endif %}>Clientes</a>
+    <a href="{{ '/carrito/' | relative_url }}" class="nav-cart" aria-label="Carrito">
+      Carrito <span class="cart-count" data-cart-count hidden>0</span>
+    </a>
+  </nav>
+</header>

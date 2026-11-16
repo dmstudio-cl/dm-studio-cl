@@ -1,0 +1,90 @@
+---
+layout: default
+---
+{% assign p = page %}
+{% assign img0 = p.imagenes | first %}
+<div class="wrap">
+  <article class="detail">
+    <div class="detail-media">
+      <div class="stage">
+        {% for img in p.imagenes %}
+          <img data-slide="img{{ forloop.index0 }}" src="{{ img | relative_url }}" alt="{{ p.title }}" {% unless forloop.first %}hidden loading="lazy"{% endunless %}>
+        {% endfor %}
+        {% if p.modelo or p.procedural %}
+          <div class="viewer" data-slide="3d" data-viewer-lazy {% if p.modelo %}data-model="{{ p.modelo | relative_url }}"{% else %}data-procedural="{{ p.procedural }}"{% endif %} {% if p.imagenes.size > 0 %}hidden{% else %}data-viewer{% endif %}>
+            <div class="viewer-loading">Cargando modelo…</div>
+            <span class="viewer-hint">Arrastra para girar</span>
+          </div>
+        {% endif %}
+      </div>
+      {% assign nslides = p.imagenes.size %}{% if p.modelo or p.procedural %}{% assign nslides = nslides | plus: 1 %}{% endif %}
+      {% if nslides > 1 %}
+      <div class="thumbs" role="group" aria-label="Galería">
+        {% for img in p.imagenes %}
+          <button type="button" data-slide="img{{ forloop.index0 }}" aria-pressed="{% if forloop.first %}true{% else %}false{% endif %}" aria-label="Foto {{ forloop.index }}">
+            {% include thumb.html src=img %}<img src="{{ thumb | relative_url }}" alt="" loading="lazy">
+          </button>
+        {% endfor %}
+        {% if p.modelo or p.procedural %}<button type="button" data-slide="3d" aria-pressed="false"><span class="t3d">3D</span></button>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div>
+      <p class="eyebrow">Catálogo · {{ p.categoria }}</p>
+      <h1>{{ p.title }}</h1>
+      {% if p.ejemplo %}<p class="note note-red">Producto de ejemplo para mostrar la estructura del catálogo.</p>{% endif %}
+      {% if p.precio %}
+        <p class="price" data-price>${{ p.precio }}</p>
+      {% else %}
+        <p class="price">Precio a consultar</p>
+      {% endif %}
+      {% if p.resumen and p.resumen != "" %}<p class="muted">{{ p.resumen }}</p>{% endif %}
+
+      <form id="product-form">
+        {% for op in p.opciones %}
+          {% assign oi = forloop.index0 %}
+          <div class="option">
+            <fieldset>
+              <legend>{{ op.nombre }}</legend>
+              <div class="chips">
+                {% for v in op.valores %}
+                  <label>
+                    <input type="radio" name="op{{ oi }}" value="{{ forloop.index0 }}" {% if forloop.first %}checked{% endif %}>
+                    <span>{{ v.nombre }}{% if v.recargo and v.recargo != 0 %} · +<span data-clp="{{ v.recargo }}">{{ v.recargo }}</span>{% endif %}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+          </div>
+        {% endfor %}
+
+        <p class="note">Plazo de fabricación: <b data-lead>{% if p.plazo %}{{ p.plazo }} días hábiles{% else %}A coordinar{% endif %}</b>{% if p.plazo_personalizado %}<br><small class="muted">Personalizar el modelo extiende el plazo a {{ p.plazo_personalizado }} días hábiles.</small>{% endif %}</p>
+
+        <div class="actions">
+          <button class="btn btn-primary" type="submit">{% if p.precio %}Agregar al carrito{% else %}Agregar para cotizar{% endif %}</button>
+          {% if p.link_mercadopago and p.opciones == nil %}<a class="btn" href="{{ p.link_mercadopago }}" target="_blank" rel="noopener">Comprar ahora · Mercado Pago</a>{% endif %}
+        </div>
+      </form>
+
+      <table class="specs">
+        {% if p.material and p.material != "" %}<tr><th>Material</th><td>{{ p.material }}</td></tr>{% endif %}
+        {% if p.dimensiones and p.dimensiones != "" %}<tr><th>Dimensiones</th><td class="mono">{{ p.dimensiones }}</td></tr>{% endif %}
+        <tr><th>Disponibilidad</th><td>{% if p.disponible %}En stock{% else %}Fabricación por encargo{% endif %}</td></tr>
+      </table>
+      <div class="prose">{{ content }}</div>
+    </div>
+  </article>
+</div>
+<script type="application/json" data-product>
+{
+  "id": {{ p.slug | default: p.title | slugify | jsonify }},
+  "titulo": {{ p.title | jsonify }},
+  "precio": {{ p.precio | default: 0 }},
+  "imagen": {% if img0 %}{% include thumb.html src=img0 %}{{ thumb | relative_url | jsonify }}{% else %}{{ '/assets/img/marca/logo-192.webp' | relative_url | jsonify }}{% endif %},
+  "plazo": {{ p.plazo | default: 0 }},
+  "plazo_personalizado": {{ p.plazo_personalizado | default: 0 }},
+  "link_mercadopago": {{ p.link_mercadopago | default: "" | jsonify }},
+  "opciones": {% if p.opciones %}{{ p.opciones | jsonify }}{% else %}[]{% endif %}
+}
+</script>

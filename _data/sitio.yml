@@ -1,0 +1,20 @@
+# Datos de contacto y servicios externos. Editable desde Decap (/admin → Ajustes del sitio).
+# Los campos vacíos desactivan su botón en el sitio sin romper nada.
+
+# WhatsApp Empresa en formato internacional sin "+" ni espacios, ej: "56912345678"
+whatsapp: ""
+email: ""
+instagram: "https://www.instagram.com/dm_studio.cl/"
+ciudad: "Chile"
+
+# Web3Forms: access key pública del formulario (es pública por diseño, no es un secreto).
+web3forms_key: ""
+
+# Link de cobro MACH general (opcional). Los links de Mercado Pago van en cada producto.
+mach_link: ""
+
+# URL base del Cloudflare Worker (OAuth de Decap + API del portal de clientes).
+worker_url: ""
+
+# Sitio hermano
+dev_url: "https://dmstudio-dev.github.io/dm-studio-dev/"

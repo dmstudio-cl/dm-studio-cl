@@ -1,0 +1,23 @@
+---
+layout: default
+title: Portafolio
+description: Proyectos de mobiliario, iluminación y objetos diseñados y fabricados por DM Studio en Chile.
+---
+{% assign items = site.portafolio | sort: "orden" %}
+{% assign cats = items | map: "categoria" | uniq | sort %}
+<div class="wrap section">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Portafolio</p>
+      <h1>Trabajos realizados</h1>
+    </div>
+    <p>Mobiliario, iluminación y objetos diseñados y fabricados en nuestro taller.</p>
+  </div>
+  <div class="filters" data-filters="#pf-grid" role="group" aria-label="Filtrar por categoría">
+    <button type="button" data-filter="*" aria-pressed="true">Todo</button>
+    {% for c in cats %}<button type="button" data-filter="{{ c | slugify }}" aria-pressed="false">{{ c }}</button>{% endfor %}
+  </div>
+  <div class="grid-masonry" id="pf-grid">
+    {% for p in items %}{% include card-proyecto.html p=p %}{% endfor %}
+  </div>
+</div>

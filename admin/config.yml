@@ -1,0 +1,102 @@
+# Decap CMS · sitio público dmstudio.cl
+# OAuth: Cloudflare Worker propio. Reemplaza base_url por la URL real del Worker.
+backend:
+  name: github
+  repo: dmstudio-cl/dm-studio-cl
+  branch: main
+  base_url: https://REEMPLAZAR-WORKER.workers.dev   # [PENDIENTE] URL del Worker de OAuth
+  auth_endpoint: auth
+  commit_messages:
+    create: "Contenido: crear {{collection}} «{{slug}}»"
+    update: "Contenido: actualizar {{collection}} «{{slug}}»"
+    delete: "Contenido: eliminar {{collection}} «{{slug}}»"
+    uploadMedia: "Contenido: subir imagen «{{path}}»"
+    deleteMedia: "Contenido: eliminar imagen «{{path}}»"
+
+locale: es
+site_url: https://dmstudio-cl.github.io/dm-studio-cl
+display_url: https://dmstudio-cl.github.io/dm-studio-cl
+logo_url: https://dmstudio-cl.github.io/dm-studio-cl/assets/img/marca/logo-192.webp
+
+media_folder: assets/img/uploads
+public_folder: /assets/img/uploads
+
+collections:
+  - name: portafolio
+    label: Portafolio
+    label_singular: Proyecto
+    folder: _portafolio
+    create: true
+    slug: "{{slug}}"
+    sortable_fields: [orden, title, categoria]
+    summary: "{{title}} · {{categoria}}"
+    fields:
+      - { label: Título, name: title, widget: string }
+      - label: Categoría
+        name: categoria
+        widget: select
+        options: [Melamina, Mobiliario, Cocina, Iluminación, Decoración, Escritorio, Música, Objetos, Restauración, Diseño]
+      - { label: Imagen principal, name: imagen, widget: image, hint: "JPG o WebP horizontal o vertical, idealmente bajo 500 KB." }
+      - { label: Galería, name: galeria, widget: list, required: false, field: { label: Imagen, name: imagen, widget: image } }
+      - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false, hint: "Opcional. Comprimido con Draco, idealmente bajo 5 MB. Reemplaza la foto principal por un visor 3D." }
+      - { label: Material, name: material, widget: string, required: false }
+      - { label: Medidas, name: medidas, widget: string, required: false, hint: "Ej: 120 × 45 × 80 cm" }
+      - { label: Año, name: anio, widget: number, required: false, value_type: int }
+      - { label: Resumen, name: resumen, widget: text, required: false }
+      - { label: Destacar en el inicio, name: destacado, widget: boolean, default: false }
+      - { label: Orden, name: orden, widget: number, value_type: int, default: 99, hint: "Menor número = aparece antes" }
+      - { label: Descripción, name: body, widget: markdown, required: false }
+
+  - name: productos
+    label: Catálogo
+    label_singular: Producto
+    folder: _productos
+    create: true
+    slug: "{{slug}}"
+    sortable_fields: [orden, title, precio]
+    summary: "{{title}} · ${{precio}}"
+    fields:
+      - { label: Nombre, name: title, widget: string }
+      - { label: Categoría, name: categoria, widget: string, default: Mobiliario }
+      - { label: Precio (CLP, sin puntos), name: precio, widget: number, value_type: int, required: false, hint: "Vacío = 'Precio a consultar'" }
+      - { label: En stock, name: disponible, widget: boolean, default: true, hint: "Desactivado = se fabrica por encargo" }
+      - { label: Fotos, name: imagenes, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
+      - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false }
+      - { label: Material, name: material, widget: string, required: false }
+      - { label: Dimensiones, name: dimensiones, widget: string, required: false }
+      - { label: Plazo de fabricación (días hábiles), name: plazo, widget: number, value_type: int, required: false }
+      - { label: Plazo si se personaliza (días hábiles), name: plazo_personalizado, widget: number, value_type: int, required: false }
+      - label: Opciones personalizables
+        name: opciones
+        widget: list
+        required: false
+        hint: "El primer valor de cada opción es el estándar (sin recargo ni plazo extra)."
+        fields:
+          - { label: Nombre de la opción, name: nombre, widget: string, hint: "Ej: Madera, Terminación, Medida" }
+          - label: Valores
+            name: valores
+            widget: list
+            fields:
+              - { label: Valor, name: nombre, widget: string }
+              - { label: Recargo (CLP), name: recargo, widget: number, value_type: int, default: 0 }
+      - { label: Link de pago Mercado Pago, name: link_mercadopago, widget: string, required: false, hint: "Solo se muestra en productos sin opciones." }
+      - { label: Resumen, name: resumen, widget: text, required: false }
+      - { label: Producto de ejemplo, name: ejemplo, widget: boolean, default: false, required: false }
+      - { label: Orden, name: orden, widget: number, value_type: int, default: 99 }
+      - { label: Descripción, name: body, widget: markdown, required: false }
+
+  - name: ajustes
+    label: Ajustes del sitio
+    files:
+      - name: sitio
+        label: Contacto y servicios
+        file: _data/sitio.yml
+        fields:
+          - { label: WhatsApp (ej. 56912345678), name: whatsapp, widget: string, required: false }
+          - { label: Email de contacto, name: email, widget: string, required: false }
+          - { label: Instagram, name: instagram, widget: string, required: false }
+          - { label: Ciudad, name: ciudad, widget: string, required: false }
+          - { label: Web3Forms access key, name: web3forms_key, widget: string, required: false }
+          - { label: Link de cobro MACH, name: mach_link, widget: string, required: false }
+          - { label: URL del Cloudflare Worker, name: worker_url, widget: string, required: false }
+          - { label: URL de dmstudio.dev, name: dev_url, widget: string, required: false }

@@ -1,0 +1,12 @@
+{% assign p = include.p %}
+<a class="card reveal" href="{{ p.url | relative_url }}" data-cat="{{ p.categoria | slugify }}">
+  <div class="card-media">
+    <span class="tag">{{ p.categoria }}</span>
+    {% if p.modelo %}<span class="tag badge-3d">3D</span>{% endif %}
+    {% include thumb.html src=p.imagen %}<img src="{{ thumb | relative_url }}" alt="{{ p.title }}" loading="lazy" decoding="async">
+  </div>
+  <div class="card-body">
+    <h3>{{ p.title }}</h3>
+    {% if p.material and p.material != "" %}<span class="mono">{{ p.material }}</span>{% endif %}
+  </div>
+</a>

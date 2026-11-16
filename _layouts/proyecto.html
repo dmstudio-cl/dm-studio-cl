@@ -1,0 +1,39 @@
+---
+layout: default
+---
+<div class="wrap">
+  <article class="detail">
+    <div class="detail-media">
+      <div class="stage">
+        {% if page.modelo %}
+          <div class="viewer" data-viewer data-model="{{ page.modelo | relative_url }}">
+            <div class="viewer-loading">Cargando modelo…</div>
+            <span class="viewer-hint">Arrastra para girar</span>
+          </div>
+        {% else %}
+          <img src="{{ page.imagen | relative_url }}" alt="{{ page.title }}">
+        {% endif %}
+      </div>
+      {% if page.galeria %}
+      <div class="grid">
+        {% for g in page.galeria %}<img src="{{ g | relative_url }}" alt="{{ page.title }}" loading="lazy" style="border-radius:10px">{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    <div>
+      <p class="eyebrow">Portafolio · {{ page.categoria }}</p>
+      <h1>{{ page.title }}</h1>
+      {% if page.resumen and page.resumen != "" %}<p class="muted">{{ page.resumen }}</p>{% endif %}
+      <table class="specs">
+        {% if page.material and page.material != "" %}<tr><th>Material</th><td>{{ page.material }}</td></tr>{% endif %}
+        {% if page.medidas and page.medidas != "" %}<tr><th>Medidas</th><td class="mono">{{ page.medidas }}</td></tr>{% endif %}
+        {% if page.anio and page.anio != "" %}<tr><th>Año</th><td class="mono">{{ page.anio }}</td></tr>{% endif %}
+      </table>
+      <div class="prose">{{ content }}</div>
+      <div class="actions" style="margin-top:28px">
+        <a class="btn btn-primary" href="{{ '/a-medida/' | relative_url }}">Quiero algo así</a>
+        <a class="btn" href="{{ '/portafolio/' | relative_url }}">← Volver al portafolio</a>
+      </div>
+    </div>
+  </article>
+</div>
