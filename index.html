@@ -2,6 +2,7 @@
 layout: default
 title: DM Studio · Mobiliario de autor
 body_class: home
+cargador: true
 ---
 {% assign s = site.data.sitio %}
 <div class="wrap">
@@ -21,8 +22,7 @@ body_class: home
       </div>
     </div>
     <div class="hero-stage">
-      <div class="viewer" data-viewer data-procedural="aparador" data-autorotate aria-label="Modelo 3D interactivo de un aparador">
-        <div class="viewer-loading">Cargando 3D…</div>
+      <div class="viewer" data-css3d="aparador" data-autorotate data-scroll role="img" aria-label="Modelo 3D interactivo de un aparador">
         <span class="viewer-hint">Arrastra para girar</span>
       </div>
     </div>

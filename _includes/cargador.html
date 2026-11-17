@@ -1,0 +1,104 @@
+{%- comment -%}
+  Cargador de página (solo en la portada). Plano técnico del logo en líneas negras sobre blanco;
+  el círculo se llena de rojo a medida que la página carga y luego el logo viaja a la cabecera.
+  La firma "Dm" es un vector trazado del logo original (potrace). Coordenadas: el círculo del logo
+  mide 912 de diámetro y está centrado en (500, 500).
+  Si el JavaScript falla, una animación CSS esconde el cargador a los pocos segundos.
+{%- endcomment -%}
+{%- capture firma -%}M522 652 c-10 -2 -25 -6 -43 -11 -20 -6 -19 -6 -27 0 -9 6 -11 5 -12 -5 -1 -10 -6 -16 -17 -20 -10 -4 -18 -8 -22 -13 0 0 -4 -3 -8 -7 -4 -4 -8 -7 -9 -8 -3 -2 -11 -8 -15 -10 -8 -4 -37 -32 -40 -39 -4 -7 -4 -19 -1 -23 4 -6 12 -8 9 -2 -1 1 -1 4 -1 6 0 8 25 37 47 51 4 3 10 7 14 10 4 3 9 7 11 8 2 1 6 4 10 6 12 10 19 12 23 8 3 -2 4 -11 4 -55 0 -19 1 -36 1 -38 1 -3 1 -6 1 -9 0 -2 0 -7 1 -10 1 -4 2 -15 3 -24 1 -10 2 -21 3 -24 4 -25 4 -25 -4 -35 -13 -16 -24 -26 -30 -27 -9 -2 -5 -8 4 -6 7 0 11 2 21 10 9 8 10 8 14 4 5 -4 7 -8 8 -15 0 -3 1 -9 2 -13 3 -17 12 -18 12 -2 0 6 0 9 -3 22 -2 9 -1 10 20 35 1 1 5 6 8 10 8 10 21 17 25 12 3 -3 -3 -24 -10 -38 -2 -4 -1 -11 1 -12 4 -2 7 -2 9 -1 2 1 17 14 17 15 0 3 14 22 18 24 4 3 5 3 5 -5 1 -9 3 -11 11 -11 7 0 10 2 16 11 7 12 8 13 13 17 13 13 19 16 22 14 3 -2 2 -7 -3 -17 -11 -22 -8 -35 5 -19 13 16 17 26 14 37 -2 7 -5 10 -15 13 -6 2 -16 -2 -23 -9 -14 -14 -19 -17 -23 -13 -11 10 -19 10 -30 0 -5 -4 -8 -4 -10 0 0 2 -4 7 -8 11 -10 9 -10 10 8 29 22 22 34 35 37 39 1 2 8 9 14 16 9 9 20 23 20 26 0 0 2 3 4 7 8 12 12 29 8 39 0 1 -1 5 -2 7 -3 9 -8 15 -21 24 -8 6 -14 8 -29 11 -7 1 -50 1 -57 -1z m54 -11 c9 -2 19 -4 24 -7 1 -1 3 -1 3 -1 3 0 10 -8 12 -13 2 -8 0 -15 -8 -32 -2 -4 -19 -31 -20 -33 -1 0 -4 -4 -7 -7 -28 -36 -33 -42 -71 -80 -39 -39 -38 -39 -41 -22 -1 3 -2 13 -2 21 -1 8 -2 17 -2 20 -2 9 -4 91 -3 122 0 5 3 9 11 12 2 1 8 3 11 5 4 2 9 4 13 5 3 0 7 2 9 2 2 1 5 1 7 2 1 0 3 1 4 1 6 5 42 7 60 5z{%- endcapture -%}
+<div class="cargador" id="cargador" aria-hidden="true">
+  <script>
+    // Antes de pintar: si ya se vio en esta sesión, no se muestra (?cargador lo fuerza).
+    try {
+      var forzar = /[?&]cargador\b/.test(location.search);
+      if (!forzar && sessionStorage.getItem('dm-cargador')) {
+        document.getElementById('cargador').remove();
+      } else { document.documentElement.classList.add('cargando'); }
+    } catch (e) {}
+  </script>
+  <div class="cg-lienzo">
+    <svg class="cg-plano" viewBox="-170 -170 1340 1340" fill="none" stroke="currentColor">
+      <g class="cg-grilla" stroke-width="1" vector-effect="non-scaling-stroke">
+        {%- for i in (0..13) -%}{%- assign p = i | times: 100 | minus: 150 -%}
+        <line x1="{{ p }}" y1="-170" x2="{{ p }}" y2="1170"/><line x1="-170" y1="{{ p }}" x2="1170" y2="{{ p }}"/>
+        {%- endfor -%}
+      </g>
+      <g class="cg-dib" stroke-width="2">
+        <!-- ejes -->
+        <line class="cg-eje" x1="500" y1="-150" x2="500" y2="1150"/>
+        <line class="cg-eje" x1="-150" y1="500" x2="1150" y2="500"/>
+        <!-- caja del círculo -->
+        <rect class="cg-guia" x="44" y="44" width="912" height="912"/>
+        <!-- círculo interior de construcción y silueta del logo -->
+        <circle class="cg-guia" cx="500" cy="500" r="228"/>
+        <circle cx="500" cy="500" r="456"/>
+        <!-- cota del diámetro (arriba) -->
+        <line x1="44" y1="-80" x2="956" y2="-80"/>
+        <line x1="44" y1="-110" x2="44" y2="30"/><line x1="956" y1="-110" x2="956" y2="30"/>
+        <!-- cota vertical (derecha) -->
+        <line x1="1080" y1="44" x2="1080" y2="956"/>
+        <line x1="970" y1="44" x2="1110" y2="44"/><line x1="970" y1="956" x2="1110" y2="956"/>
+        <!-- regla inferior -->
+        <line x1="44" y1="1080" x2="956" y2="1080"/>
+        <!-- radio -->
+        <line x1="500" y1="500" x2="822" y2="178"/>
+        <!-- silueta de la firma -->
+        <path class="cg-firma" transform="translate(0 1000) scale(1 -1)" d="{{ firma }}"/>
+      </g>
+      <g class="cg-marcas" fill="currentColor" stroke="none">
+        <circle cx="44" cy="-80" r="7"/><circle cx="956" cy="-80" r="7"/>
+        <circle cx="1080" cy="44" r="7"/><circle cx="1080" cy="956" r="7"/>
+        <circle cx="500" cy="500" r="7"/><circle cx="822" cy="178" r="7"/>
+      </g>
+      <g class="cg-regla" stroke-width="2">
+        {%- for i in (0..40) -%}{%- assign x = i | times: 22.8 | plus: 44 -%}{%- assign m = i | modulo: 5 -%}
+        <line x1="{{ x }}" y1="1080" x2="{{ x }}" y2="{% if m == 0 %}1050{% else %}1066{% endif %}"/>
+        {%- endfor -%}
+        <line class="cg-avance" x1="44" y1="1080" x2="956" y2="1080" pathLength="100" stroke-dasharray="0 100"/>
+      </g>
+      <g class="cg-textos" fill="currentColor" stroke="none">
+        <text x="500" y="-100" text-anchor="middle">Ø 912</text>
+        <text x="1100" y="500" text-anchor="middle" transform="rotate(90 1100 500)">912</text>
+        <text x="700" y="320">R 456</text>
+        <text x="44" y="1130">0</text><text x="956" y="1130" text-anchor="end">40</text>
+      </g>
+    </svg>
+    <svg class="cg-logo" viewBox="0 0 1000 1000">
+      <defs>
+        <linearGradient id="cg-rojo" x1="44" y1="0" x2="956" y2="0" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#a5161a"/><stop offset=".55" stop-color="#7a0a0c"/><stop offset="1" stop-color="#3a0203"/>
+        </linearGradient>
+        <!-- El avance es un sector que barre en sentido horario desde arriba; la firma queda calada -->
+        <mask id="cg-hueco" maskUnits="userSpaceOnUse" x="0" y="0" width="1000" height="1000">
+          <circle class="cg-relleno" cx="500" cy="500" r="230" fill="none" stroke="#fff" stroke-width="462" pathLength="100" stroke-dasharray="0 100" transform="rotate(-90 500 500)"/>
+          <path transform="translate(0 1000) scale(1 -1)" d="{{ firma }}" fill="#000"/>
+        </mask>
+      </defs>
+      <circle cx="500" cy="500" r="456" fill="url(#cg-rojo)" mask="url(#cg-hueco)"/>
+      <path class="cg-firma-llena" transform="translate(0 1000) scale(1 -1)" d="{{ firma }}" fill="#fff"/>
+    </svg>
+  </div>
+  <p class="cg-pie"><span>DM Studio · Mobiliario de autor</span><span class="cg-pct">000%</span></p>
+</div>
+<style>
+  .cargador { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #f7f5f1; color: #111;
+    animation: cg-fuera .5s 6s forwards; /* respaldo si el JavaScript no llega */ }
+  html.cargando, html.cargando body { overflow: hidden; }
+  @keyframes cg-fuera { to { opacity: 0; visibility: hidden; } }
+  @keyframes cg-ver { to { opacity: 1; } }
+  .cg-lienzo { position: relative; width: min(82vmin, 620px); aspect-ratio: 1; }
+  .cg-plano, .cg-logo { position: absolute; display: block; }
+  .cg-plano { inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .cg-logo { width: calc(100% * 1000 / 1340); height: calc(100% * 1000 / 1340); left: calc(100% * 170 / 1340); top: calc(100% * 170 / 1340); overflow: visible; transform-origin: 50% 50%; }
+  html.cargando .site-header .brand img, html.cargando .hero-copy > * { opacity: 0; }
+  .cg-grilla { opacity: .07; }
+  .cg-eje, .cg-guia { stroke-dasharray: 10 10; opacity: .45; }
+  .cg-dib, .cg-marcas, .cg-regla, .cg-textos { opacity: 0; animation: cg-ver .4s 1.2s forwards; }
+  .cg-textos { font: 500 34px/1 "JetBrains Mono", Consolas, ui-monospace, monospace; letter-spacing: .06em; }
+  .cg-avance { stroke: #8e0f12; stroke-width: 8; }
+  .cg-firma-llena { opacity: 0; }
+  .cg-pie { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: 18px clamp(16px, 4vw, 48px); display: flex; justify-content: space-between; gap: 16px;
+    font: 500 .72rem/1.4 "JetBrains Mono", Consolas, ui-monospace, monospace; letter-spacing: .2em; text-transform: uppercase; color: #555; }
+  .cg-pct { color: #111; font-variant-numeric: tabular-nums; }
+</style>
+<script type="module" src="{{ '/assets/js/cargador.js' | relative_url }}"></script>

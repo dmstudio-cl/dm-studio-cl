@@ -4,7 +4,8 @@
 {% include head.html %}
 </head>
 <body class="{{ page.body_class }}">
-  <a class="skip" href="#main">Saltar al contenido</a>
+  {% if page.cargador %}{% include cargador.html %}{% endif %}
+  <a class="skip"href="#main">Saltar al contenido</a>
   {% include header.html %}
   <main id="main">
     {{ content }}

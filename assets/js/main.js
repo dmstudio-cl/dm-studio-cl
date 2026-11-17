@@ -40,6 +40,15 @@ const io = new IntersectionObserver((entries) => {
 }, { rootMargin: '0px 0px -8% 0px' });
 document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
 
+// ----- modelos CSS 3D (sin WebGL): se montan de inmediato, son livianos.
+// data-scroll: el modelo además gira al bajar por la página (Anime.js).
+document.querySelectorAll('[data-css3d]').forEach((el) => {
+  import('./css3d/aparador.js').then(({ mountAparador }) => {
+    const st = mountAparador(el);
+    if (el.hasAttribute('data-scroll')) import('./css3d/scroll.js').then(({ girarConScroll }) => girarConScroll(el, st));
+  });
+});
+
 // ----- visores 3D: Three.js solo se descarga cuando un visor se acerca a la pantalla
 const viewers = document.querySelectorAll('[data-viewer]');
 if (viewers.length) {
