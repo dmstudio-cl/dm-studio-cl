@@ -70,6 +70,11 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-plano .cota line, .ed-plano .cota path { stroke: rgba(236, 231, 221, .55); fill: none; }
 .ed-plano .cota circle { fill: rgba(236, 231, 221, .75); }
 .ed-plano .cota text { fill: var(--bone); font: 500 11px/1 var(--mono); letter-spacing: .04em; paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
+.ed-plano .cota text.editable { cursor: text; }
+.ed-plano .cota text.editable:hover { fill: #fff; stroke: var(--red); text-decoration: underline; }
+.ed-cota-input { position: absolute; z-index: 5; transform: translate(-50%, -50%); width: 110px; text-align: center;
+  font: 500 13px/1 var(--mono) !important; color: #fff !important; background: var(--ink) !important;
+  border: 1px solid var(--red-accent) !important; border-radius: 6px; padding: 6px 8px !important; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
 .ed-plano .borrador { fill: rgba(180, 50, 46, .15); stroke: var(--red-accent); stroke-dasharray: 5 4; }
 .ed-plano .guia { stroke: var(--red-accent); stroke-dasharray: 3 3; pointer-events: none; }
 .ed-lienzo.h-dibujar .ed-plano, .ed-lienzo.h-div-v .ed-plano .celda, .ed-lienzo.h-div-h .ed-plano .celda { cursor: crosshair; }

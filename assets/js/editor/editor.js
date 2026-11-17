@@ -209,25 +209,27 @@ function dibujarPlano() {
 function cotas(m, M) {
   const g = el('g', { class: 'cota' }, plano);
   const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
-  const linea = (x1, y1, x2, y2, texto, vertical = false) => {
+  // edit: qué medida representa la cota (clic sobre el texto para escribirla en cm)
+  const linea = (x1, y1, x2, y2, texto, vertical = false, edit = null) => {
     el('line', { x1, y1, x2, y2 }, g);
     el('circle', { cx: x1, cy: y1, r: 2.5 }, g); el('circle', { cx: x2, cy: y2, r: 2.5 }, g);
     const tx = (x1 + x2) / 2, ty = (y1 + y2) / 2;
-    el('text', { x: vertical ? tx + 8 : tx, y: vertical ? ty + 4 : ty - 6, 'text-anchor': vertical ? 'start' : 'middle' }, g).textContent = texto;
+    el('text', { x: vertical ? tx + 8 : tx, y: vertical ? ty + 4 : ty - 6, 'text-anchor': vertical ? 'start' : 'middle', ...editable(edit) }, g).textContent = texto;
   };
+  const editable = (e) => (e ? { class: 'editable', 'data-cota': e.k, 'data-m': m.id, 'data-col': e.col, 'data-fila': e.fila } : {});
   const top = M.Y(oy + H) - 22, der = M.X(ox + W) + 22;
-  linea(M.X(ox), top, M.X(ox + W), top, `${cm(W)} cm`);
-  linea(der, M.Y(oy + H), der, M.Y(oy), `${cm(H)} cm`, true);
-  if (Z > 0) linea(der + 54, M.Y(oy + Z), der + 54, M.Y(oy), `zócalo ${cm(Z)}`, true);
+  linea(M.X(ox), top, M.X(ox + W), top, `${cm(W)} cm`, false, { k: 'ancho' });
+  linea(der, M.Y(oy + H), der, M.Y(oy), `${cm(H)} cm`, true, { k: 'alto' });
+  if (Z > 0) linea(der + 54, M.Y(oy + Z), der + 54, M.Y(oy), `zócalo ${cm(Z)}`, true, { k: 'zocalo' });
   const cs = celdas(m);
   if (m.columnas.length > 1) {
     const yb = M.Y(oy) + 20;
-    m.columnas.forEach((_, ci) => { const c = cs.find((k) => k.col === ci); linea(M.X(ox + c.x0), yb, M.X(ox + c.x1), yb, cm(c.w)); });
+    m.columnas.forEach((_, ci) => { const c = cs.find((k) => k.col === ci); linea(M.X(ox + c.x0), yb, M.X(ox + c.x1), yb, cm(c.w), false, { k: 'col', col: ci }); });
   }
   // medidas dentro de cada frente
   for (const c of cs) {
     if (c.h * M.s < 18 || c.w * M.s < 40) continue;
-    el('text', { x: M.X(ox + c.x), y: M.Y(oy + c.y) + 4, 'text-anchor': 'middle' }, g).textContent = `${cm(c.w)} × ${cm(c.h)}`;
+    el('text', { x: M.X(ox + c.x), y: M.Y(oy + c.y) + 4, 'text-anchor': 'middle', ...editable({ k: 'cel', col: c.col, fila: c.fila }) }, g).textContent = `${cm(c.w)} × ${cm(c.h)}`;
   }
 }
 
@@ -239,6 +241,8 @@ plano.addEventListener('pointerdown', (e) => {
   if (e.button > 0) return;
   const M = mapa(), r = plano.getBoundingClientRect();
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
+  const cota = e.target.closest('[data-cota]');
+  if (cota) { e.preventDefault(); editarCota(cota); return; }
   const t = e.target.closest('[data-tipo]');
   plano.setPointerCapture(e.pointerId);
 
@@ -322,6 +326,48 @@ plano.addEventListener('pointerup', () => {
   if (JSON.stringify(modelo) !== g.antes) { hist.push(g.antes); fut.length = 0; modelo.modulos.forEach(normalizar); guardar(); }
   render();
 });
+
+// ----- edición directa de una cota: campo de texto encima de la medida
+// Ancho, alto, zócalo y columnas aceptan un número. En un frente se acepta "ancho × alto"
+// (o solo el alto). Enter o salir del campo aplica; Esc cancela.
+function editarCota(t) {
+  document.querySelector('.ed-cota-input')?.remove();
+  const m = modulo(t.dataset.m); if (!m) return;
+  const k = t.dataset.cota, col = +t.dataset.col, fila = +t.dataset.fila;
+  const cs = celdas(m), c = cs.find((x) => x.col === col && x.fila === fila);
+  const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, col: m.columnas[col]?.ancho }[k];
+  const inp = document.createElement('input');
+  inp.className = 'ed-cota-input';
+  inp.value = k === 'cel' ? `${cm(c.w)} × ${cm(c.h)}` : cm(valor);
+  inp.setAttribute('aria-label', 'Medida en cm');
+  const r = t.getBoundingClientRect(), L = lienzo.getBoundingClientRect();
+  inp.style.left = `${r.left - L.left + r.width / 2}px`; inp.style.top = `${r.top - L.top + r.height / 2}px`;
+  lienzo.append(inp);
+  inp.focus(); inp.select();
+  let hecho = false;
+  const cerrar = (aplicar) => {
+    if (hecho) return; hecho = true;
+    const txt = inp.value.replace(/,/g, '.'); inp.remove();
+    if (!aplicar) return;
+    const nums = (txt.match(/\d+(\.\d+)?/g) || []).map(Number);
+    if (!nums.length) return;
+    sel = k === 'cel' ? { tipo: 'frente', m: m.id, col, fila } : { tipo: 'modulo', m: m.id };
+    cambiar(() => {
+      if (k === 'cel') {
+        // "40 × 37" → ancho de columna y alto del frente; un solo número → alto del frente
+        if (nums.length > 1 && Math.abs(nums[0] - c.w) > .05) aplicarCampo(m, 'c.ancho', nums[0], { col });
+        const alto = nums.length > 1 ? nums[1] : nums[0];
+        if (Math.abs(alto - c.h) > .05) aplicarCampo(m, 'f.alto', alto, { col, fila });
+      } else if (k === 'col') aplicarCampo(m, 'c.ancho', nums[0], { col });
+      else aplicarCampo(m, k, nums[0]);
+    });
+  };
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
+    if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
+  });
+  inp.addEventListener('blur', () => cerrar(true));
+}
 
 // ----- divisiones
 function dividirV(m, ci, xLocal) {
@@ -531,44 +577,60 @@ function props() {
   } else if (sel.tipo === 'cubierta') {
     h = `<p class="tit">Cubierta</p><p class="sub">${esc(m.nombre)}</p><div class="ed-botones"><button data-a="quitar-cubierta" class="peligro">Quitar cubierta</button></div>`;
   }
+  // En frentes, zócalo y tiradores también se muestran las medidas generales del módulo.
+  if (sel.tipo === 'frente' || sel.tipo === 'zocalo' || sel.tipo === 'tirador') {
+    h += `<p class="sub" style="margin-top:14px">Módulo · ${esc(m.nombre)}</p>
+      <div class="ed-campos">${num('ancho', 'Ancho', m.ancho)}${num('alto', 'Alto', m.alto)}${num('profundidad', 'Profundidad', m.profundidad)}${sel.tipo === 'zocalo' ? '' : num('zocalo', 'Zócalo', m.zocalo)}</div>`;
+  }
   P.innerHTML = `<div class="ed-props">${h}</div>`;
 }
 
 // Cambios desde los campos
+// Aplica una medida o propiedad a un módulo. s indica la pieza (col, fila, t) cuando corresponde.
+// Lo usan el panel derecho y la edición directa en las cotas.
+function aplicarCampo(m, k, v, s = {}) {
+  if (k.startsWith('f.') || k.startsWith('c.')) {
+    const col = m.columnas[s.col], fr = col.frentes;
+    if (k === 'f.tipo') { fr[s.fila].tipo = v; if (v === 'abierto') m.tiradores = m.tiradores.filter((t) => !(t.col === s.col && t.fila === s.fila)); }
+    if (k === 'f.bisagra') fr[s.fila].bisagra = v;
+    if (k === 'f.alto') { // el vecino de abajo (o de arriba si es el último) absorbe la diferencia
+      const j = s.fila < fr.length - 1 ? s.fila + 1 : s.fila - 1;
+      if (j < 0) return aviso('Este frente ocupa todo el alto: cambia el alto del módulo.');
+      const d = v - +fr[s.fila].alto;
+      if (+fr[j].alto - d < 5 || v < 5) return aviso('No cabe: el frente vecino quedaría con menos de 5 cm.');
+      fr[s.fila].alto = v; fr[j].alto = +fr[j].alto - d;
+    }
+    if (k === 'c.ancho') { // la columna vecina absorbe la diferencia
+      const cols = m.columnas, j = s.col < cols.length - 1 ? s.col + 1 : s.col - 1;
+      if (j < 0) return aviso('Esta columna ocupa todo el ancho: cambia el ancho del módulo.');
+      const d = v - +col.ancho;
+      if (+cols[j].ancho - d < 5 || v < 5) return aviso('No cabe: la columna vecina quedaría con menos de 5 cm.');
+      col.ancho = v; cols[j].ancho = +cols[j].ancho - d;
+    }
+  } else if (k.startsWith('t.')) {
+    const t = m.tiradores.find((x) => x.id === s.t); t[k.slice(2)] = v;
+  } else if (k === 'ancho') {
+    if (v < 10) return aviso('Ancho mínimo: 10 cm.');
+    const k2 = v / (+m.ancho || 1); m.columnas.forEach((c) => { c.ancho = +c.ancho * k2; }); m.ancho = v;
+  } else if (k === 'alto') {
+    if (v < Zde(m) + 10) return aviso('El alto tiene que superar el zócalo en al menos 10 cm.');
+    m.alto = v; // normalizar() reparte los frentes en el nuevo alto
+  } else if (k === 'zocalo') {
+    if (v < 0 || v > +m.alto - 10) return aviso('El zócalo tiene que dejar al menos 10 cm de cuerpo.');
+    m.zocalo = v;
+  } else if (k === 'tipo') {
+    m.tipo = v; if (v === 'aereo') m.zocalo = 0;
+  } else {
+    m[k] = v; // profundidad, x, elevacion, nombre, cubierta, zocalo_retiro
+  }
+}
+
 $('#props').addEventListener('change', (e) => {
   const inp = e.target.closest('[data-k]'); if (!inp || !sel) return;
   const k = inp.dataset.k;
   const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? +inp.value : inp.value;
-  cambiar(() => {
-    const m = modulo(sel.m);
-    if (k.startsWith('f.') || k.startsWith('c.')) {
-      const col = m.columnas[sel.col], fr = col.frentes;
-      if (k === 'f.tipo') { fr[sel.fila].tipo = v; if (v === 'abierto') m.tiradores = m.tiradores.filter((t) => !(t.col === sel.col && t.fila === sel.fila)); }
-      if (k === 'f.bisagra') fr[sel.fila].bisagra = v;
-      if (k === 'f.alto') { // el vecino de abajo (o de arriba si es el último) absorbe la diferencia
-        const j = sel.fila < fr.length - 1 ? sel.fila + 1 : sel.fila - 1;
-        if (j < 0) return;
-        const d = v - +fr[sel.fila].alto;
-        if (+fr[j].alto - d < 5 || v < 5) return;
-        fr[sel.fila].alto = v; fr[j].alto = +fr[j].alto - d;
-      }
-      if (k === 'c.ancho') {
-        const cols = m.columnas, j = sel.col < cols.length - 1 ? sel.col + 1 : sel.col - 1;
-        if (j < 0) return;
-        const d = v - +col.ancho;
-        if (+cols[j].ancho - d < 5 || v < 5) return;
-        col.ancho = v; cols[j].ancho = +cols[j].ancho - d;
-      }
-    } else if (k.startsWith('t.')) {
-      const t = m.tiradores.find((x) => x.id === sel.t); t[k.slice(2)] = v;
-    } else if (k === 'ancho') {
-      const k2 = v / (+m.ancho || 1); m.columnas.forEach((c) => { c.ancho = +c.ancho * k2; }); m.ancho = v;
-    } else if (k === 'tipo') {
-      m.tipo = v; if (v === 'aereo') m.zocalo = 0;
-    } else {
-      m[k] = v; // alto, profundidad, zocalo, x, elevacion, nombre, cubierta, zocalo_retiro (normalizar() reajusta los frentes)
-    }
-  });
+  const s = { ...sel };
+  cambiar(() => aplicarCampo(modulo(s.m), k, v, s));
 });
 
 // Botones del panel
