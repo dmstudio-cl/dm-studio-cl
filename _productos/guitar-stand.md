@@ -20,4 +20,4 @@ resumen: "Ejemplo de producto con foto. Completa precio y link de pago desde /ad
 orden: 2
 ---
 
-Ejemplo de ficha con foto. Puedes agregar más fotos, un modelo `.glb`, opciones con recargo y un link de pago de Mercado Pago.
+Ejemplo de ficha con foto. Puedes agregar más fotos, un modelo 3D hecho en el Editor de modelos (`.json`), opciones con recargo y un link de pago de Mercado Pago.

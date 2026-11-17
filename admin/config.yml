@@ -38,7 +38,7 @@ collections:
         options: [Melamina, Mobiliario, Cocina, Iluminación, Decoración, Escritorio, Música, Objetos, Restauración, Diseño]
       - { label: Imagen principal, name: imagen, widget: image, hint: "JPG o WebP horizontal o vertical, idealmente bajo 500 KB." }
       - { label: Galería, name: galeria, widget: list, required: false, field: { label: Imagen, name: imagen, widget: image } }
-      - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false, hint: "Opcional. Comprimido con Draco, idealmente bajo 5 MB. Reemplaza la foto principal por un visor 3D." }
+      - { label: Modelo 3D (CSS), name: modelo_css, widget: file, required: false, hint: "Opcional. Archivo .json exportado desde el Editor de modelos (botón «Guardar .json»). Reemplaza la foto principal por un visor 3D." }
       - { label: Material, name: material, widget: string, required: false }
       - { label: Medidas, name: medidas, widget: string, required: false, hint: "Ej: 120 × 45 × 80 cm" }
       - { label: Año, name: anio, widget: number, required: false, value_type: int }
@@ -61,7 +61,7 @@ collections:
       - { label: Precio (CLP, sin puntos), name: precio, widget: number, value_type: int, required: false, hint: "Vacío = 'Precio a consultar'" }
       - { label: En stock, name: disponible, widget: boolean, default: true, hint: "Desactivado = se fabrica por encargo" }
       - { label: Fotos, name: imagenes, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
-      - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false }
+      - { label: Modelo 3D (CSS), name: modelo_css, widget: file, required: false, hint: "Archivo .json exportado desde el Editor de modelos (botón «Guardar .json»)." }
       - { label: Material, name: material, widget: string, required: false }
       - { label: Dimensiones, name: dimensiones, widget: string, required: false }
       - { label: Plazo de fabricación (días hábiles), name: plazo, widget: number, value_type: int, required: false }

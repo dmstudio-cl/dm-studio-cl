@@ -20,7 +20,7 @@ Estudio de diseño y fabricación de mobiliario (madera y melamina) en Chile.
 
 ## Stack (inamovible)
 - Jekyll + GitHub Pages, Vanilla JS / ES Modules, sin paso de build obligatorio.
-- **3D en CSS** (decisión del 2026-11-17): el dueño eligió trabajar solo con CSS 3D por rendimiento en equipos sin aceleración gráfica. Motor propio en `assets/js/css3d/engine.js` (1 em = 1 cm, luz por cara, sin WebGL). Portada, editor de modelos y portal del cliente (cotizador) usan CSS 3D con el mismo código de dibujo. Solo la ficha de producto mantiene **Three.js** (import map, versión fija) para mostrar modelos `.glb` subidos al catálogo.
+- **3D en CSS** (decisión del 2026-11-17): el dueño eligió trabajar solo con CSS 3D por rendimiento en equipos sin aceleración gráfica. Motor propio en `assets/js/css3d/engine.js` (1 em = 1 cm, luz por cara, sin WebGL). Portada, editor de modelos y portal del cliente (cotizador) usan CSS 3D con el mismo código de dibujo. Las fichas de producto y del portafolio usan el visor CSS (`assets/js/css3d/visor.js`) con el `.json` exportado desde el editor (campo `modelo_css` en Decap). **Three.js ya no se usa en el sitio** (decisión del 2026-11-17).
 - **Anime.js** (import map, versión fija en `_config.yml`) para animaciones: cargador de la portada y giro con scroll.
 - **Decap CMS** en `/admin` con backend `github` y OAuth mediante el **Cloudflare Worker propio** del dueño.
 - **Web3Forms** (plan gratuito, envío desde el navegador) — una access key exclusiva para este sitio **[PENDIENTE: key y correo destino]**.
@@ -106,12 +106,11 @@ anticipo      = 50% × precio_final
 - **Espacio** (vista Planta del editor, `assets/js/editor/planta.js`): `espacio.puntos` = cara interior de los muros (x, z en cm), `espacio.muros[i]` = {etiqueta, espesor, alto} del tramo i, `espacio.cerrado`. Los muebles se ubican con x, z, `rotacion` (grados, como `rotation.y` de Three.js, giro sobre la esquina trasera izquierda) y `elevacion`. Las **etiquetas de muros son internas**: el Worker no las envía al cliente. Cliente y editor dibujan los muros como «casa de muñecas» (solo la cara interior, los que dan a la cámara desaparecen).
 - El portal del cliente dibuja con el mismo `modelo.js` del editor: respeta los tiradores ubicados a mano (con la forma y color que elige el cliente) o los ubica automáticamente. Pines: el punto 3D se obtiene invirtiendo la transformación CSS de la cara bajo el cursor (mismas coordenadas que antes con Three.js).
 
-## Three.js — buenas prácticas acordadas
-- 1 unidad = 1 cm. Muebles generados por código desde JSON (módulos → piezas), o `.glb` para proyectos no paramétricos.
-- `MeshStandardMaterial`/`MeshPhysicalMaterial` con mapa de color, `roughnessMap` y `normalMap` suave. Veta orientada por pieza y textura a escala real (cm).
-- Iluminación con HDRI de estudio vía `PMREMGenerator`. Tone mapping ACES/AgX y salida en sRGB. Sombras de contacto. Cantos con `RoundedBoxGeometry`.
-- `OrbitControls` con límites de ángulo y zoom. Render bajo demanda (no en bucle continuo). DPR máximo de 2. Carga diferida del visor (`IntersectionObserver`).
-- Materiales e instancias compartidos; las texturas se cachean y se reutilizan.
+## 3D en CSS — buenas prácticas acordadas
+- 1 em = 1 cm (el tamaño en pantalla se da con el font-size del rig). Muebles generados desde JSON (módulos → piezas) con `editor/modelo.js`; no se usan `.glb`.
+- Texturas como variables CSS o `background` compartidos (no repetir data URLs por cara). Veta orientada por pieza y textura a escala real (60 cm por repetición).
+- Luz fija respecto del espectador: solo cambia la opacidad de una capa negra por cara (no se repintan texturas). Sombra de contacto con degradado. Cantos sugeridos con un brillo interior.
+- Animar solo transformaciones (girar, mover, escalar); cambiar medidas o texturas obliga a repintar. Render solo mientras se mueve y solo si está en pantalla (`IntersectionObserver`). Respeta «reducir movimiento».
 
 ## Estructura de carpetas (objetivo)
 - `_config.yml`

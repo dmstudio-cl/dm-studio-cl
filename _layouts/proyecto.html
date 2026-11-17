@@ -5,8 +5,8 @@ layout: default
   <article class="detail">
     <div class="detail-media">
       <div class="stage">
-        {% if page.modelo %}
-          <div class="viewer" data-viewer data-model="{{ page.modelo | relative_url }}">
+        {% if page.modelo_css %}
+          <div class="viewer" data-viewer data-modelo-css="{{ page.modelo_css | relative_url }}">
             <div class="viewer-loading">Cargando modelo…</div>
             <span class="viewer-hint">Arrastra para girar</span>
           </div>

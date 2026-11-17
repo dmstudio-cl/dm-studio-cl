@@ -15,7 +15,7 @@ document.querySelector('.thumbs')?.addEventListener('click', (e) => {
   const v = stage.querySelector(`[data-slide="${b.dataset.slide}"][data-viewer-lazy]`);
   if (v && !v.dataset.mounted) {
     v.dataset.mounted = '1';
-    import('./three/viewer.js').then(({ mountViewer }) => mountViewer(v));
+    import('./css3d/visor.js').then(({ mountVisor }) => mountVisor(v));
   }
 });
 

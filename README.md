@@ -26,6 +26,7 @@ Los dos paneles necesitan la URL del Cloudflare Worker de OAuth en `admin/config
 | `_portafolio/` | Trabajos realizados (un `.md` por proyecto) |
 | `_productos/` | Catálogo (un `.md` por producto) |
 | `_data/sitio.yml` | Contacto y servicios externos |
-| `assets/js/three/` | Visor Three.js, materiales de madera y piezas paramétricas |
+| `assets/js/css3d/` | Motor CSS 3D (sin WebGL), visor del sitio, aparador procedural y giro con scroll |
+| `assets/js/editor/` | Editor de modelos por capas, planta del espacio y proyectos de clientes |
 | `assets/js/cart.js` | Carrito en `localStorage` |
 | `proyectos/` | Portal de clientes (entrada con Access Key) |

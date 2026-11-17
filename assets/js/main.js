@@ -49,14 +49,14 @@ document.querySelectorAll('[data-css3d]').forEach((el) => {
   });
 });
 
-// ----- visores 3D: Three.js solo se descarga cuando un visor se acerca a la pantalla
+// ----- visores 3D (CSS, sin WebGL): se arman cuando se acercan a la pantalla
 const viewers = document.querySelectorAll('[data-viewer]');
 if (viewers.length) {
   const vio = new IntersectionObserver((entries) => {
     entries.forEach((e) => {
       if (!e.isIntersecting) return;
       vio.unobserve(e.target);
-      import('./three/viewer.js').then(({ mountViewer }) => mountViewer(e.target));
+      import('./css3d/visor.js').then(({ mountVisor }) => mountVisor(e.target));
     });
   }, { rootMargin: '200px' });
   viewers.forEach((v) => vio.observe(v));

@@ -37,8 +37,7 @@ defaults:
   - scope: { path: "" }
     values: { layout: default }
 
-# Versión fija de Three.js (import map). Cambiar aquí actualiza todo el sitio.
-three_version: "0.170.0"
+# Versión fija de Anime.js (import map). Cambiar aquí actualiza todo el sitio.
 anime_version: "4.5.0"   # Anime.js (cargador y scroll de la portada)
 
 exclude:

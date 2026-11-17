@@ -10,14 +10,14 @@ layout: default
         {% for img in p.imagenes %}
           <img data-slide="img{{ forloop.index0 }}" src="{{ img | relative_url }}" alt="{{ p.title }}" {% unless forloop.first %}hidden loading="lazy"{% endunless %}>
         {% endfor %}
-        {% if p.modelo or p.procedural %}
-          <div class="viewer" data-slide="3d" data-viewer-lazy {% if p.modelo %}data-model="{{ p.modelo | relative_url }}"{% else %}data-procedural="{{ p.procedural }}"{% endif %} {% if p.imagenes.size > 0 %}hidden{% else %}data-viewer{% endif %}>
+        {% if p.modelo_css or p.procedural %}
+          <div class="viewer" data-slide="3d" data-viewer-lazy {% if p.modelo_css %}data-modelo-css="{{ p.modelo_css | relative_url }}"{% else %}data-procedural="{{ p.procedural }}"{% endif %} {% if p.imagenes.size > 0 %}hidden{% else %}data-viewer{% endif %}>
             <div class="viewer-loading">Cargando modelo…</div>
             <span class="viewer-hint">Arrastra para girar</span>
           </div>
         {% endif %}
       </div>
-      {% assign nslides = p.imagenes.size %}{% if p.modelo or p.procedural %}{% assign nslides = nslides | plus: 1 %}{% endif %}
+      {% assign nslides = p.imagenes.size %}{% if p.modelo_css or p.procedural %}{% assign nslides = nslides | plus: 1 %}{% endif %}
       {% if nslides > 1 %}
       <div class="thumbs" role="group" aria-label="Galería">
         {% for img in p.imagenes %}
@@ -25,7 +25,7 @@ layout: default
             {% include thumb.html src=img %}<img src="{{ thumb | relative_url }}" alt="" loading="lazy">
           </button>
         {% endfor %}
-        {% if p.modelo or p.procedural %}<button type="button" data-slide="3d" aria-pressed="false"><span class="t3d">3D</span></button>{% endif %}
+        {% if p.modelo_css or p.procedural %}<button type="button" data-slide="3d" aria-pressed="false"><span class="t3d">3D</span></button>{% endif %}
       </div>
       {% endif %}
     </div>
