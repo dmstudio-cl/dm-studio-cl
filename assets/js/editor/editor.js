@@ -62,6 +62,17 @@ function cargar() {
 }
 // Borrador local: el modelo suelto, o uno por proyecto (ligado a la versión del repo que se abrió).
 const claveProy = (id) => `dm-editor:${id}`;
+// Respaldos: antes de reemplazar un borrador distinto se guarda una copia (las últimas 8 por proyecto).
+// Así un cambio hecho en el administrador o un «No recuperar» nunca borra el trabajo sin publicar.
+const claveResp = (id) => `dm-editor-respaldos:${id || 'local'}`;
+function respaldos(id) { try { return JSON.parse(localStorage.getItem(claveResp(id))) || []; } catch (e) { return []; } }
+function respaldar(id, m, motivo) {
+  if (!m?.modulos?.length) return;
+  const lista = respaldos(id);
+  if (lista[0] && JSON.stringify(lista[0].modelo.modulos) === JSON.stringify(m.modulos)) return; // ya está
+  lista.unshift({ fecha: Date.now(), motivo, modelo: m });
+  try { localStorage.setItem(claveResp(id), JSON.stringify(lista.slice(0, 8))); } catch (e) {}
+}
 function guardar() {
   try {
     if (proyActual) localStorage.setItem(claveProy(proyActual.id), JSON.stringify({ sha: proyActual.sha, modelo }));
@@ -1538,10 +1549,35 @@ $('.ed-acciones').addEventListener('click', (e) => {
   if (a === 'deshacer') deshacer();
   if (a === 'rehacer') rehacer();
   if (a === 'encuadrar') { zoom = 1; encuadrar(true); dibujarPlano(); }
-  if (a === 'nuevo' && confirm('¿Empezar un modelo vacío? El actual se puede recuperar con Deshacer.')) { cambiar((d) => { d.modulos = []; d.nombre = 'Nuevo modelo'; }); sel = null; setVista('frente'); setHerr('dibujar'); }
+  if (a === 'respaldos') abrirRespaldos();
+  if (a === 'nuevo' && confirm('¿Empezar un modelo vacío? El actual se puede recuperar con Deshacer o en «Respaldos».') && (respaldar(proyActual?.id, JSON.parse(JSON.stringify(modelo)), 'antes de «Nuevo»'), true)) { cambiar((d) => { d.modulos = []; d.nombre = 'Nuevo modelo'; }); sel = null; setVista('frente'); setHerr('dibujar'); }
   if (a === 'exportar') exportar();
   if (a === 'importar') $('#archivo').click();
 });
+// Ventana «Respaldos»: copias automáticas del modelo de este proyecto (o del modelo local)
+function abrirRespaldos() {
+  const id = proyActual?.id, lista = respaldos(id);
+  let d = $('#dlg-respaldos');
+  if (!d) {
+    d = document.createElement('dialog'); d.className = 'ed-dlg'; d.id = 'dlg-respaldos';
+    d.innerHTML = '<div class="ed-dlg-cab"><h2>Respaldos</h2><button data-cerrar aria-label="Cerrar">✕</button></div><div class="ed-dlg-cuerpo"></div>';
+    document.body.append(d);
+    d.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cerrar]')) return d.close();
+      const i = e.target.closest('[data-resp]')?.dataset.resp; if (i == null) return;
+      const r = respaldos(proyActual?.id)[+i]; if (!r) return;
+      respaldar(proyActual?.id, JSON.parse(JSON.stringify(modelo)), 'antes de recuperar un respaldo');
+      cambiar((m) => { m.modulos = r.modelo.modulos; if (r.modelo.espacio) m.espacio = r.modelo.espacio; if (r.modelo.colores) m.colores = r.modelo.colores; if (r.modelo.frente) m.frente = r.modelo.frente; });
+      sel = null; selMel.value = modelo.frente || ''; pintarColores(); render(); encuadrar(true);
+      aviso('Respaldo recuperado. Ctrl+Z vuelve atrás. Publica la versión para que quede en el proyecto.');
+      d.close();
+    });
+  }
+  d.querySelector('.ed-dlg-cuerpo').innerHTML = `<p class="ed-ayuda">Copias automáticas ${proyActual ? 'de este proyecto' : 'del modelo local'} guardadas en este navegador antes de reemplazar un borrador.</p>
+    ${lista.length ? `<div class="ed-lista">${lista.map((r, i) => `<button data-resp="${i}"><b>${new Date(r.fecha).toLocaleString('es-CL', { dateStyle: 'medium', timeStyle: 'short' })} · ${r.modelo.modulos.length} muebles</b><small>${esc(r.motivo || '')} · ${esc(r.modelo.modulos.slice(0, 4).map((m) => m.nombre).join(', '))}${r.modelo.modulos.length > 4 ? '…' : ''}</small></button>`).join('')}</div>`
+      : '<p class="ed-vacio">Todavía no hay respaldos.</p>'}`;
+  d.showModal();
+}
 function exportar() {
   const nombre = (modelo.nombre || 'modelo').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   const blob = new Blob([JSON.stringify(modelo, null, 2)], { type: 'application/json' });
@@ -1702,10 +1738,16 @@ iniciarProyectos({
     if (!raw) { modelo = cargar() || ejemplo(); pines = []; }
     else {
       modelo = aModelo(raw, uid);
-      if (!conservarVista) { // ¿quedó un borrador sin publicar sobre esta misma versión?
+      if (!conservarVista) { // ¿quedó un borrador sin publicar? (aunque el proyecto haya cambiado después en el administrador)
         let b = null; try { b = JSON.parse(localStorage.getItem(claveProy(info.id))); } catch (e) {}
-        if (b?.sha === info.sha && b.modelo && JSON.stringify(b.modelo.modulos) !== JSON.stringify(modelo.modulos)
-          && confirm('Tienes cambios sin publicar en este proyecto. ¿Recuperarlos?')) modelo = b.modelo;
+        if (b?.modelo?.modulos && JSON.stringify(b.modelo.modulos) !== JSON.stringify(modelo.modulos)) {
+          respaldar(info.id, b.modelo, 'borrador sin publicar');
+          const msg = b.sha === info.sha
+            ? `Tienes cambios sin publicar en este proyecto (${b.modelo.modulos.length} muebles). ¿Recuperarlos?`
+            : `Tienes cambios sin publicar en este proyecto (${b.modelo.modulos.length} muebles), hechos antes de que el proyecto se modificara en el administrador.\n\n¿Recuperarlos? (Si no, quedan guardados en «Respaldos».)`;
+          if (confirm(msg)) modelo = { ...b.modelo, nombre: modelo.nombre || b.modelo.nombre };
+          else aviso('Tu borrador quedó guardado en «Respaldos» (barra superior) por si lo necesitas.');
+        }
       }
       if (modelo.modulos.some((m) => +m.rotacion)) aviso('Ojo: hay módulos girados (muro izquierdo); el editor los muestra sin girar.');
     }
