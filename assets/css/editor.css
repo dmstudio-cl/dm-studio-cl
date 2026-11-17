@@ -46,7 +46,7 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
   background: radial-gradient(70% 70% at 50% 45%, #1b191b, var(--ink)); }
 .ed-escena { position: absolute; inset: 0; }
 .ed-plano { position: absolute; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; }
-.ed-lienzo.frente .ed-plano { display: block; }
+.ed-lienzo.frente .ed-plano, .ed-lienzo.planta .ed-plano { display: block; }
 .ed-lienzo.frente .ed-escena { cursor: default; }
 .ed-estado { position: absolute; left: 12px; bottom: 10px; margin: 0; font: 400 .72rem/1.4 var(--mono); color: var(--muted); letter-spacing: .04em; pointer-events: none; }
 
@@ -149,3 +149,22 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .c3-pin > span > b { rotate: 45deg; }
 .c3-pin.foco > span { animation: pin-foco .6s ease-in-out 3; }
 @keyframes pin-foco { 50% { scale: 1.6; } }
+
+/* ---------- planta: muros y ubicación de muebles ---------- */
+.ed-plano .muro { fill: rgba(236, 231, 221, .16); stroke: rgba(236, 231, 221, .6); stroke-width: 1; cursor: pointer; }
+.ed-plano .muro:hover { fill: rgba(236, 231, 221, .26); }
+.ed-plano .muro.sel { stroke: var(--red-accent); stroke-width: 2; fill: rgba(180, 50, 46, .28); }
+.ed-plano .vertice { fill: var(--ink); stroke: var(--bone); stroke-width: 1.5; cursor: move; }
+.ed-plano .vertice:hover { fill: var(--red-accent); }
+.ed-plano .huella { fill: rgba(236, 231, 221, .05); stroke: rgba(236, 231, 221, .55); stroke-dasharray: 4 3; cursor: move; }
+.ed-plano .huella:hover { fill: rgba(236, 231, 221, .1); }
+.ed-plano .huella.sel { stroke: var(--red-accent); stroke-dasharray: none; stroke-width: 1.5; fill: rgba(180, 50, 46, .12); }
+.ed-plano .frente-linea { stroke: var(--bone); stroke-width: 3; pointer-events: none; }
+.ed-plano .nombre { fill: var(--bone); font: 500 11px/1 var(--sans); pointer-events: none; paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
+.ed-plano .borrador-muro { fill: none; stroke: var(--red-accent); stroke-width: 3; stroke-dasharray: 6 4; pointer-events: none; }
+.ed-plano .cota text.etiqueta { font-family: var(--sans); font-style: italic; fill: #e8c9a8; }
+.ed-plano .cota text.etiqueta.vacia { fill: rgba(236, 231, 221, .35); }
+.ed-plano .distancia line { stroke: var(--red-accent); stroke-dasharray: 4 3; }
+.ed-plano .distancia circle { fill: var(--red-accent); }
+.ed-cota-input.texto { width: 220px; text-align: left; }
+.ed-lienzo.h-muros .ed-plano { cursor: crosshair; }

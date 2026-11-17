@@ -1,7 +1,8 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE } from './modelo.js';
+import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro } from './modelo.js';
+import { crearPlanta } from './planta.js';
 import { iniciarProyectos, aModelo } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -19,10 +20,10 @@ const st = createStage(escena, { rx: -20, ry: -30, minRx: -70, maxRx: 0 });
 // ===================== estado =====================
 let modelo = cargar() || ejemplo();
 let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirador'|'cubierta', m, col, fila, t }
-let vista = '3d';          // '3d' | 'frente'
-let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h'
+let vista = '3d';          // '3d' | 'frente' | 'planta'
+let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
@@ -41,7 +42,13 @@ function ejemplo() {
     { id: uid('t'), modelo: 'barra-128', color: 'negro', col: 0, fila: 2, dx: 0, dy: 8, rot: 0 },
     { id: uid('t'), modelo: 'barra-192', color: 'negro', col: 1, fila: 0, dx: -25, dy: 22, rot: 90 },
   ];
-  return { nombre: 'Mueble de ejemplo', frente: (window.MELAMINAS || [])[0]?.id || '', modulos: [m] };
+  m.x = 30;
+  const espacio = {
+    alto: 240, cerrado: true,
+    puntos: [{ x: 0, z: 0 }, { x: 320, z: 0 }, { x: 320, z: 260 }, { x: 0, z: 260 }],
+    muros: [{ etiqueta: 'Muro ladrillo princesa', espesor: 15 }, { etiqueta: 'Tabique', espesor: 10 }, { etiqueta: '', espesor: 15 }, { etiqueta: 'Tabique', espesor: 10 }],
+  };
+  return { nombre: 'Mueble de ejemplo', frente: (window.MELAMINAS || [])[0]?.id || '', espacio, modulos: [m] };
 }
 function cargar() {
   try { const d = JSON.parse(localStorage.getItem(CLAVE)); return d?.modulos ? d : null; } catch (e) { return null; }
@@ -68,7 +75,15 @@ function cambiar(fn) {
 }
 function deshacer() { if (!hist.length) return; fut.push(JSON.stringify(modelo)); modelo = JSON.parse(hist.pop()); validarSel(); guardar(); render(); }
 function rehacer() { if (!fut.length) return; hist.push(JSON.stringify(modelo)); modelo = JSON.parse(fut.pop()); validarSel(); guardar(); render(); }
-function validarSel() { if (sel && !modulo(sel.m)) sel = null; }
+function validarSel() {
+  if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
+  else if (sel && !modulo(sel.m)) sel = null;
+}
+// Termina un gesto de arrastre: si cambió algo, queda un paso en el historial.
+function registrar(antes) {
+  if (JSON.stringify(modelo) !== antes) { hist.push(antes); fut.length = 0; modelo.modulos.forEach(normalizar); guardar(); }
+  render();
+}
 
 // Las columnas suman el ancho del módulo y los frentes de cada columna, su alto útil.
 function normalizar(m) {
@@ -108,13 +123,24 @@ function selRef() {
   if (!sel) return null;
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
-    frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`,
+    frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`, muro: `muro|${sel.i}`,
   }[sel.tipo];
 }
+// En la vista Frente se trabaja el mueble seleccionado de frente y sin girar (si no hay
+// selección, todos). En Planta y 3D se ve el espacio completo con los muebles ubicados.
+function modulosFrente() {
+  const s = sel && sel.tipo !== 'muro' ? modulo(sel.m) : null;
+  return s ? [s] : modelo.modulos;
+}
+function modeloVista() {
+  if (vista !== 'frente') return modelo;
+  return { ...modelo, espacio: null, modulos: modulosFrente().map((m) => ({ ...m, rotacion: 0, z: 0 })) };
+}
 function render({ panel = true } = {}) {
-  dibujar(st, modelo, { capas, mats: mats(), sel: selRef() });
-  pisoGrilla();
-  dibujarPines();
+  const mv = modeloVista();
+  dibujar(st, mv, { capas: vista === 'frente' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef() });
+  if (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros) pisoGrilla(mv);
+  if (vista !== 'frente') dibujarPines();
   encuadrar(false);
   dibujarPlano();
   if (panel) { arbol(); props(); }
@@ -133,8 +159,8 @@ function dibujarPines() {
 }
 
 // Piso con grilla de 10 cm en la vista 3D
-function pisoGrilla() {
-  const L = limites(modelo);
+function pisoGrilla(mv = modelo) {
+  const L = limites(mv);
   const f = document.createElement('div');
   f.className = 'c3-floor';
   const w = L.w + 120, d = L.d + 120;
@@ -142,24 +168,25 @@ function pisoGrilla() {
     background:linear-gradient(rgba(236,231,221,.07) .06em, transparent .06em) 0 0 / 10em 10em,
     linear-gradient(90deg, rgba(236,231,221,.07) .06em, transparent .06em) 0 0 / 10em 10em;
     -webkit-mask: radial-gradient(closest-side, #000 55%, transparent); mask: radial-gradient(closest-side, #000 55%, transparent);
-    transform: translate3d(${(L.x0 + L.x1) / 2}em, -.02em, ${L.d / 2}em) rotateX(90deg) translate(-50%, -50%);`;
+    transform: translate3d(${(L.x0 + L.x1) / 2}em, -.02em, ${(L.z0 + L.z1) / 2}em) rotateX(90deg) translate(-50%, -50%);`;
   st.rig.prepend(f);
 }
 
 // Encuadre: en Frente cabe completo a escala; en 3D, con margen para girar.
 let encuadreHecho = '';
 function encuadrar(forzar = true) {
-  const L = limites(modelo);
-  const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.d}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
+  const L = limites(modeloVista(), { conMuros: vista !== 'frente' && capas.muros });
+  const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
   if (!forzar && clave === encuadreHecho) return;
   encuadreHecho = clave;
   const Wp = lienzo.clientWidth || 800, Hp = lienzo.clientHeight || 600;
   const s0 = Math.min(Wp, Hp);
   let px; // px por cm
   if (vista === 'frente') px = Math.min(Wp / ((L.w + 60) * 1.15), Hp / ((L.h + 50) * 1.15));
+  else if (vista === 'planta') px = Math.min(Wp / ((L.w + 110) * 1.1), Hp / ((L.d + 110) * 1.1));
   else { const diag = Math.hypot(L.w, L.h, L.d); px = Math.min(Wp, Hp) / (diag * 1.25); }
   px *= zoom;
-  st.frame([(L.x0 + L.x1) / 2, vista === 'frente' ? L.h / 2 + 5 : L.h / 2, L.d / 2], s0 / px, 1);
+  st.frame([(L.x0 + L.x1) / 2, vista === 'frente' ? L.h / 2 + 5 : vista === 'planta' ? 0 : L.h / 2, (L.z0 + L.z1) / 2], s0 / px, 1);
 }
 
 // ----- vista frontal: coordenadas mundo (cm) ↔ pantalla (px)
@@ -181,6 +208,7 @@ const el = (tag, attrs = {}, parent) => {
 };
 
 function dibujarPlano() {
+  if (vista === 'planta') return planta.dibujar();
   if (vista !== 'frente') return;
   const M = mapa();
   plano.setAttribute('viewBox', `0 0 ${M.Wp} ${M.Hp}`);
@@ -192,7 +220,7 @@ function dibujarPlano() {
   for (let y = ya; y <= yb; y += 10) el('line', { x1: 0, y1: M.Y(y), x2: M.Wp, y2: M.Y(y), class: y % 50 === 0 ? 'g50' : null }, g);
   el('line', { x1: 0, y1: M.Y(0), x2: M.Wp, y2: M.Y(0), class: 'piso' }, plano);
 
-  for (const m of modelo.modulos) {
+  for (const m of modulosFrente()) {
     const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
     const esSel = sel?.m === m.id;
     // zócalo
@@ -244,6 +272,7 @@ function cotas(m, M) {
   linea(M.X(ox), top, M.X(ox + W), top, `${cm(W)} cm`, false, { k: 'ancho' });
   linea(der, M.Y(oy + H), der, M.Y(oy), `${cm(H)} cm`, true, { k: 'alto' });
   if (Z > 0) linea(der + 54, M.Y(oy + Z), der + 54, M.Y(oy), `zócalo ${cm(Z)}`, true, { k: 'zocalo' });
+  if (oy > 0) linea(M.X(ox) - 22, M.Y(oy), M.X(ox) - 22, M.Y(0), `↑ ${cm(oy)} del piso`, true, { k: 'elevacion' }); // altura desde el piso
   const cs = celdas(m);
   if (m.columnas.length > 1) {
     const yb = M.Y(oy) + 20;
@@ -261,6 +290,7 @@ let gesto = null;
 const local = (m, p) => ({ x: p.x - +m.x, y: p.y - +m.elevacion });
 
 plano.addEventListener('pointerdown', (e) => {
+  if (vista === 'planta') return planta.down(e);
   if (e.button > 0) return;
   const M = mapa(), r = plano.getBoundingClientRect();
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
@@ -296,6 +326,7 @@ plano.addEventListener('pointerdown', (e) => {
 });
 
 plano.addEventListener('pointermove', (e) => {
+  if (vista === 'planta') return planta.move(e);
   const M = mapa(), r = plano.getBoundingClientRect();
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
@@ -332,7 +363,8 @@ plano.addEventListener('pointermove', (e) => {
   render({ panel: false });
 });
 
-plano.addEventListener('pointerup', () => {
+plano.addEventListener('pointerup', (e) => {
+  if (vista === 'planta') return planta.up(e);
   if (!gesto) return;
   const g = gesto; gesto = null;
   if (g.tipo === 'dibujar') {
@@ -358,7 +390,7 @@ function editarCota(t) {
   const m = modulo(t.dataset.m); if (!m) return;
   const k = t.dataset.cota, col = +t.dataset.col, fila = +t.dataset.fila;
   const cs = celdas(m), c = cs.find((x) => x.col === col && x.fila === fila);
-  const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, col: m.columnas[col]?.ancho }[k];
+  const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho }[k];
   const inp = document.createElement('input');
   inp.className = 'ed-cota-input';
   inp.value = k === 'cel' ? `${cm(c.w)} × ${cm(c.h)}` : cm(valor);
@@ -520,7 +552,9 @@ function arbol() {
   const tipoN = (f) => TIPOS_FRENTE[f.tipo] || f.tipo;
   const act = (s) => (sel && JSON.stringify(s) === JSON.stringify(sel) ? ' aria-current="true"' : '');
   const btn = (s, cls, html) => `<button class="${cls}" data-sel='${esc(JSON.stringify(s))}'${act(s)}>${html}</button>`;
-  $('#arbol').innerHTML = modelo.modulos.map((m) => {
+  const W = murosDe(modelo.espacio);
+  const hEsp = W.length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Espacio · ${W.length} muros</div>${W.map((w) => btn({ tipo: 'muro', i: w.i }, 'n1', `${esc(w.etiqueta || `Muro ${w.i + 1}`)} <small>${cm(w.largo)}</small>`)).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
+  $('#arbol').innerHTML = hEsp + modelo.modulos.map((m) => {
     const Z = Zde(m);
     let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>`);
     if (Z > 0) h += btn({ tipo: 'zocalo', m: m.id }, 'n1', `Zócalo <small>${cm(Z)}</small>`);
@@ -553,6 +587,20 @@ function props() {
       <p><kbd>Supr</kbd> borra · <kbd>Ctrl Z</kbd> deshace · <kbd>R</kbd> gira un tirador 90° · flechas mueven 1 cm (Mayús: 10).</p></div>`;
     return;
   }
+  if (sel.tipo === 'muro') {
+    const w = murosDe(modelo.espacio)[sel.i];
+    if (!w) { sel = null; return props(); }
+    P.innerHTML = `<div class="ed-props"><p class="tit">${esc(w.etiqueta || `Muro ${w.i + 1}`)}</p><p class="sub">Espacio · muro ${w.i + 1}</p>
+      <div class="ed-campos">
+        <label class="ed-campo ancho2">Etiqueta (solo la ves tú)<input type="text" data-k="w.etiqueta" value="${esc(w.etiqueta)}" placeholder="Ej: Tabique, Ladrillo princesa"></label>
+        ${num('w.largo', 'Largo', w.largo)}${num('w.espesor', 'Espesor', w.espesor)}
+        ${num('w.alto', 'Alto de este muro', w.alto)}${num('e.alto', 'Alto general', modelo.espacio.alto || 240)}
+      </div>
+      <label class="ed-check"><input type="checkbox" data-k="e.cerrado"${modelo.espacio.cerrado ? ' checked' : ''}> Espacio cerrado (une el último muro con el primero)</label>
+      <div class="ed-botones"><button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+      <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p></div>`;
+    return;
+  }
   const m = modulo(sel.m); if (!m) { sel = null; return props(); }
   let h = '';
   if (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') {
@@ -562,10 +610,11 @@ function props() {
         ${opciones('tipo', 'Tipo', m.tipo, { base: 'Base', aereo: 'Aéreo', torre: 'Torre', isla: 'Isla' }, 'ancho2')}
         ${num('ancho', 'Ancho', m.ancho)}${num('alto', 'Alto', m.alto)}
         ${num('profundidad', 'Profundidad', m.profundidad)}${num('zocalo', 'Zócalo', m.zocalo)}
-        ${num('x', 'Posición X', m.x, { min: -9999 })}${num('elevacion', 'Altura del piso', m.elevacion)}
+        ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
+        ${num('elevacion', 'Altura del piso', m.elevacion)}${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
       </div>
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
-      <div class="ed-botones"><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
+      <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
   } else if (sel.tipo === 'zocalo') {
     h = `<p class="tit">Zócalo</p><p class="sub">${esc(m.nombre)}</p>
       <div class="ed-campos">${num('zocalo', 'Alto', m.zocalo)}${num('zocalo_retiro', 'Retiro', m.zocalo_retiro)}</div>
@@ -641,6 +690,8 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if (k === 'zocalo') {
     if (v < 0 || v > +m.alto - 10) return aviso('El zócalo tiene que dejar al menos 10 cm de cuerpo.');
     m.zocalo = v;
+  } else if (k === 'rotacion') {
+    rotarEnCentro(m, v); // gira alrededor del centro del mueble
   } else if (k === 'tipo') {
     m.tipo = v; if (v === 'aereo') m.zocalo = 0;
   } else {
@@ -653,12 +704,33 @@ $('#props').addEventListener('change', (e) => {
   const k = inp.dataset.k;
   const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? +inp.value : inp.value;
   const s = { ...sel };
+  if (s.tipo === 'muro') {
+    cambiar((d) => {
+      const e = d.espacio;
+      if (k === 'w.etiqueta') e.muros[s.i] = { ...(e.muros[s.i] || {}), etiqueta: String(v).slice(0, 80) };
+      if (k === 'w.espesor' && v > 0) e.muros[s.i] = { ...(e.muros[s.i] || {}), espesor: v };
+      if (k === 'w.alto' && v > 0) e.muros[s.i] = { ...(e.muros[s.i] || {}), alto: v };
+      if (k === 'w.largo') planta.cambiarLargo(e, s.i, v);
+      if (k === 'e.alto' && v > 0) e.alto = v;
+      if (k === 'e.cerrado') e.cerrado = !!v;
+    });
+    return;
+  }
   cambiar(() => aplicarCampo(modulo(s.m), k, v, s));
 });
 
 // Botones del panel
 $('#props').addEventListener('click', (e) => {
   const b = e.target.closest('[data-a]'); if (!b || !sel) return;
+  if (b.dataset.a === 'borrar-muros') {
+    if (confirm('¿Borrar todos los muros del espacio?')) { cambiar((d) => { d.espacio = { ...(d.espacio || {}), puntos: [], muros: [], cerrado: false }; }); sel = null; render(); }
+    return;
+  }
+  if (b.dataset.a === 'girar-' || b.dataset.a === 'girar+') {
+    const mm = modulo(sel.m);
+    cambiar(() => planta.rotar(mm, b.dataset.a === 'girar-' ? 90 : -90));
+    return;
+  }
   const m = modulo(sel.m), a = b.dataset.a;
   if (a === 'duplicar') {
     const c = JSON.parse(JSON.stringify(m)); c.id = uid(); c.x = +m.x + +m.ancho; c.nombre = m.nombre + ' (copia)';
@@ -679,7 +751,7 @@ $('#props').addEventListener('click', (e) => {
 });
 
 function borrarSel() {
-  if (!sel) return;
+  if (!sel || sel.tipo === 'muro') return;
   const m = modulo(sel.m);
   if (sel.tipo === 'tirador') cambiar(() => { m.tiradores = m.tiradores.filter((x) => x.id !== sel.t); });
   else if (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') cambiar((d) => { d.modulos = d.modulos.filter((x) => x.id !== m.id); });
@@ -694,8 +766,12 @@ function setVista(v) {
   vista = v;
   $$('[data-vista]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
   lienzo.classList.toggle('frente', v === 'frente');
-  if (v === 'frente') { st.lock(true); st.limits(-89, 89); st.ortho(true); st.set(0, 0); }
-  else { st.lock(false); st.limits(-70, 0); st.ortho(false); st.set(-20, -30); if (herr !== 'sel') setHerr('sel'); }
+  lienzo.classList.toggle('planta', v === 'planta');
+  planta.cancelar();
+  if (v === 'frente') { st.lock(true); st.limits(-89, 89); st.ortho(true); st.set(0, 0); if (herr === 'muros') setHerr('sel'); }
+  else if (v === 'planta') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(-90, 0); if (herr.startsWith('div')) setHerr('sel'); }
+  else { st.lock(false); st.limits(-70, 0); st.ortho(false); st.set(-24, -30); if (herr !== 'sel') setHerr('sel'); }
+  render({ panel: false });
   encuadrar(true); dibujarPlano();
   estadoEl.textContent = ayuda();
 }
@@ -703,11 +779,18 @@ function setHerr(h) {
   herr = h;
   $$('[data-herr]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.herr === h)));
   lienzo.className = lienzo.className.replace(/\bh-\S+/g, '').trim() + ` h-${h}`;
-  if (h !== 'sel' && vista !== 'frente') setVista('frente');
+  // Cada herramienta trabaja en su vista: muros en Planta, divisiones en Frente; dibujar módulo en ambas.
+  const necesita = h === 'muros' ? 'planta' : h.startsWith('div') ? 'frente' : h === 'dibujar' && vista === '3d' ? 'frente' : null;
+  if (necesita && vista !== necesita) setVista(necesita);
   estadoEl.textContent = ayuda();
 }
 function ayuda() {
   if (vista === '3d') return 'Arrastra para girar · clic para seleccionar · rueda para acercar';
+  if (vista === 'planta') return {
+    sel: 'Arrastra un mueble para moverlo (imán a los muros, Alt sin imán) · R gira · clic en una cota para escribirla',
+    dibujar: 'Arrastra para dibujar la huella de un mueble (ancho × fondo)',
+    muros: 'Clic para cada esquina (90°, Mayús libre) · clic en el primer punto cierra · Enter o doble clic termina · Retroceso deshace',
+  }[herr] || '';
   return {
     sel: 'Clic selecciona · arrastra divisores y tiradores',
     dibujar: 'Arrastra para dibujar un módulo (se apoya en el piso si empiezas cerca)',
@@ -763,6 +846,7 @@ lienzo.addEventListener('wheel', (e) => {
 // Teclado
 window.addEventListener('keydown', (e) => {
   if (e.target.closest('input, select, textarea')) return;
+  if (vista === 'planta' && planta.teclado(e)) { e.preventDefault(); return; }
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? rehacer() : deshacer(); return; }
   if (ctrl && e.key.toLowerCase() === 'y') { e.preventDefault(); rehacer(); return; }
@@ -770,6 +854,8 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (k === '1') setVista('3d');
   else if (k === '2') setVista('frente');
+  else if (k === '3') setVista('planta');
+  else if (k === 'w') setHerr('muros');
   else if (k === 'v' || k === 'escape') { setHerr('sel'); if (k === 'escape') { sel = null; render(); } }
   else if (k === 'm') setHerr('dibujar');
   else if (k === 'd') setHerr('div-v');
@@ -777,11 +863,18 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') { zoom = 1; encuadrar(true); dibujarPlano(); }
   else if (k === 'delete' || k === 'backspace') { e.preventDefault(); borrarSel(); }
   else if (k === 'r' && sel?.tipo === 'tirador') { const m = modulo(sel.m), t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.rot = ((+t.rot || 0) + 90) % 360; }); }
-  else if (e.key.startsWith('Arrow') && sel) {
+  else if (k === 'r' && sel && sel.tipo !== 'muro') { const m = modulo(sel.m); cambiar(() => planta.rotar(m, 90)); }
+  else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel && sel.tipo !== 'muro') { // subir / bajar
+    e.preventDefault();
+    const m = modulo(sel.m), paso = (e.shiftKey ? 10 : 1) * (e.key === 'PageUp' ? 1 : -1);
+    cambiar(() => { m.elevacion = Math.max(0, +m.elevacion + paso); });
+  }
+  else if (e.key.startsWith('Arrow') && sel && sel.tipo !== 'muro') {
     e.preventDefault();
     const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0;
     const m = modulo(sel.m);
     if (sel.tipo === 'tirador') { const t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.dx = +t.dx + dx; t.dy = +t.dy + dy; }); }
+    else if (vista === 'planta') cambiar(() => { m.x = +m.x + dx; m.z = +m.z - dy; }); // en planta, ↑ va hacia el muro del fondo
     else cambiar(() => { m.x = +m.x + dx; m.elevacion = Math.max(0, +m.elevacion + dy); });
   }
 });
@@ -796,6 +889,14 @@ $$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
   $('#tab-props').hidden = b.dataset.tab !== 'props';
   $('#tab-coment').hidden = b.dataset.tab !== 'coment';
 }));
+
+const planta = crearPlanta({
+  modelo: () => modelo, sel: () => sel, setSel: (s) => { sel = s; },
+  cambiar, registrar, render, aviso, herr: () => herr, setHerr, vista: () => vista,
+  escala: () => ({ s: st.scale, c: st.center, Wp: lienzo.clientWidth, Hp: lienzo.clientHeight }),
+  estado: (t) => { estadoEl.textContent = `${ayuda()}   ·   ${t}`; },
+  plano, lienzo,
+});
 
 iniciarProyectos({
   modelo: () => modelo,

@@ -6,7 +6,7 @@
   "vigencia": "2026-12-31",
   "cliente": { "nombre": "Cliente de ejemplo" },
   "tipo": "melamina",
-  "espacio": { "largo": 360, "ancho": 260, "alto": 250 },
+  "espacio": { "largo": 360, "ancho": 260, "alto": 250, "cerrado": true, "puntos": [{ "x": 0, "z": 0 }, { "x": 360, "z": 0 }, { "x": 360, "z": 260 }, { "x": 0, "z": 260 }], "muros": [{ "espesor": 15 }, { "espesor": 10 }, { "espesor": 15 }, { "espesor": 10 }] },
   "modulos": [
     {
       "nombre": "Base cajonera", "tipo": "base", "ancho": 60, "alto": 90, "profundidad": 58, "zocalo": 10,

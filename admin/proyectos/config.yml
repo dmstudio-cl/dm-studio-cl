@@ -86,7 +86,7 @@ collections:
           - { label: Altura desde el piso, name: elevacion, widget: number, value_type: float, default: 0, hint: "Para muebles aéreos" }
           - { label: "Posición X (a lo largo del muro)", name: x, widget: number, value_type: float, default: 0 }
           - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
-          - { label: Rotación (grados), name: rotacion, widget: select, default: "0", options: ["0", "90", "180", "270"] }
+          - { label: Giro en planta (grados), name: rotacion, widget: number, value_type: float, default: 0, hint: "Lo ajusta el editor. 90 = el frente mira hacia +X." }
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
           - label: Columnas (de izquierda a derecha)
             name: columnas
@@ -147,6 +147,26 @@ collections:
           - { label: Largo, name: largo, widget: number, value_type: float, required: false }
           - { label: Ancho, name: ancho, widget: number, value_type: float, required: false }
           - { label: Alto, name: alto, widget: number, value_type: float, default: 240, required: false }
+          - { label: Espacio cerrado (lo define el editor), name: cerrado, widget: boolean, default: false, required: false }
+          - label: Planta (puntos de la cara interior de los muros; se dibujan en el editor)
+            name: puntos
+            widget: list
+            required: false
+            collapsed: true
+            summary: "x {{fields.x}} · z {{fields.z}}"
+            fields:
+              - { label: X (cm), name: x, widget: number, value_type: float }
+              - { label: Z (cm), name: z, widget: number, value_type: float }
+          - label: Muros (etiqueta interna, espesor y alto; uno por tramo de la planta)
+            name: muros
+            widget: list
+            required: false
+            collapsed: true
+            summary: "{{fields.etiqueta}} · {{fields.espesor}} cm"
+            fields:
+              - { label: Etiqueta (no la ve el cliente), name: etiqueta, widget: string, required: false }
+              - { label: Espesor (cm), name: espesor, widget: number, value_type: float, default: 15 }
+              - { label: Alto (cm), name: alto, widget: number, value_type: float, required: false }
           - { label: Fotos del cliente, name: fotos, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
 
       - label: Costos internos (NUNCA se muestran al cliente)

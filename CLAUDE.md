@@ -103,6 +103,7 @@ anticipo      = 50% × precio_final
 - Abre los proyectos del repo privado con la sesión de GitHub de Decap (`decap-cms-user`), muestra y responde los comentarios (Worker, `X-DM-Owner`) y **Publicar versión** hace un commit en el repo privado (versión +1; «cambios» → «propuesta»), registra un mensaje `tipo: version` en el chat y avisa al cliente.
 - Avisos (costo $0): **correo automático** desde el Gmail del estudio vía Apps Script (`dmstudio-worker/apps-script/correo.gs`; secretos del Worker `MAIL_URL` y `MAIL_SECRET`). **WhatsApp con un toque** (`wa.me` con el mensaje escrito); la API oficial de Meta se descartó por costo por mensaje y verificación.
 - Decap privado «plano»: la clave se genera sola (widget `clave`) y los módulos se dibujan en el editor.
+- **Espacio** (vista Planta del editor, `assets/js/editor/planta.js`): `espacio.puntos` = cara interior de los muros (x, z en cm), `espacio.muros[i]` = {etiqueta, espesor, alto} del tramo i, `espacio.cerrado`. Los muebles se ubican con x, z, `rotacion` (grados, como `rotation.y` de Three.js, giro sobre la esquina trasera izquierda) y `elevacion`. Las **etiquetas de muros son internas**: el Worker no las envía al cliente. Cliente y editor dibujan los muros como «casa de muñecas» (solo la cara interior, los que dan a la cámara desaparecen).
 - Pendiente: que el portal del cliente dibuje con CSS 3D y respete los tiradores ubicados a mano (hoy los ubica solo).
 
 ## Three.js — buenas prácticas acordadas

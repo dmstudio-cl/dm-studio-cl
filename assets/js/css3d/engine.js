@@ -63,10 +63,14 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   // Caja centrada en (x,y,z) con medidas w×h×d (cm, y hacia arriba).
   // tex(caraNombre, ancho, alto) → { bg, size } para cada cara.
   // parent/nrot: uso interno de group() (contenedor girado y cómo rotar las normales).
-  function box({ w, h, d, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n }) {
+  // caras: lista opcional de caras a dibujar (p. ej. ['front','top'] para un muro de casa de muñecas).
+  function box({ w, h, d, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n, caras = null }) {
     const cy = -y; // a coordenadas CSS
     const T = (k, fw, fh) => (typeof tex === 'function' ? tex(k, fw, fh) : tex) || {};
-    const add = (k, fw, fh, at, rot, n) => { const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref }); };
+    const add = (k, fw, fh, at, rot, n) => {
+      if (caras && !caras.includes(k)) return;
+      const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref });
+    };
     add('front', w, h, [x, cy, z + d / 2], '', [0, 0, 1]);
     add('back', w, h, [x, cy, z - d / 2], 'rotateY(180deg)', [0, 0, -1]);
     add('right', d, h, [x + w / 2, cy, z], 'rotateY(90deg)', [1, 0, 0]);
@@ -75,16 +79,19 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     add('bottom', w, d, [x, cy + h / 2, z], 'rotateX(-90deg)', [0, 1, 0]);
   }
 
-  // Grupo girado en el plano del frente: sus cajas usan coordenadas locales (centro del grupo = 0,0,0)
-  // y rz gira el conjunto en grados (antihorario, como en un plano). Sirve para tiradores girados.
-  function group({ x = 0, y = 0, z = 0, rz = 0 } = {}) {
+  // Grupo con origen propio: sus cajas usan coordenadas locales (origen del grupo = 0,0,0).
+  // ry gira en planta (grados, igual que rotation.y de Three.js: con 90 el frente +z mira a +x);
+  // rz gira en el plano del frente (antihorario). Los grupos se pueden anidar (mueble → tirador).
+  function group({ x = 0, y = 0, z = 0, ry = 0, rz = 0, parent = rig, nrot = (n) => n } = {}) {
     const g = document.createElement('div');
     g.className = 'c3-g';
-    g.style.transform = `translate3d(${x}em, ${-y}em, ${z}em) rotateZ(${-rz}deg)`;
-    rig.append(g);
-    const a = rad(-rz), c = Math.cos(a), s = Math.sin(a);
-    const nrot = ([nx, ny, nz]) => [nx * c - ny * s, nx * s + ny * c, nz]; // misma rotación que rotateZ de CSS
-    return { el: g, box: (o) => box({ ...o, parent: g, nrot }) };
+    g.style.transform = `translate3d(${x}em, ${-y}em, ${z}em) rotateY(${ry}deg) rotateZ(${-rz}deg)`;
+    parent.append(g);
+    const az = rad(-rz), cz = Math.cos(az), sz = Math.sin(az), ay = rad(ry);
+    // Normal local → del padre: primero rotateZ y luego rotateY (orden de la transformación CSS)
+    const local = ([nx, ny, nz]) => rotY([nx * cz - ny * sz, nx * sz + ny * cz, nz], ay);
+    const nr = (n) => nrot(local(n));
+    return { el: g, box: (o) => box({ ...o, parent: g, nrot: nr }), group: (o) => group({ ...o, parent: g, nrot: nr }) };
   }
 
   // Prisma vertical de "sides" caras, más ancho arriba (r1) que abajo (r2): patas cónicas.

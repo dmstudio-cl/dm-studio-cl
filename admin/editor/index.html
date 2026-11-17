@@ -27,11 +27,13 @@ permalink: /admin/editor/
   <input class="ed-nombre" id="nombre" aria-label="Nombre del modelo" spellcheck="false">
   <div class="ed-grupo" role="group" aria-label="Vista">
     <button data-vista="3d" aria-pressed="true" title="Vista 3D (1)">3D</button>
-    <button data-vista="frente" aria-pressed="false" title="Vista frontal a escala (2)">Frente</button>
+    <button data-vista="frente" aria-pressed="false" title="Mueble seleccionado de frente, a escala (2)">Frente</button>
+    <button data-vista="planta" aria-pressed="false" title="Planta del espacio: muros y ubicación de los muebles (3)">Planta</button>
   </div>
   <div class="ed-grupo" role="group" aria-label="Herramienta">
     <button data-herr="sel" aria-pressed="true" title="Seleccionar y mover (V)">Seleccionar</button>
-    <button data-herr="dibujar" aria-pressed="false" title="Dibujar un módulo arrastrando en la vista frontal (M)">Dibujar módulo</button>
+    <button data-herr="muros" aria-pressed="false" title="Dibujar los muros del espacio en planta (W)">Dibujar muros</button>
+    <button data-herr="dibujar" aria-pressed="false" title="Dibujar un módulo arrastrando: de frente (alto) o en planta (fondo) (M)">Dibujar módulo</button>
     <button data-herr="div-v" aria-pressed="false" title="Dividir en columnas: clic en un frente (D)">Dividir │</button>
     <button data-herr="div-h" aria-pressed="false" title="Dividir en filas: clic en un frente (H)">Dividir ─</button>
   </div>
@@ -57,6 +59,7 @@ permalink: /admin/editor/
         <label><input type="checkbox" data-capa="frentes" checked> Frentes</label>
         <label><input type="checkbox" data-capa="tiradores" checked> Tiradores</label>
         <label><input type="checkbox" data-capa="cubierta" checked> Cubierta</label>
+        <label><input type="checkbox" data-capa="muros" checked> Muros</label>
       </div>
       <div class="ed-arbol" id="arbol"></div>
     </section>

@@ -148,6 +148,7 @@ function buildModule(mod, mats, tirador) {
 
 // ---------- espacio (piso y muros) ----------
 function buildRoom(esp, bounds) {
+  if (esp?.puntos?.length >= 2) return buildPlanta(esp);
   const g = new THREE.Group();
   const L = +esp?.largo || Math.max(bounds.max.x + 60, 240);
   const A = +esp?.ancho || Math.max(bounds.max.z + 120, 240);
@@ -161,6 +162,49 @@ function buildRoom(esp, bounds) {
   const left = new THREE.Mesh(new THREE.PlaneGeometry(A, Hh), wall);
   left.rotation.y = Math.PI / 2; left.position.set(0, Hh / 2, A / 2); left.receiveShadow = true;
   g.add(floor, back, left);
+  g.userData.room = true;
+  return g;
+}
+
+// Espacio dibujado en el editor: muros sobre la cara interior de la planta (puntos x,z en cm).
+// Cada muro es un plano que mira hacia adentro (FrontSide): desde afuera no se dibuja, así los
+// muros que dan hacia la cámara desaparecen solos y siempre se ve el interior ("casa de muñecas").
+// Las etiquetas de los muros son internas del estudio y no llegan al portal.
+function buildPlanta(esp) {
+  const g = new THREE.Group();
+  const P = esp.puntos.map((p) => [+p.x || 0, +p.z || 0]);
+  const cerrado = !!esp.cerrado && P.length > 2;
+  const n = cerrado ? P.length : P.length - 1;
+  const cx = P.reduce((a, p) => a + p[0], 0) / P.length, cz = P.reduce((a, p) => a + p[1], 0) / P.length;
+  const wall = new THREE.MeshStandardMaterial({ color: '#4a4744', roughness: .95 });
+  for (let i = 0; i < n; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
+    if (L < 1) continue;
+    let nx = -dz / L, nz = dx / L; // normal hacia adentro (hacia el centro de la planta)
+    if ((cx - (a[0] + b[0]) / 2) * nx + (cz - (a[1] + b[1]) / 2) * nz < 0) { nx = -nx; nz = -nz; }
+    const h = +esp.muros?.[i]?.alto || +esp.alto || 240;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(L, h), wall);
+    m.rotation.y = Math.atan2(nx, nz); // la cara del plano (+z) mira hacia adentro
+    m.position.set((a[0] + b[0]) / 2, h / 2, (a[1] + b[1]) / 2);
+    m.receiveShadow = true;
+    g.add(m);
+  }
+  // piso: con la forma de la planta si el espacio está cerrado; si no, un rectángulo con margen
+  const floorMat = new THREE.MeshStandardMaterial({ color: '#1c1b1e', roughness: .9 });
+  let floor;
+  if (cerrado) {
+    const shape = new THREE.Shape(P.map(([x, z]) => new THREE.Vector2(x, -z)));
+    floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), floorMat);
+  } else {
+    const xs = P.map((p) => p[0]), zs = P.map((p) => p[1]);
+    const x0 = Math.min(...xs) - 40, x1 = Math.max(...xs) + 40, z0 = Math.min(...zs) - 40, z1 = Math.max(...zs) + 120;
+    floor = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), floorMat);
+    floor.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  }
+  floor.rotation.x = -Math.PI / 2; // el plano XY queda horizontal: (x, y) → (x, -y en z); por eso la forma usa (x, -z)
+  floor.receiveShadow = true;
+  g.add(floor);
   g.userData.room = true;
   return g;
 }
@@ -185,7 +229,7 @@ export function buildProyecto(proyecto, sel = {}) {
   const group = new THREE.Group();
   group.add(furniture);
   let room = null;
-  if (proyecto.espacio && (proyecto.espacio.largo || proyecto.espacio.mostrar !== false)) {
+  if (proyecto.espacio && (proyecto.espacio.largo || proyecto.espacio.puntos?.length >= 2 || proyecto.espacio.mostrar !== false)) {
     room = buildRoom(proyecto.espacio, bounds);
     group.add(room);
   }

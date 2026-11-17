@@ -52,13 +52,13 @@ export const COLORES_TIRADOR = { negro: '#151312', acero: '#a9aaa7', dorado: '#b
 let nid = 0;
 export const uid = (p = 'm') => `${p}${Date.now().toString(36)}${(nid++).toString(36)}`;
 
-export function nuevoModulo({ x = 0, elevacion = 0, ancho = 60, alto = 85, profundidad, zocalo } = {}) {
+export function nuevoModulo({ x = 0, pz = 0, rotacion = 0, elevacion = 0, ancho = 60, alto = 85, profundidad, zocalo } = {}) {
   const aereo = elevacion > 100;
   const z = aereo ? 0 : (zocalo ?? 10);
   return {
     id: uid(), nombre: aereo ? 'Aéreo' : 'Módulo', tipo: aereo ? 'aereo' : 'base',
     ancho, alto, profundidad: profundidad ?? (aereo ? 35 : 58), zocalo: z, zocalo_retiro: 5,
-    x, elevacion, z: 0, cubierta: false,
+    x, elevacion, z: pz, rotacion, cubierta: false,
     columnas: [{ ancho, frentes: [{ tipo: 'puerta', alto: alto - z, bisagra: 'izquierda' }] }],
     tiradores: [],
   };
@@ -89,21 +89,93 @@ export function celdas(m) {
   return out;
 }
 
-// Límites del modelo completo (cm) para encuadrar.
-export function limites(modelo) {
-  let x0 = Infinity, x1 = -Infinity, y1 = 0, z1 = 0;
-  for (const m of modelo.modulos) {
-    x0 = Math.min(x0, +m.x); x1 = Math.max(x1, +m.x + +m.ancho);
-    y1 = Math.max(y1, +m.elevacion + +m.alto + (m.cubierta ? CT : 0));
-    z1 = Math.max(z1, +m.z + +m.profundidad + T);
+// ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
+// Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
+export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
+export const fondoTotal = (m) => +m.profundidad + T; // cuerpo + frentes
+
+// Esquinas del mueble en planta (atrás-izq, atrás-der, frente-der, frente-izq), en coordenadas del espacio.
+export function huella(m) {
+  const W = +m.ancho, D = fondoTotal(m), r = +m.rotacion || 0;
+  return [[0, 0], [W, 0], [W, D], [0, D]].map(([x, z]) => { const [a, b] = girar(x, z, r); return [+m.x + a, +m.z + b]; });
+}
+// Centro del mueble en planta
+export function centro(m) { const h = huella(m); return [(h[0][0] + h[2][0]) / 2, (h[0][1] + h[2][1]) / 2]; }
+// Gira el mueble alrededor de su centro (mantiene el centro en su lugar)
+export function rotarEnCentro(m, deg) {
+  const [cx, cz] = centro(m);
+  m.rotacion = ((deg % 360) + 360) % 360;
+  const [lx, lz] = girar(+m.ancho / 2, fondoTotal(m) / 2, m.rotacion);
+  m.x = Math.round((cx - lx) * 10) / 10; m.z = Math.round((cz - lz) * 10) / 10;
+}
+
+// Segmentos de muro (cara interior) del espacio: [{ i, a:[x,z], b:[x,z], largo, n:[nx,nz] hacia adentro, espesor, alto, etiqueta }]
+export function muros(esp) {
+  const P = esp?.puntos || [];
+  if (P.length < 2) return [];
+  const n = esp.cerrado && P.length > 2 ? P.length : P.length - 1;
+  const cx = P.reduce((a, p) => a + +p.x, 0) / P.length, cz = P.reduce((a, p) => a + +p.z, 0) / P.length;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = [+P[i].x, +P[i].z], b = [+P[(i + 1) % P.length].x, +P[(i + 1) % P.length].z];
+    const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1;
+    let nn = [-dz / L, dx / L];
+    // "Adentro" = hacia el centro de los puntos (sirve para habitaciones y para cocinas en L o en U)
+    if ((cx - (a[0] + b[0]) / 2) * nn[0] + (cz - (a[1] + b[1]) / 2) * nn[1] < 0) nn = [-nn[0], -nn[1]];
+    const meta = esp.muros?.[i] || {};
+    out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '' });
   }
-  if (!isFinite(x0)) { x0 = 0; x1 = 120; y1 = 90; z1 = 60; }
-  return { x0, x1, y0: 0, y1, z0: 0, z1, w: x1 - x0, h: y1, d: z1 };
+  return out;
+}
+
+// Distancia desde el punto p, en la dirección dir, hasta la cara interior del muro más cercano.
+export function distanciaAMuro(esp, p, dir) {
+  let best = Infinity;
+  for (const w of muros(esp)) {
+    const ex = w.b[0] - w.a[0], ez = w.b[1] - w.a[1];
+    const den = dir[0] * ez - dir[1] * ex;
+    if (Math.abs(den) < 1e-9) continue; // paralelo
+    const t = ((w.a[0] - p[0]) * ez - (w.a[1] - p[1]) * ex) / den;   // avance sobre el rayo
+    const u = ((w.a[0] - p[0]) * dir[1] - (w.a[1] - p[1]) * dir[0]) / den; // posición en el muro (0..1)
+    if (t > -1 && u >= -0.001 && u <= 1.001 && t < best) best = t;
+  }
+  return best;
+}
+
+// Distancias del mueble a los muros desde el centro de cada lado: { atras, derecha, frente, izquierda } → { d, desde, dir }
+export function distancias(m, esp) {
+  const h = huella(m), out = {};
+  const lados = { atras: [h[0], h[1]], derecha: [h[1], h[2]], frente: [h[2], h[3]], izquierda: [h[3], h[0]] };
+  const [cx, cz] = centro(m);
+  for (const [k, [a, b]] of Object.entries(lados)) {
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    let dir = [mid[0] - cx, mid[1] - cz]; const L = Math.hypot(...dir) || 1; dir = [dir[0] / L, dir[1] / L];
+    const d = distanciaAMuro(esp, mid, dir);
+    if (isFinite(d)) out[k] = { d, desde: mid, dir };
+  }
+  return out;
+}
+
+// Límites del modelo completo (cm) para encuadrar: muebles girados y muros.
+export function limites(modelo, { conMuros = true } = {}) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y1 = 0;
+  for (const m of modelo.modulos) {
+    for (const [x, z] of huella(m)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    y1 = Math.max(y1, +m.elevacion + +m.alto + (m.cubierta ? CT : 0));
+  }
+  if (conMuros) for (const w of muros(modelo.espacio)) {
+    for (const [x, z] of [w.a, w.b]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+    y1 = Math.max(y1, w.alto);
+  }
+  if (!isFinite(x0)) { x0 = 0; x1 = 120; z0 = 0; z1 = 60; y1 = 90; }
+  return { x0, x1, y0: 0, y1, z0, z1, w: x1 - x0, h: y1, d: z1 - z0 };
 }
 
 // ----- dibujo CSS 3D -----
-// st: escenario de css3d/engine.js. capas: { zocalo, cuerpo, frentes, tiradores, cubierta } (true = visible).
+// st: escenario de css3d/engine.js. capas: { zocalo, cuerpo, frentes, tiradores, cubierta, muros } (true = visible).
 // mats: { cuerpo, frente, zocalo, cubierta } → valores CSS "background" para cada material.
+// Cada mueble se dibuja en un grupo con origen en su esquina trasera izquierda y girado en planta
+// (igual que three/mueble.js), así el editor y el portal ubican todo en el mismo lugar.
 export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) {
   st.clear();
   const ver = (k) => capas[k] !== false;
@@ -112,15 +184,18 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     frente: { bg: mats.frente || '#cfc6b8' },
     zocalo: { bg: mats.zocalo || '#3a3836' },
     cubierta: { bg: mats.cubierta || '#cfc9bc' },
-    hueco: { bg: '#24221f' },
+    muro: { bg: mats.muro || '#57534e' },     // muros claros sobre el fondo oscuro, para que el espacio se lea
+    cantoMuro: { bg: '#b9b2a7' },
+    piso: mats.piso || '#2a2826',
   };
-  // Los frentes ocupan el centro de la profundidad del cuerpo hacia adelante (z del mueble hacia el espectador).
-  modelo.modulos.forEach((m, i) => {
+  if (ver('muros')) dibujarEspacio(st, modelo.espacio, M);
+
+  modelo.modulos.forEach((m) => {
     const W = +m.ancho, H = +m.alto, D = +m.profundidad;
     const Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
-    const ox = +m.x, oy = +m.elevacion, oz = +m.z;
     const id = m.id;
-    const B = (o, mat, ref) => st.box({ ...o, x: ox + o.x, y: oy + o.y, z: oz + o.z, tex: mat, ref });
+    const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
+    const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
 
     if (ver('zocalo') && Z > 0) {
       const r = +m.zocalo_retiro || 0;
@@ -139,8 +214,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
         const ref = `${id}|f|${c.col}|${c.fila}`;
         const fw = c.w - GAP, fh = c.h - GAP, zf = D + T / 2;
         if (c.tipo === 'abierto') {
-          // hueco con repisa al centro (se selecciona desde la vista Frente o haciendo clic en la repisa)
-          if (ver('cuerpo')) B({ w: c.w - 2 * T, h: T, d: D - 2, x: c.x, y: c.y, z: D / 2 }, M.cuerpo, ref);
+          if (ver('cuerpo')) B({ w: c.w - 2 * T, h: T, d: D - 2, x: c.x, y: c.y, z: D / 2 }, M.cuerpo, ref); // repisa
         } else if (c.tipo === 'puerta_doble') {
           const lw = (fw - GAP) / 2;
           for (const s of [-1, 1]) B({ w: lw, h: fh, d: T, x: c.x + s * (lw + GAP) / 2, y: c.y, z: zf }, M.frente, ref);
@@ -155,7 +229,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
         const c = cs.find((k) => k.col === t.col && k.fila === t.fila);
         const def = TIRADORES[t.modelo];
         if (!c || !def) return;
-        const g = st.group({ x: ox + c.x + (+t.dx || 0), y: oy + c.y + (+t.dy || 0), z: oz + D + T, rz: +t.rot || 0 });
+        const g = G.group({ x: c.x + (+t.dx || 0), y: c.y + (+t.dy || 0), z: D + T, rz: +t.rot || 0 });
         const color = { bg: COLORES_TIRADOR[t.color] || t.color || COLORES_TIRADOR.negro };
         for (const p of def.piezas) g.box({ ...p, tex: color, ref: `${id}|t|${t.id}` });
       });
@@ -166,4 +240,40 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
   if (sel) for (const f of st.rig.querySelectorAll('[data-ref]')) if (f.dataset.ref.startsWith(sel)) f.classList.add('c3-sel');
+}
+
+// Muros "casa de muñecas": solo se dibuja la cara interior (y el canto superior). Como las caras
+// tienen backface-visibility: hidden, los muros que dan hacia la cámara desaparecen solos y siempre
+// se ve el interior. Piso con la forma de la planta (clip-path) si el espacio está cerrado.
+function dibujarEspacio(st, esp, M) {
+  const W = muros(esp);
+  if (!W.length) return;
+  const P = esp.puntos;
+  // piso
+  const xs = P.map((p) => +p.x), zs = P.map((p) => +p.z);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const f = document.createElement('div');
+  f.className = 'c3-floor c3-piso';
+  const w = Math.max(1, x1 - x0), d = Math.max(1, z1 - z0);
+  f.style.cssText = `width:${w}em;height:${d}em;border-radius:0;pointer-events:none;background:${M.piso};
+    ${esp.cerrado && P.length > 2 ? `clip-path:polygon(${P.map((p) => `${((p.x - x0) / w * 100).toFixed(2)}% ${((p.z - z0) / d * 100).toFixed(2)}%`).join(',')});` : ''}
+    transform: translate3d(${(x0 + x1) / 2}em, -.05em, ${(z0 + z1) / 2}em) rotateX(90deg) translate(-50%, -50%);`;
+  st.rig.prepend(f);
+  // muros
+  const conectado = (i, fin) => esp.cerrado || (fin ? i < W.length - 1 : i > 0);
+  for (const m of W) {
+    const dx = m.b[0] - m.a[0], dz = m.b[1] - m.a[1];
+    // eje local x a lo largo del muro; el frente local (+z) mira hacia adentro
+    let ry = Math.atan2(-dz, dx) * 180 / Math.PI;
+    const izq = [-dz / m.largo, dx / m.largo]; // hacia dónde mira +z con ese giro
+    if (izq[0] * m.n[0] + izq[1] * m.n[1] < 0) ry += 180;
+    const g = st.group({ x: (m.a[0] + m.b[0]) / 2, y: 0, z: (m.a[1] + m.b[1]) / 2, ry });
+    const ref = `muro|${m.i}`;
+    g.box({ w: m.largo, h: m.alto, d: m.espesor, x: 0, y: m.alto / 2, z: -m.espesor / 2, tex: M.muro, ref, caras: ['front'] });
+    // canto superior, alargado en las esquinas para cerrar el encuentro con el muro vecino
+    const e0 = conectado(m.i, false) ? m.espesor : 0, e1 = conectado(m.i, true) ? m.espesor : 0;
+    const ux = Math.cos(ry * Math.PI / 180), uz = -Math.sin(ry * Math.PI / 180); // eje x local en el espacio
+    const s = Math.sign(ux * dx + uz * dz) || 1; // +1 si el eje local va de a hacia b
+    g.box({ w: m.largo + e0 + e1, h: 1, d: m.espesor, x: s * (e1 - e0) / 2, y: m.alto - .5, z: -m.espesor / 2, tex: M.cantoMuro, ref, caras: ['top'] });
+  }
 }
