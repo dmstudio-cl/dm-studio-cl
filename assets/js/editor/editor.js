@@ -4,6 +4,7 @@ import { createStage } from '../css3d/engine.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
+import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla } from './plantillas.js';
 import { iniciarProyectos, aModelo } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -599,14 +600,28 @@ function props() {
         ${num('w.alto', 'Alto de este muro', w.alto)}${num('e.alto', 'Alto general', modelo.espacio.alto || 240)}
       </div>
       <label class="ed-check"><input type="checkbox" data-k="e.cerrado"${modelo.espacio.cerrado ? ' checked' : ''}> Espacio cerrado (une el último muro con el primero)</label>
-      <div class="ed-botones"><button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+      <div class="ed-botones">${w.oculto
+        ? '<button data-a="restaurar-muro" class="ed-primario">Restaurar este muro</button>'
+        : '<button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>'}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+      ${w.oculto ? '<p class="ed-ayuda">Muro eliminado: no se dibuja ni lo ve el cliente. Queda punteado en Planta para poder restaurarlo.</p>' : ''}
       <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p></div>`;
     return;
   }
   const m = modulo(sel.m); if (!m) { sel = null; return props(); }
   let h = '';
   if (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') {
-    h = `<p class="tit">${esc(m.nombre)}</p><p class="sub">${sel.tipo === 'cuerpo' ? 'Cuerpo' : 'Módulo'}</p>
+    const pl = leerPlantilla(m);
+    const bloquePl = pl ? `<div class="ed-plantilla"><p class="sub">${esc(PLANTILLAS[pl.t]?.nombre || 'Cocina de referencia')} · se ajusta sola</p>
+      <div class="ed-campos">
+        ${[...PLANTILLAS[pl.t].medidas, 'fondo', 'alto', 'zocalo', ...(pl.p.aereos ? ['altoAereo', 'sepAereo', 'fondoAereo'] : []), 'x', 'z']
+          .map((k) => `<label class="ed-campo">${ETIQUETAS[k]}<span class="u" data-u="cm"><input type="number" step="0.5" data-pk="${k}" value="${pl.p[k]}"></span></label>`).join('')}
+      </div>
+      ${pl.t !== 'isla' ? `<label class="ed-check"><input type="checkbox" data-pk="aereos"${pl.p.aereos ? ' checked' : ''}> Muebles aéreos</label>
+      <label class="ed-check"><input type="checkbox" data-pk="lavaplatos"${pl.p.lavaplatos ? ' checked' : ''}> Lavaplatos (80 cm)</label>
+      <label class="ed-check"><input type="checkbox" data-pk="cocina"${pl.p.cocina ? ' checked' : ''}> Hueco para cocina (76 cm)</label>` : ''}
+      <div class="ed-botones"><button data-a="desagrupar">Desagrupar (editar libre)</button><button data-a="borrar-cocina" class="peligro">Eliminar esta cocina</button></div>
+      </div>` : '';
+    h = `${bloquePl}<p class="tit">${esc(m.nombre)}</p><p class="sub">${sel.tipo === 'cuerpo' ? 'Cuerpo' : 'Módulo'}</p>
       <div class="ed-campos">
         <label class="ed-campo ancho2">Nombre<input type="text" data-k="nombre" value="${esc(m.nombre)}"></label>
         ${opciones('tipo', 'Tipo', m.tipo, { base: 'Base', aereo: 'Aéreo', torre: 'Torre', isla: 'Isla' }, 'ancho2')}
@@ -702,6 +717,15 @@ function aplicarCampo(m, k, v, s = {}) {
 }
 
 $('#props').addEventListener('change', (e) => {
+  const pk = e.target.dataset?.pk;
+  if (pk && sel) {
+    const pl = leerPlantilla(modulo(sel.m)); if (!pl) return;
+    const v = e.target.type === 'checkbox' ? e.target.checked : parseFloat(e.target.value);
+    if (e.target.type !== 'checkbox' && !(isFinite(v) && (v > 0 || pk === 'x' || pk === 'z'))) return;
+    const p = { ...pl.p, [pk]: v };
+    regenerarPlantilla(pl.g, pl.t, p);
+    return;
+  }
   const inp = e.target.closest('[data-k]'); if (!inp || !sel) return;
   const k = inp.dataset.k;
   const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? +inp.value : inp.value;
@@ -724,6 +748,18 @@ $('#props').addEventListener('change', (e) => {
 // Botones del panel
 $('#props').addEventListener('click', (e) => {
   const b = e.target.closest('[data-a]'); if (!b || !sel) return;
+  if (b.dataset.a === 'desagrupar' || b.dataset.a === 'borrar-cocina') {
+    const pl = leerPlantilla(modulo(sel.m)); if (!pl) return;
+    const del = (m) => leerPlantilla(m)?.g === pl.g;
+    if (b.dataset.a === 'borrar-cocina') { cambiar((d) => { d.modulos = d.modulos.filter((m) => !del(m)); }); sel = null; render(); }
+    else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); });
+    return;
+  }
+  if (b.dataset.a === 'eliminar-muro' || b.dataset.a === 'restaurar-muro') {
+    const i = sel.i, oculto = b.dataset.a === 'eliminar-muro';
+    cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto }; });
+    return;
+  }
   if (b.dataset.a === 'borrar-muros') {
     if (confirm('¿Borrar todos los muros del espacio?')) { cambiar((d) => { d.espacio = { ...(d.espacio || {}), puntos: [], muros: [], cerrado: false }; }); sel = null; render(); }
     return;
@@ -753,7 +789,12 @@ $('#props').addEventListener('click', (e) => {
 });
 
 function borrarSel() {
-  if (!sel || sel.tipo === 'muro') return;
+  if (!sel) return;
+  if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (se puede restaurar)
+    const i = sel.i;
+    cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto: true }; });
+    return;
+  }
   const m = modulo(sel.m);
   if (sel.tipo === 'tirador') cambiar(() => { m.tiradores = m.tiradores.filter((x) => x.id !== sel.t); });
   else if (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') cambiar((d) => { d.modulos = d.modulos.filter((x) => x.id !== m.id); });
@@ -892,6 +933,26 @@ $$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
   $('#tab-props').hidden = b.dataset.tab !== 'props';
   $('#tab-coment').hidden = b.dataset.tab !== 'coment';
 }));
+
+// ===================== cocinas de referencia =====================
+function regenerarPlantilla(gid, tipo, p) {
+  const idx = modelo.modulos.findIndex((m) => leerPlantilla(m)?.g === gid);
+  const nuevos = generar(tipo, p, gid);
+  cambiar((d) => {
+    d.modulos = d.modulos.filter((m) => leerPlantilla(m)?.g !== gid);
+    d.modulos.splice(Math.max(0, idx), 0, ...nuevos);
+  });
+  sel = { tipo: 'modulo', m: nuevos[0].id }; render();
+}
+$('#plantillas').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-plantilla]')?.dataset.plantilla; if (!t) return;
+  const nuevos = generar(t, parametrosIniciales(t, modelo.espacio));
+  cambiar((d) => { d.modulos.push(...nuevos); });
+  sel = { tipo: 'modulo', m: nuevos[0].id };
+  if (vista === 'frente') setVista('planta');
+  render(); encuadrar(true);
+  aviso(`${PLANTILLAS[t].nombre} insertada (${nuevos.length} módulos). Cambia sus medidas en el panel derecho y se redistribuye sola.`);
+});
 
 // Imagen de referencia por vista (se guarda solo en este navegador)
 const referencias = crearReferencias({

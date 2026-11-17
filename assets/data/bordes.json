@@ -1,0 +1,6 @@
+---
+layout: null
+sitemap: false
+---
+{%- assign lista = site.data.bordes | default: empty -%}
+[{%- for b in lista -%}{"id":{{ b.id | jsonify }},"nombre":{{ b.nombre | jsonify }},"perfil":{{ b.perfil | default: 'recto' | jsonify }},"imagen":{% if b.imagen %}{{ b.imagen | relative_url | jsonify }}{% else %}null{% endif %}}{% unless forloop.last %},{% endunless %}{%- endfor -%}]

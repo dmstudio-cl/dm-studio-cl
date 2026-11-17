@@ -89,6 +89,27 @@ export function celdas(m) {
   return out;
 }
 
+// ----- bordes de cubierta -----
+// Luz y sombra sobre el canto (frente y costados de la cubierta) que sugieren el perfil del borde.
+const CANTOS = {
+  recto: '',
+  redondeado: 'linear-gradient(to bottom, rgba(255,255,255,.5), rgba(255,255,255,0) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,.35))',
+  biselado: 'linear-gradient(to bottom, rgba(255,255,255,.6) 0 32%, rgba(0,0,0,.12) 32% 100%)',
+  boleado: 'linear-gradient(to bottom, rgba(0,0,0,.15), rgba(255,255,255,.6) 35%, rgba(0,0,0,0) 60%, rgba(0,0,0,.5))',
+  'media-cana': 'linear-gradient(to bottom, rgba(255,255,255,.45) 0 18%, rgba(0,0,0,.4) 45%, rgba(255,255,255,.3) 78%, rgba(0,0,0,.25))',
+};
+// Ícono del perfil (corte de la cubierta; el canto queda a la derecha)
+export function iconoBorde(perfil) {
+  const d = {
+    recto: 'M4 6 H56 V18 H4 Z',
+    redondeado: 'M4 6 H52 Q56 6 56 10 V18 H4 Z',
+    biselado: 'M4 6 H50 L56 12 V18 H4 Z',
+    boleado: 'M4 6 H50 A6 6 0 0 1 50 18 H4 Z',
+    'media-cana': 'M4 6 H56 V8 Q50 12 56 16 V18 H4 Z',
+  }[perfil] || 'M4 6 H56 V18 H4 Z';
+  return `<svg viewBox="0 0 60 24" aria-hidden="true"><path d="${d}" fill="currentColor"/></svg>`;
+}
+
 // ----- tiradores para el portal del cliente -----
 // El cliente elige un tirador del catálogo de precios: { forma: barra|boton|perfil|sin, color, largo (cm) }.
 // Si el estudio ubicó tiradores a mano en el editor, se respetan sus posiciones y se cambia el modelo;
@@ -185,7 +206,7 @@ export function muros(esp) {
     // "Adentro" = hacia el centro de los puntos (sirve para habitaciones y para cocinas en L o en U)
     if ((cx - (a[0] + b[0]) / 2) * nn[0] + (cz - (a[1] + b[1]) / 2) * nn[1] < 0) nn = [-nn[0], -nn[1]];
     const meta = esp.muros?.[i] || {};
-    out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '' });
+    out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '', oculto: !!meta.oculto });
   }
   return out;
 }
@@ -194,6 +215,7 @@ export function muros(esp) {
 export function distanciaAMuro(esp, p, dir) {
   let best = Infinity;
   for (const w of muros(esp)) {
+    if (w.oculto) continue; // muro eliminado: no hay pared ahí
     const ex = w.b[0] - w.a[0], ez = w.b[1] - w.a[1];
     const den = dir[0] * ez - dir[1] * ex;
     if (Math.abs(den) < 1e-9) continue; // paralelo
@@ -299,7 +321,10 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       });
     }
     if (ver('cubierta') && m.cubierta) {
-      B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, M.cubierta, `${id}|cubierta`);
+      // el canto (frente y costados) lleva el perfil del borde elegido; la cara de arriba, el material
+      const canto = CANTOS[mats.borde] || '';
+      const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${M.cubierta.bg}` } : M.cubierta);
+      B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, texCub, `${id}|cubierta`);
     }
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
@@ -326,6 +351,7 @@ function dibujarEspacio(st, esp, M) {
   // muros
   const conectado = (i, fin) => esp.cerrado || (fin ? i < W.length - 1 : i > 0);
   for (const m of W) {
+    if (m.oculto) continue; // muro eliminado en el editor
     const dx = m.b[0] - m.a[0], dz = m.b[1] - m.a[1];
     // eje local x a lo largo del muro; el frente local (+z) mira hacia adentro
     let ry = Math.atan2(-dz, dx) * 180 / Math.PI;

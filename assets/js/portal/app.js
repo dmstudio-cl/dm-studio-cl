@@ -1,6 +1,7 @@
 // Aplicación del portal de clientes (después de entrar con la clave, en modo demo o como estudio).
 import { clp } from '../cart.js';
 import { createScene } from './escena-css.js'; // CSS 3D: sin WebGL ni Three.js
+import { iconoBorde } from '../editor/modelo.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -12,9 +13,10 @@ export async function startApp(api) {
   document.body.classList.add('in-app');
 
   const isOwner = api.mode === 'owner';
-  const [proyecto, catalogo] = await Promise.all([
+  const [proyecto, catalogo, bordes] = await Promise.all([
     api.proyecto(),
     fetch(`${window.DM.base}/assets/data/melaminas.json`).then((r) => r.json()).catch(() => []),
+    fetch(`${window.DM.base}/assets/data/bordes.json`).then((r) => r.json()).catch(() => []),
   ]);
 
   // ----- opciones disponibles
@@ -28,8 +30,9 @@ export async function startApp(api) {
     melamina: proyecto.seleccion?.melamina || proyecto.opciones?.melamina_inicial || melaminas.find((m) => m.tipo === 'madera')?.id || melaminas[0]?.id || '',
     tirador: proyecto.seleccion?.tirador || tiradores[0]?.id || '',
     cubierta: proyecto.seleccion?.cubierta || cubiertas[0]?.id || '',
+    borde: proyecto.seleccion?.borde || bordes[0]?.id || '',
   };
-  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta) });
+  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde) });
   const aprobado = () => !!proyecto.aprobacion;
 
   // ----- cabecera
@@ -68,6 +71,12 @@ export async function startApp(api) {
     </button>`;
   $('#tirlist').innerHTML = tiradores.map((t) => optRow(t, 'tirador')).join('');
   $('#cublist').innerHTML = cubiertas.map((c) => optRow(c, 'cubierta')).join('');
+  // Bordes de cubierta: foto si la hay; si no, el ícono del perfil
+  $('#bordelist').innerHTML = bordes.map((b) => `
+    <button type="button" class="opt opt-borde" data-id="${esc(b.id)}" data-kind="borde" aria-pressed="false">
+      ${b.imagen ? `<img src="${esc(b.imagen)}" alt="" loading="lazy">` : `<i class="borde-ico">${iconoBorde(b.perfil)}</i>`}<span>${esc(b.nombre)}</span>
+    </button>`).join('');
+  $('#bordetit').hidden = !bordes.length;
   $('#preclist').innerHTML = (proyecto.recomendados || []).map((r) => `
     <a class="opt" href="${esc(r.url)}" target="_blank" rel="noopener"><i class="mono">${esc((r.tipo || '').slice(0, 3))}</i><span>${esc(r.nombre)}${r.medida ? ` · ${esc(r.medida)}` : ''} ↗</span></a>`).join('') || '<p class="small muted">Sin recomendaciones.</p>';
   $('#pdims').innerHTML = (proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join('');
@@ -80,6 +89,7 @@ export async function startApp(api) {
       r.melamina && `Melamina: <b>${esc(r.melamina.nombre)}</b>`,
       r.tirador && `Tirador: <b>${esc(r.tirador.nombre)}</b>`,
       r.cubierta && `Cubierta: <b>${esc(r.cubierta.nombre)}</b>`,
+      r.borde && `Borde: <b>${esc(r.borde.nombre)}</b>`,
     ].filter(Boolean).join(' · ');
   }
   paintSelection();
@@ -216,6 +226,16 @@ export async function startApp(api) {
     if (openPinAt(e.clientX, e.clientY)) setPinMode(false);
   });
   cv.addEventListener('dblclick', (e) => { e.preventDefault(); openPinAt(e.clientX, e.clientY); });
+  // Clic simple sobre una cubierta (sin arrastrar y fuera del modo comentario): abre los bordes
+  cv.addEventListener('click', (e) => {
+    if (pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || !bordes.length) return;
+    const cara = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref$="|cubierta"]');
+    if (!cara) return;
+    document.querySelector('.ptabs [data-tab="cubierta"]')?.click();
+    const lista = $('#bordelist');
+    lista.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    lista.classList.remove('flash'); void lista.offsetWidth; lista.classList.add('flash');
+  });
   cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
   $('#pinpop [data-cancel]').addEventListener('click', closePinPop);
   $('#pinpop').addEventListener('submit', async (e) => {
@@ -409,6 +429,7 @@ export async function startApp(api) {
         <tr><th>Melamina</th><td>${esc(r.melamina?.nombre || '—')}</td></tr>
         <tr><th>Tirador</th><td>${esc(r.tirador?.nombre || '—')}</td></tr>
         <tr><th>Cubierta</th><td>${esc(r.cubierta?.nombre || '—')}</td></tr>
+        <tr><th>Borde</th><td>${esc(r.borde?.nombre || '—')}</td></tr>
         <tr><th>Total</th><td><b>${lastQuote ? clp(lastQuote.total) : '—'}</b></td></tr>
         <tr><th>Anticipo 50%</th><td>${lastQuote ? clp(lastQuote.anticipo) : '—'}</td></tr>
       </table>`;
@@ -436,6 +457,7 @@ async function notifyApproval(p, r, ap, mode) {
     `Melamina: ${r.melamina?.nombre || '—'}`,
     `Tirador: ${r.tirador?.nombre || '—'}`,
     `Cubierta: ${r.cubierta?.nombre || '—'}`,
+    `Borde de cubierta: ${r.borde?.nombre || '—'}`,
     `Total: ${clp(ap.total)}`,
     `Anticipo 50%: ${clp(ap.anticipo)}`,
   ].join('\n');

@@ -187,3 +187,11 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-plano .ref-marco { fill: none; stroke: #e8c9a8; stroke-dasharray: 6 4; stroke-width: 1; pointer-events: none; }
 #ref-panel { display: grid; gap: 8px; font-size: .8rem; }
 #ref-panel input[type="range"] { width: 100%; }
+
+.ed-plano .muro.oculto { fill: transparent; stroke: rgba(236, 231, 221, .35); stroke-dasharray: 5 4; }
+.ed-plano .muro.oculto.sel { stroke: var(--red-accent); }
+
+/* cocinas de referencia */
+.ed-plantillas { grid-template-columns: 1fr 1fr; }
+.ed-plantillas button { padding: 10px 6px; font-size: .78rem; cursor: pointer; }
+.ed-plantilla { display: grid; gap: 8px; padding: 10px; margin-bottom: 12px; border: 1px solid var(--line-2); border-radius: 10px; background: rgba(180, 50, 46, .06); }

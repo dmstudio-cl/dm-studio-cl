@@ -107,3 +107,11 @@
 .pperfil .check { display: flex; gap: 8px; align-items: flex-start; color: var(--muted); }
 .pperfil .check input { margin-top: 3px; }
 .ptab-dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--red-accent); vertical-align: middle; }
+
+/* Bordes de cubierta */
+.pbordes-tit { margin-top: 18px; }
+.opt-borde .borde-ico { display: grid; place-items: center; width: 44px; height: 26px; background: transparent !important; color: var(--bone); }
+.opt-borde .borde-ico svg { width: 44px; height: 18px; }
+.opt-borde img { width: 44px; height: 26px; object-fit: cover; border-radius: 4px; }
+.pbordes.flash { animation: pbordes-flash 1.2s ease-out; border-radius: 10px; }
+@keyframes pbordes-flash { 0%, 40% { box-shadow: 0 0 0 2px var(--red-accent); } 100% { box-shadow: 0 0 0 0 transparent; } }

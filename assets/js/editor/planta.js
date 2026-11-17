@@ -57,7 +57,7 @@ export function crearPlanta(ctx) {
       const o = [-w.n[0] * w.espesor, -w.n[1] * w.espesor]; // hacia afuera
       const pts = [w.a, w.b, [w.b[0] + o[0], w.b[1] + o[1]], [w.a[0] + o[0], w.a[1] + o[1]]];
       const esSel = sel?.tipo === 'muro' && sel.i === w.i;
-      el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `muro${esSel ? ' sel' : ''}`, 'data-tipo': 'muro', 'data-i': w.i }, plano);
+      el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `muro${esSel ? ' sel' : ''}${w.oculto ? ' oculto' : ''}`, 'data-tipo': 'muro', 'data-i': w.i }, plano);
     }
     // cotas de largo (por dentro) y etiquetas (por fuera), editables
     const cg = el('g', { class: 'cota' }, plano);

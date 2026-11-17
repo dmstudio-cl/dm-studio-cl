@@ -1,0 +1,19 @@
+# Bordes (cantos) de cubierta que el cliente puede elegir en el portal.
+# perfil: cómo se dibuja en el modelo y en el ícono → recto | redondeado | biselado | boleado | media-cana
+# imagen: opcional (foto o dibujo del borde, p. ej. /assets/img/bordes/boleado.webp). Si falta, se usa el ícono.
+# Lista de ejemplo: se reemplaza por los nombres reales del proveedor cuando lleguen.
+- id: recto
+  nombre: "Recto"
+  perfil: recto
+- id: redondeado
+  nombre: "Canto redondeado"
+  perfil: redondeado
+- id: biselado
+  nombre: "Biselado"
+  perfil: biselado
+- id: boleado
+  nombre: "Boleado (media luna)"
+  perfil: boleado
+- id: media-cana
+  nombre: "Media caña"
+  perfil: media-cana

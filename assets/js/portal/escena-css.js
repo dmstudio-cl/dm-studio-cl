@@ -22,7 +22,7 @@ export function createScene(el) {
   function mats(s) {
     const m = s.melamina;
     const frente = m ? (m.imagen && m.tipo !== 'unicolor' ? `url('${m.imagen}') center / 60em 60em, ${m.hex}` : m.hex) : '#cfc6b8';
-    return { frente, cuerpo: '#e9e6df', zocalo: '#3a3836', cubierta: s.cubierta?.color || '#cfc9bc' };
+    return { frente, cuerpo: '#e9e6df', zocalo: '#3a3836', cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto' };
   }
   function modelo(s) {
     return {
