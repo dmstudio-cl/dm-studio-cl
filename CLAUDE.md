@@ -20,7 +20,8 @@ Estudio de diseño y fabricación de mobiliario (madera y melamina) en Chile.
 
 ## Stack (inamovible)
 - Jekyll + GitHub Pages, Vanilla JS / ES Modules, sin paso de build obligatorio.
-- **Three.js** vía import map con versión fija (sin bundler). Todo el 3D del sitio usa Three.js; el prototipo CSS-3D antiguo (`d1ego-art/dm_studio.github.io/cotizador.html`) solo se usa como referencia del modelo de datos.
+- **3D en CSS** (decisión del 2026-11-17): el dueño eligió trabajar solo con CSS 3D por rendimiento en equipos sin aceleración gráfica. Motor propio en `assets/js/css3d/engine.js` (1 em = 1 cm, luz por cara, sin WebGL). La portada ya lo usa; el portal y la ficha de producto siguen en **Three.js** (import map, versión fija) hasta migrarlos.
+- **Anime.js** (import map, versión fija en `_config.yml`) para animaciones: cargador de la portada y giro con scroll.
 - **Decap CMS** en `/admin` con backend `github` y OAuth mediante el **Cloudflare Worker propio** del dueño.
 - **Web3Forms** (plan gratuito, envío desde el navegador) — una access key exclusiva para este sitio **[PENDIENTE: key y correo destino]**.
 - **Cloudflare Worker** (plan gratuito) + **D1** (SQLite) y **KV** para el portal privado. Sin R2.
@@ -96,6 +97,13 @@ anticipo      = 50% × precio_final
 - Las constantes (20 %, 2.3, 50 %) se configuran en el repo privado para poder ajustarlas sin tocar código.
 - Hay que derivar las **constantes por variable** para pasar de un cálculo manual a uno paramétrico: precio por m² o por plancha de melamina (por color o línea Masisa), metros lineales de tapacanto, unidades de bisagras, correderas y tiradores, m o m² de cubierta por tipo, y transporte por proyecto.
 - El modelo paramétrico (piezas a partir de módulos y medidas) produce una **lista de cortes y materiales**, y el costo sale de esa lista. Todo se configura en el repo privado; nunca en el frontend.
+
+## Editor de modelos y avisos al cliente (2026-11-17)
+- `/admin/editor/`: editor CSS 3D por capas (zócalo → cuerpo → frentes → tiradores → cubierta), vista Frente a escala con cotas editables en cm. Formato = `modulos` del portal + `tiradores` ubicados a mano (`assets/js/editor/modelo.js`).
+- Abre los proyectos del repo privado con la sesión de GitHub de Decap (`decap-cms-user`), muestra y responde los comentarios (Worker, `X-DM-Owner`) y **Publicar versión** hace un commit en el repo privado (versión +1; «cambios» → «propuesta»), registra un mensaje `tipo: version` en el chat y avisa al cliente.
+- Avisos (costo $0): **correo automático** desde el Gmail del estudio vía Apps Script (`dmstudio-worker/apps-script/correo.gs`; secretos del Worker `MAIL_URL` y `MAIL_SECRET`). **WhatsApp con un toque** (`wa.me` con el mensaje escrito); la API oficial de Meta se descartó por costo por mensaje y verificación.
+- Decap privado «plano»: la clave se genera sola (widget `clave`) y los módulos se dibujan en el editor.
+- Pendiente: que el portal del cliente dibuje con CSS 3D y respete los tiradores ubicados a mano (hoy los ubica solo).
 
 ## Three.js — buenas prácticas acordadas
 - 1 unidad = 1 cm. Muebles generados por código desde JSON (módulos → piezas), o `.glb` para proyectos no paramétricos.

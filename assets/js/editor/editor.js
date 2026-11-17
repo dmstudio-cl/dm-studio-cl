@@ -2,6 +2,7 @@
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE } from './modelo.js';
+import { iniciarProyectos, aModelo } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -22,6 +23,9 @@ let vista = '3d';          // '3d' | 'frente'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h'
 let zoom = 1;
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true };
+let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
+let pines = [];            // comentarios del cliente con posición en el modelo
+let pinFoco = null;
 const hist = [], fut = [];
 
 function ejemplo() {
@@ -42,7 +46,14 @@ function ejemplo() {
 function cargar() {
   try { const d = JSON.parse(localStorage.getItem(CLAVE)); return d?.modulos ? d : null; } catch (e) { return null; }
 }
-function guardar() { try { localStorage.setItem(CLAVE, JSON.stringify(modelo)); } catch (e) {} }
+// Borrador local: el modelo suelto, o uno por proyecto (ligado a la versión del repo que se abrió).
+const claveProy = (id) => `dm-editor:${id}`;
+function guardar() {
+  try {
+    if (proyActual) localStorage.setItem(claveProy(proyActual.id), JSON.stringify({ sha: proyActual.sha, modelo }));
+    else localStorage.setItem(CLAVE, JSON.stringify(modelo));
+  } catch (e) {}
+}
 
 const modulo = (id) => modelo.modulos.find((m) => m.id === id);
 const Zde = (m) => (m.tipo === 'aereo' ? 0 : (+m.zocalo || 0));
@@ -103,10 +114,22 @@ function selRef() {
 function render({ panel = true } = {}) {
   dibujar(st, modelo, { capas, mats: mats(), sel: selRef() });
   pisoGrilla();
+  dibujarPines();
   encuadrar(false);
   dibujarPlano();
   if (panel) { arbol(); props(); }
   $('#nombre').value = modelo.nombre || '';
+}
+
+// Pines de comentarios del cliente (posición 3D en cm, igual que en el portal)
+function dibujarPines() {
+  for (const p of pines) {
+    const d = document.createElement('div');
+    d.className = `c3-pin${pinFoco === p.n ? ' foco' : ''}`;
+    d.style.transform = `translate3d(${p.x}em, ${-p.y}em, ${p.z + 1}em)`;
+    d.innerHTML = `<span title="Comentario ${p.n}"><b>${p.n}</b></span>`;
+    st.rig.append(d);
+  }
 }
 
 // Piso con grilla de 10 cm en la vista 3D
@@ -765,6 +788,46 @@ window.addEventListener('keydown', (e) => {
 
 // Re-encuadrar al cambiar el tamaño de la ventana
 new ResizeObserver(() => { encuadrar(true); dibujarPlano(); }).observe(lienzo);
+
+// ===================== proyectos de clientes =====================
+// Pestañas del panel derecho
+$$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+  $$('.ed-tabs [data-tab]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  $('#tab-props').hidden = b.dataset.tab !== 'props';
+  $('#tab-coment').hidden = b.dataset.tab !== 'coment';
+}));
+
+iniciarProyectos({
+  modelo: () => modelo,
+  aviso,
+  // Abre un proyecto (raw del repo) o vuelve al modelo local (raw = null).
+  abrir(raw, info, { conservarVista = false } = {}) {
+    proyActual = info;
+    hist.length = 0; fut.length = 0; sel = null;
+    if (!raw) { modelo = cargar() || ejemplo(); pines = []; }
+    else {
+      modelo = aModelo(raw, uid);
+      if (!conservarVista) { // ¿quedó un borrador sin publicar sobre esta misma versión?
+        let b = null; try { b = JSON.parse(localStorage.getItem(claveProy(info.id))); } catch (e) {}
+        if (b?.sha === info.sha && b.modelo && JSON.stringify(b.modelo.modulos) !== JSON.stringify(modelo.modulos)
+          && confirm('Tienes cambios sin publicar en este proyecto. ¿Recuperarlos?')) modelo = b.modelo;
+      }
+      if (modelo.modulos.some((m) => +m.rotacion)) aviso('Ojo: hay módulos girados (muro izquierdo); el editor los muestra sin girar.');
+    }
+    if (!modelo.frente) modelo.frente = MEL[0]?.id || '';
+    modelo.modulos.forEach(normalizar);
+    selMel.value = modelo.frente || '';
+    guardar(); render();
+    if (!conservarVista) { zoom = 1; encuadrar(true); dibujarPlano(); }
+    if (raw && modelo.modulos.length === 0) { setVista('frente'); setHerr('dibujar'); aviso('Proyecto vacío: dibuja el primer módulo arrastrando.'); }
+  },
+  pines(lista) { pines = lista; render({ panel: false }); },
+  enfocarPin(p) {
+    setVista('3d');
+    pinFoco = p.n; render({ panel: false });
+    setTimeout(() => { pinFoco = null; }, 2000);
+  },
+});
 
 modelo.modulos.forEach(normalizar);
 setHerr('sel');

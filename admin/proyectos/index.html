@@ -1,3 +1,7 @@
+---
+layout: null
+sitemap: false
+---
 <!doctype html>
 <html lang="es">
 <head>
@@ -12,5 +16,26 @@
        no contienen datos sensibles: los datos viven en el repo privado y solo se ven
        después de iniciar sesión con una cuenta de GitHub con acceso a ese repo. -->
   <script src="https://unpkg.com/decap-cms@3.3.3/dist/decap-cms.js"></script>
+  <script>
+    // Clave de acceso: se genera sola al crear un proyecto (DM-XXXX-XXXX, sin O/0 ni I/1).
+    function nuevaClave() {
+      var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint32Array(8)), s = '';
+      for (var i = 0; i < 8; i++) s += abc[r[i] % abc.length];
+      return 'DM-' + s.slice(0, 4) + '-' + s.slice(4);
+    }
+    var Clave = createClass({
+      componentDidMount: function () { if (!this.props.value) this.props.onChange(nuevaClave()); },
+      render: function () {
+        var p = this.props;
+        return h('div', { style: { display: 'flex', gap: '8px', alignItems: 'stretch' } },
+          h('input', { id: p.forID, className: p.classNameWrapper, value: p.value || '', spellCheck: false, style: { flex: 1, fontFamily: 'monospace' },
+            onChange: function (e) { p.onChange(e.target.value.toUpperCase()); } }),
+          h('button', { type: 'button', onClick: function () { p.onChange(nuevaClave()); },
+            style: { padding: '0 16px', border: '1px solid #cfd2d6', borderRadius: '5px', background: '#fff', cursor: 'pointer' } }, 'Generar'));
+      },
+    });
+    CMS.registerWidget('clave', Clave);
+  </script>
+  {% include admin-accesos.html %}
 </body>
 </html>

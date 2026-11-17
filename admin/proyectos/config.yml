@@ -29,12 +29,12 @@ collections:
     summary: "{{cliente.nombre}} · {{titulo}} · {{estado}}"
     sortable_fields: [titulo, estado]
     fields:
-      - { label: Título del proyecto, name: titulo, widget: string, hint: "Ej: Cocina departamento Ñuñoa" }
+      - { label: Título del proyecto, name: titulo, widget: string, hint: "Ej: Cocina departamento Ñuñoa. Después de guardar, ábrelo en el Editor de modelos (/admin/editor/) para dibujar el mueble." }
       - label: Clave de acceso
         name: access_key
-        widget: string
+        widget: clave
         pattern: ['^DM-[A-Z0-9]{4}-[A-Z0-9]{4}$', "Formato DM-XXXX-XXXX (mayúsculas y números)"]
-        hint: "Única por cliente. Evita O/0 e I/1. Para revocar el acceso, cambia la clave o marca el proyecto como Archivado."
+        hint: "Se genera sola al crear el proyecto (botón Generar para otra). Para revocar el acceso, genera una nueva o marca el proyecto como Archivado."
       - label: Estado
         name: estado
         widget: select
@@ -54,8 +54,8 @@ collections:
         widget: object
         fields:
           - { label: Nombre, name: nombre, widget: string }
-          - { label: Email, name: email, widget: string, required: false }
-          - { label: Teléfono, name: telefono, widget: string, required: false }
+          - { label: Email, name: email, widget: string, required: false, hint: "Recibe automáticamente un correo cuando publicas una versión o le respondes." }
+          - { label: "WhatsApp (ej. 56912345678)", name: telefono, widget: string, required: false, hint: "Con número, el editor te abre WhatsApp con el aviso ya escrito para enviarlo con un toque." }
           - { label: Comuna, name: comuna, widget: string, required: false }
 
       - label: Tipo de modelo
@@ -67,19 +67,22 @@ collections:
           - { label: "Modelo 3D (.glb)", value: glb }
       - { label: Modelo 3D (.glb), name: modelo, widget: file, required: false, hint: "Solo si el tipo es 'Modelo 3D'." }
 
-      - label: Módulos (estructura, la define DM Studio)
+      - label: Módulos (se dibujan en el Editor de modelos)
         name: modulos
         widget: list
         required: false
+        collapsed: true
         summary: "{{fields.nombre}} · {{fields.ancho}}×{{fields.profundidad}}×{{fields.alto}} cm"
-        hint: "Cada módulo es una caja. Medidas en cm. Posición respecto a la esquina del espacio."
+        hint: "Lo normal es dibujarlos en /admin/editor/ y publicarlos desde ahí. Aquí puedes revisarlos o corregir un número."
         fields:
+          - { label: ID (lo asigna el editor), name: id, widget: string, required: false }
           - { label: Nombre, name: nombre, widget: string, hint: "Ej: Mueble A, Aéreo sobre encimera" }
           - { label: Tipo, name: tipo, widget: select, default: base, options: [base, aereo, torre, isla] }
           - { label: Ancho, name: ancho, widget: number, value_type: float }
           - { label: Alto, name: alto, widget: number, value_type: float }
           - { label: Profundidad, name: profundidad, widget: number, value_type: float }
           - { label: Zócalo, name: zocalo, widget: number, value_type: float, default: 10 }
+          - { label: Retiro del zócalo, name: zocalo_retiro, widget: number, value_type: float, default: 5, required: false }
           - { label: Altura desde el piso, name: elevacion, widget: number, value_type: float, default: 0, hint: "Para muebles aéreos" }
           - { label: "Posición X (a lo largo del muro)", name: x, widget: number, value_type: float, default: 0 }
           - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
@@ -99,6 +102,21 @@ collections:
                   - { label: Tipo, name: tipo, widget: select, options: [puerta, puerta_doble, cajon, panel, abierto, campana] }
                   - { label: Alto, name: alto, widget: number, value_type: float }
                   - { label: Bisagra, name: bisagra, widget: select, default: izquierda, options: [izquierda, derecha, arriba, abajo], required: false }
+          - label: Tiradores (ubicados en el editor)
+            name: tiradores
+            widget: list
+            required: false
+            collapsed: true
+            summary: "{{fields.modelo}} · columna {{fields.col}} fila {{fields.fila}}"
+            fields:
+              - { label: ID, name: id, widget: string, required: false }
+              - { label: Modelo, name: modelo, widget: select, options: [barra-96, barra-128, barra-192, barra-320, boton, canto, perfil, concha] }
+              - { label: Color, name: color, widget: select, default: negro, options: [negro, acero, dorado, blanco] }
+              - { label: Columna (desde 0), name: col, widget: number, value_type: int }
+              - { label: Fila (desde 0), name: fila, widget: number, value_type: int }
+              - { label: Desde el centro → (cm), name: dx, widget: number, value_type: float, default: 0 }
+              - { label: Desde el centro ↑ (cm), name: dy, widget: number, value_type: float, default: 0 }
+              - { label: Giro (°), name: rot, widget: number, value_type: float, default: 0 }
 
       - label: Opciones visibles para el cliente
         name: opciones

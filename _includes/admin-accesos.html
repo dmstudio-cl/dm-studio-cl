@@ -1,0 +1,21 @@
+<!-- Accesos rápidos entre las herramientas del estudio (abajo a la izquierda, sobre Decap). -->
+<nav class="dm-accesos" aria-label="Herramientas del estudio">
+  <a href="{{ '/admin/' | relative_url }}">Sitio</a>
+  <a href="{{ '/admin/proyectos/' | relative_url }}">Proyectos de clientes</a>
+  <a href="{{ '/admin/editor/' | relative_url }}">Editor de modelos</a>
+</nav>
+<style>
+  .dm-accesos { position: fixed; left: 12px; bottom: 12px; z-index: 9999; display: flex; gap: 4px; padding: 4px; border-radius: 999px;
+    background: #0b0b0d; box-shadow: 0 6px 24px rgba(0,0,0,.25); font: 500 12px/1 system-ui, sans-serif; }
+  .dm-accesos a { color: #ece7dd; text-decoration: none; padding: 8px 12px; border-radius: 999px; }
+  .dm-accesos a:hover { background: #5a0101; }
+</style>
+<script>
+  // Marca la herramienta actual
+  (function () {
+    var aqui = location.pathname.replace(/\/+$/, '/');
+    document.querySelectorAll('.dm-accesos a').forEach(function (a) {
+      if (new URL(a.href).pathname === aqui) { a.style.background = '#5a0101'; a.setAttribute('aria-current', 'page'); }
+    });
+  })();
+</script>

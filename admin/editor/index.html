@@ -23,6 +23,7 @@ permalink: /admin/editor/
   <a class="ed-marca" href="{{ '/admin/' | relative_url }}" title="Volver al administrador">
     <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="" width="28" height="28"><span>Editor de modelos</span>
   </a>
+  <button class="ed-proy" id="btn-proyecto" title="Abrir un proyecto de cliente">Modelo local ▾</button>
   <input class="ed-nombre" id="nombre" aria-label="Nombre del modelo" spellcheck="false">
   <div class="ed-grupo" role="group" aria-label="Vista">
     <button data-vista="3d" aria-pressed="true" title="Vista 3D (1)">3D</button>
@@ -41,6 +42,7 @@ permalink: /admin/editor/
     <button data-acc="nuevo" title="Empezar un modelo vacío">Nuevo</button>
     <button data-acc="importar" title="Abrir un modelo .json">Abrir</button>
     <button data-acc="exportar" title="Descargar el modelo como .json">Guardar .json</button>
+    <button id="btn-publicar" class="ed-primario" hidden title="Guardar en el proyecto como nueva versión y avisar al cliente">Publicar versión</button>
     <input type="file" id="archivo" accept=".json,application/json" hidden>
   </div>
 </header>
@@ -76,15 +78,36 @@ permalink: /admin/editor/
   </section>
 
   <aside class="ed-panel ed-der">
-    <section>
-      <h2>Propiedades</h2>
+    <div class="ed-tabs" role="tablist">
+      <button data-tab="props" aria-pressed="true">Propiedades</button>
+      <button data-tab="coment" id="tab-btn-coment" aria-pressed="false" hidden>Comentarios <b id="n-coment"></b></button>
+    </div>
+    <section id="tab-props">
       <div id="props"></div>
+    </section>
+    <section id="tab-coment" hidden>
+      <ul class="ed-coment" id="coment-lista"></ul>
+      <form id="coment-form" class="ed-form">
+        <textarea id="coment-texto" rows="3" placeholder="Responde al cliente…" required></textarea>
+        <label class="ed-check"><input type="checkbox" id="coment-avisar" checked> Avisar al cliente por correo</label>
+        <button type="submit" class="ed-primario">Enviar respuesta</button>
+        <div id="coment-resultado"></div>
+      </form>
     </section>
   </aside>
 </main>
 
+<dialog class="ed-dlg" id="dlg-proyectos">
+  <div class="ed-dlg-cab"><h2>Proyectos de clientes</h2><button data-cerrar aria-label="Cerrar">✕</button></div>
+  <div class="ed-dlg-cuerpo"></div>
+</dialog>
+<dialog class="ed-dlg" id="dlg-publicar">
+  <div class="ed-dlg-cab"><h2>Publicar versión</h2><button data-cerrar aria-label="Cerrar">✕</button></div>
+  <div class="ed-dlg-cuerpo"></div>
+</dialog>
+
 <script>
-  window.DM = { base: "{{ site.baseurl }}" };
+  window.DM = { base: "{{ site.baseurl }}", worker: "{{ site.data.sitio.worker_url }}" };
   window.MELAMINAS = {{ site.data.melaminas | jsonify }};
 </script>
 <script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>

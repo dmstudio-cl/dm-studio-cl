@@ -1,0 +1,240 @@
+// Proyectos de clientes en el editor: abrir desde el repo privado, ver y responder comentarios,
+// y "Publicar versión" (commit en el repo + registro en el chat + aviso al cliente).
+//
+// Acceso: usa tu sesión de GitHub de Decap (localStorage "decap-cms-user", la misma de
+// /admin/proyectos/). El Worker la verifica para los comentarios; GitHub, para leer y guardar.
+// No se guarda ningún token nuevo.
+
+const REPO = 'dmstudio-cl/proyectos-clientes';
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (s, r = document) => r.querySelector(s);
+
+export const tokenGitHub = () => { try { return JSON.parse(localStorage.getItem('decap-cms-user') || 'null')?.token || null; } catch { return null; } };
+
+// ----- GitHub (repo privado) -----
+async function gh(path, opts = {}) {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/${path}`, {
+    cache: 'no-store', ...opts,
+    headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${tokenGitHub()}`, 'X-GitHub-Api-Version': '2022-11-28', ...(opts.headers || {}) },
+  });
+  if (res.status === 401) throw new Error('Tu sesión de GitHub expiró. Vuelve a entrar en «Proyectos de clientes».');
+  if (res.status === 409) throw new Error('El proyecto cambió mientras lo guardabas. Vuelve a intentarlo.');
+  if (!res.ok) throw new Error(`GitHub respondió ${res.status}: ${(await res.json().catch(() => ({}))).message || ''}`);
+  return res.json();
+}
+const b64dec = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+const b64enc = (s) => { let bin = ''; new TextEncoder().encode(s).forEach((b) => { bin += String.fromCharCode(b); }); return btoa(bin); };
+
+export async function leerProyecto(id) {
+  const f = await gh(`contents/proyectos/${encodeURIComponent(id)}.json?ref=main`);
+  return { raw: JSON.parse(b64dec(f.content)), sha: f.sha };
+}
+async function escribirProyecto(id, raw, sha, mensaje) {
+  const r = await gh(`contents/proyectos/${encodeURIComponent(id)}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ message: mensaje, content: b64enc(JSON.stringify(raw, null, 2) + '\n'), sha, branch: 'main' }),
+  });
+  return { sha: r.content.sha, commit: r.commit.sha.slice(0, 7) };
+}
+
+// ----- Worker (comentarios) -----
+async function api(path, { method = 'GET', body, p, params = {} } = {}) {
+  const base = (window.DM.worker || '').replace(/\/$/, '');
+  if (!base) throw new Error('Falta la URL del Worker en Ajustes del sitio.');
+  const u = new URL(`${base}/api/portal/${path}`);
+  if (p) u.searchParams.set('p', p);
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  const res = await fetch(u, { method, headers: { 'Content-Type': 'application/json', 'X-DM-Owner': tokenGitHub() }, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Error ${res.status}`);
+  return res.json();
+}
+
+// ----- avisos -----
+const portalUrl = () => new URL(`${window.DM.base}/proyectos/`, location.origin).href;
+export function linkWhatsApp(cliente, texto) {
+  let n = String(cliente?.telefono || '').replace(/\D/g, '');
+  if (!n) return null;
+  if (n.length === 9 && n.startsWith('9')) n = '56' + n; // celular chileno sin código de país
+  return `https://wa.me/${n}?text=${encodeURIComponent(texto)}`;
+}
+const textoAviso = { enviado: 'Correo enviado al cliente.', 'sin-correo': 'El proyecto no tiene email del cliente: no se envió correo.', 'sin-configurar': 'El correo automático aún no está configurado en el Worker.', error: 'No se pudo enviar el correo (revisa el Apps Script).' };
+
+// Convierte el proyecto del repo al modelo del editor (y viceversa al publicar).
+export function aModelo(raw, uid) {
+  return {
+    nombre: raw.titulo || 'Proyecto',
+    frente: raw.opciones?.melamina_inicial || '',
+    modulos: (raw.modulos || []).map((m) => ({
+      ...m, id: m.id || uid(), tiradores: (m.tiradores || []).map((t) => ({ ...t, id: t.id || uid('t') })),
+      zocalo_retiro: m.zocalo_retiro ?? 5, x: +m.x || 0, elevacion: +m.elevacion || 0, z: +m.z || 0,
+    })),
+  };
+}
+
+/**
+ * Conecta la interfaz de proyectos con el editor.
+ * ed: { modelo(): modelo actual, abrir(modelo, info), aviso(texto), pines(lista), enfocarPin(pin) }
+ */
+export function iniciarProyectos(ed) {
+  let info = null;      // { id, sha, raw }
+  let mensajes = [];
+  let sondeo = 0;
+  const btnProy = $('#btn-proyecto'), btnPub = $('#btn-publicar');
+  const dlgP = $('#dlg-proyectos'), dlgV = $('#dlg-publicar');
+
+  function pintarBarra() {
+    btnProy.textContent = info ? `${info.raw.titulo} · v${info.raw.version || 1}` : 'Modelo local ▾';
+    btnProy.title = info ? `${info.raw.cliente?.nombre || ''} · ${info.raw.estado || ''}` : 'Abrir un proyecto de cliente';
+    btnPub.hidden = !info;
+    $('#tab-btn-coment').hidden = !info;
+  }
+
+  // --- elegir proyecto
+  btnProy.addEventListener('click', async () => {
+    const cuerpo = $('.ed-dlg-cuerpo', dlgP);
+    dlgP.showModal();
+    if (!tokenGitHub()) {
+      cuerpo.innerHTML = `<p>Para abrir proyectos de clientes, primero entra en <a href="${window.DM.base}/admin/proyectos/">Proyectos de clientes</a> con tu cuenta de GitHub y vuelve aquí.</p>`;
+      return;
+    }
+    cuerpo.innerHTML = '<p class="ed-ayuda">Cargando proyectos…</p>';
+    try {
+      const { proyectos } = await api('admin/proyectos');
+      cuerpo.innerHTML = `<div class="ed-lista">${proyectos.map((p) => `
+        <button data-id="${esc(p.id)}"><b>${esc(p.titulo)}</b><small>${esc(p.cliente)} · ${esc(p.estado)} · v${p.version}</small>${p.pendientes ? `<i>${p.pendientes}</i>` : ''}</button>`).join('') || '<p class="ed-ayuda">No hay proyectos. Créalos en «Proyectos de clientes».</p>'}</div>
+        ${info ? '<p><button data-local>Volver al modelo local</button></p>' : ''}`;
+    } catch (e) { cuerpo.innerHTML = `<p class="ed-error">${esc(e.message)}</p>`; }
+  });
+  dlgP.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-cerrar]')) return dlgP.close();
+    if (e.target.closest('[data-local]')) { info = null; mensajes = []; clearInterval(sondeo); ed.abrir(null, null); pintarBarra(); pintarComentarios(); return dlgP.close(); }
+    const b = e.target.closest('[data-id]'); if (!b) return;
+    b.disabled = true;
+    try { await abrir(b.dataset.id); dlgP.close(); } catch (err) { ed.aviso(err.message); b.disabled = false; }
+  });
+
+  async function abrir(id) {
+    const { raw, sha } = await leerProyecto(id);
+    info = { id, sha, raw };
+    ed.abrir(raw, info);
+    pintarBarra();
+    await cargarComentarios();
+    clearInterval(sondeo);
+    sondeo = setInterval(() => { if (!document.hidden) cargarComentarios().catch(() => {}); }, 30000);
+  }
+
+  // --- comentarios
+  async function cargarComentarios() {
+    if (!info) return;
+    const r = await api('mensajes', { p: info.id });
+    mensajes = r.mensajes || [];
+    pintarComentarios();
+  }
+  const nPin = (m) => mensajes.filter((x) => x.tipo === 'pin').indexOf(m) + 1;
+  function pintarComentarios() {
+    const lista = $('#coment-lista');
+    ed.pines(mensajes.filter((m) => m.tipo === 'pin' && m.pin && !m.resuelto).map((m) => ({ ...m.pin, n: nPin(m), id: m.id })));
+    // pendientes: mensajes del cliente después de la última respuesta del estudio
+    const ult = mensajes.reduce((a, m) => (m.autor === 'estudio' ? m.creado : a), 0);
+    const pend = mensajes.filter((m) => m.autor === 'cliente' && m.creado > ult && m.tipo !== 'aprobacion').length;
+    $('#n-coment').textContent = pend || '';
+    if (!info) { lista.innerHTML = ''; return; }
+    const fecha = (t) => new Date(t).toLocaleString('es-CL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    const etiqueta = (m) => ({ pin: `📍 ${nPin(m)}`, cambios: 'Cambios solicitados', version: 'Versión publicada', aprobacion: '✓ Aprobado' }[m.tipo] || '');
+    lista.innerHTML = mensajes.map((m) => `
+      <li class="ed-msg ${m.autor === 'estudio' ? 'yo' : ''} t-${m.tipo}${m.resuelto ? ' resuelto' : ''}" data-id="${m.id}">
+        <div class="cab"><b>${m.autor === 'estudio' ? 'DM Studio' : esc(info.raw.cliente?.nombre || 'Cliente')}</b><span>${fecha(m.creado)}</span></div>
+        ${etiqueta(m) ? `<span class="etq">${etiqueta(m)}</span>` : ''}
+        <p>${esc(m.texto)}</p>
+        <div class="acc">
+          ${m.tipo === 'pin' && m.pin ? '<button data-ver>Ver en el modelo</button>' : ''}
+          ${m.tipo === 'pin' && !m.resuelto ? '<button data-resolver>Marcar resuelto</button>' : ''}
+          ${m.autor === 'cliente' ? '<button data-citar>Responder</button>' : ''}
+        </div>
+      </li>`).join('') || '<li class="ed-ayuda">Sin comentarios todavía.</li>';
+    lista.scrollTop = lista.scrollHeight;
+  }
+  $('#coment-lista').addEventListener('click', async (e) => {
+    const li = e.target.closest('[data-id]'); if (!li) return;
+    const m = mensajes.find((x) => x.id === +li.dataset.id);
+    if (e.target.closest('[data-ver]')) ed.enfocarPin({ ...m.pin, n: nPin(m) });
+    if (e.target.closest('[data-citar]')) {
+      const ta = $('#coment-texto');
+      ta.value = `${m.tipo === 'pin' ? `Sobre el 📍 ${nPin(m)}: ` : ''}${ta.value}`;
+      ta.focus();
+    }
+    if (e.target.closest('[data-resolver]')) {
+      try { await api('mensajes', { method: 'PATCH', p: info.id, body: { id: m.id } }); await cargarComentarios(); } catch (err) { ed.aviso(err.message); }
+    }
+  });
+  $('#coment-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const ta = $('#coment-texto'), texto = ta.value.trim(); if (!texto || !info) return;
+    const avisar = $('#coment-avisar').checked;
+    const btn = e.submitter; btn.disabled = true;
+    try {
+      const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto, tipo: 'chat', avisar } });
+      ta.value = '';
+      await cargarComentarios();
+      resultado($('#coment-resultado'), r.aviso, `Hola ${(info.raw.cliente?.nombre || '').split(' ')[0]}, te respondí en tu proyecto «${info.raw.titulo}»: ${texto}\n\nRevísalo aquí: ${portalUrl()}`);
+    } catch (err) { $('#coment-resultado').innerHTML = `<p class="ed-error">${esc(err.message)}</p>`; }
+    btn.disabled = false;
+  });
+
+  // Muestra el resultado del aviso por correo y, si hay número, el botón de WhatsApp (un toque).
+  function resultado(el, aviso, textoWa) {
+    const wa = linkWhatsApp(info.raw.cliente, textoWa);
+    el.innerHTML = `${aviso ? `<p class="ed-ayuda">${esc(textoAviso[aviso] || '')}</p>` : '<p class="ed-ayuda">Guardado sin aviso por correo.</p>'}
+      ${wa ? `<a class="ed-wa" href="${wa}" target="_blank" rel="noopener">Avisar por WhatsApp</a>` : '<p class="ed-ayuda">Sin número de WhatsApp en el proyecto.</p>'}`;
+  }
+
+  // --- publicar versión (como un commit)
+  btnPub.addEventListener('click', () => {
+    if (!info) return;
+    const v = (+info.raw.version || 1) + 1;
+    $('.ed-dlg-cuerpo', dlgV).innerHTML = `
+      <form id="form-version" class="ed-form">
+        <p class="ed-ayuda">Se guarda el modelo en el proyecto <b>${esc(info.raw.titulo)}</b> como <b>versión ${v}</b>, queda registrado en su chat y se le avisa.</p>
+        <label class="ed-campo">¿Qué cambió?<textarea id="v-msg" rows="3" required placeholder="Ej: Agrandé el cajón superior a 22 cm y moví los tiradores al centro."></textarea></label>
+        <label class="ed-check"><input type="checkbox" id="v-avisar" checked> Avisar por correo${info.raw.cliente?.email ? ` a ${esc(info.raw.cliente.email)}` : ' (el proyecto no tiene email)'}</label>
+        <div class="ed-botones"><button type="submit" class="ed-primario">Publicar versión ${v}</button><button type="button" data-cerrar>Cancelar</button></div>
+        <div id="v-resultado"></div>
+      </form>`;
+    dlgV.showModal();
+    $('#v-msg').focus();
+  });
+  dlgV.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) dlgV.close(); });
+  dlgV.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = $('#v-msg').value.trim(); if (!msg) return;
+    const btn = e.submitter; btn.disabled = true; btn.textContent = 'Publicando…';
+    const out = $('#v-resultado');
+    try {
+      // 1) Se lee la última versión del repo (por si se editó en Decap) y se reemplaza solo lo del editor.
+      const { raw, sha } = await leerProyecto(info.id);
+      const modelo = ed.modelo();
+      const v = (+raw.version || 1) + 1;
+      raw.modulos = modelo.modulos;
+      raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };
+      raw.version = v;
+      if (raw.estado === 'cambios') raw.estado = 'propuesta'; // respondiste a los cambios pedidos: vuelve a ser propuesta
+      const { sha: nuevo, commit } = await escribirProyecto(info.id, raw, sha, `Proyecto: «${info.id}» versión ${v} · ${msg}`.slice(0, 200));
+      info = { ...info, raw, sha: nuevo };
+      ed.abrir(raw, info, { conservarVista: true });
+      pintarBarra();
+      // 2) Registro en el chat del proyecto + aviso por correo (lo envía el Worker)
+      const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto: `Versión ${v}: ${msg}`, tipo: 'version', avisar: $('#v-avisar').checked } });
+      await cargarComentarios();
+      btn.textContent = `Versión ${v} publicada`;
+      out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}).${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
+      const div = document.createElement('div'); out.append(div);
+      resultado(div, r.aviso, `Hola ${(raw.cliente?.nombre || '').split(' ')[0]}, publiqué la versión ${v} de tu proyecto «${raw.titulo}»: ${msg}\n\nRevísala aquí: ${portalUrl()}`);
+    } catch (err) {
+      out.innerHTML = `<p class="ed-error">${esc(err.message)}</p>`;
+      btn.disabled = false; btn.textContent = 'Reintentar';
+    }
+  });
+
+  pintarBarra();
+  return { get info() { return info; }, abrir };
+}
