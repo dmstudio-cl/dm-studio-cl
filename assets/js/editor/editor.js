@@ -3,6 +3,7 @@
 import { createStage } from '../css3d/engine.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro } from './modelo.js';
 import { crearPlanta } from './planta.js';
+import { crearReferencias } from './referencia.js';
 import { iniciarProyectos, aModelo } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -219,6 +220,7 @@ function dibujarPlano() {
   for (let x = xa; x <= xb; x += 10) el('line', { x1: M.X(x), y1: 0, x2: M.X(x), y2: M.Hp, class: x % 50 === 0 ? 'g50' : null }, g);
   for (let y = ya; y <= yb; y += 10) el('line', { x1: 0, y1: M.Y(y), x2: M.Wp, y2: M.Y(y), class: y % 50 === 0 ? 'g50' : null }, g);
   el('line', { x1: 0, y1: M.Y(0), x2: M.Wp, y2: M.Y(0), class: 'piso' }, plano);
+  referencias.pintar(plano, M, 'frente'); // foto o plano del cliente, a escala
 
   for (const m of modulosFrente()) {
     const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
@@ -773,6 +775,7 @@ function setVista(v) {
   else { st.lock(false); st.limits(-70, 0); st.ortho(false); st.set(-24, -30); if (herr !== 'sel') setHerr('sel'); }
   render({ panel: false });
   encuadrar(true); dibujarPlano();
+  referencias.pintarPanel();
   estadoEl.textContent = ayuda();
 }
 function setHerr(h) {
@@ -890,10 +893,29 @@ $$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
   $('#tab-coment').hidden = b.dataset.tab !== 'coment';
 }));
 
+// Imagen de referencia por vista (se guarda solo en este navegador)
+const referencias = crearReferencias({
+  vista: () => vista,
+  clave: () => (proyActual ? proyActual.id : 'local'),
+  render, aviso,
+  moduloSel: () => (sel && sel.tipo !== 'muro' ? modulo(sel.m) : null),
+  // Aplica la propuesta de divisiones al módulo seleccionado, o crea uno nuevo sobre la imagen
+  aplicarPropuesta(p, ref) {
+    const m0 = sel && sel.tipo !== 'muro' ? modulo(sel.m) : null;
+    cambiar((d) => {
+      const m = m0 || nuevoModulo({ x: ref.x0, elevacion: ref.y0, ancho: p.ancho, alto: p.alto });
+      m.ancho = p.ancho; m.alto = p.alto; m.zocalo = m.tipo === 'aereo' ? 0 : p.zocalo;
+      m.columnas = p.columnas; m.tiradores = [];
+      if (!m0) { m.nombre = 'Desde imagen'; d.modulos.push(m); sel = { tipo: 'modulo', m: m.id }; }
+    });
+  },
+});
+
 const planta = crearPlanta({
   modelo: () => modelo, sel: () => sel, setSel: (s) => { sel = s; },
   cambiar, registrar, render, aviso, herr: () => herr, setHerr, vista: () => vista,
   escala: () => ({ s: st.scale, c: st.center, Wp: lienzo.clientWidth, Hp: lienzo.clientHeight }),
+  fondo: (svg, M) => referencias.pintar(svg, M, 'planta'),
   estado: (t) => { estadoEl.textContent = `${ayuda()}   ·   ${t}`; },
   plano, lienzo,
 });
@@ -903,7 +925,9 @@ iniciarProyectos({
   aviso,
   // Abre un proyecto (raw del repo) o vuelve al modelo local (raw = null).
   abrir(raw, info, { conservarVista = false } = {}) {
+    const cambioDeProyecto = (proyActual?.id || null) !== (info?.id || null);
     proyActual = info;
+    if (cambioDeProyecto) referencias.cargar(); // cada proyecto tiene sus propias imágenes de referencia
     hist.length = 0; fut.length = 0; sel = null;
     if (!raw) { modelo = cargar() || ejemplo(); pines = []; }
     else {
@@ -933,4 +957,5 @@ iniciarProyectos({
 modelo.modulos.forEach(normalizar);
 setHerr('sel');
 render();
-window.editor = { get modelo() { return modelo; }, st, setVista, setHerr, render }; // para depurar en la consola
+referencias.cargar();
+window.editor = { get modelo() { return modelo; }, st, setVista, setHerr, render, referencias }; // para depurar en la consola

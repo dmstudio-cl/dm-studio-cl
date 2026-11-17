@@ -49,6 +49,7 @@ export function crearPlanta(ctx) {
     const xa = Math.floor(M.x(0) / 10) * 10, xb = M.x(M.Wp), za = Math.floor(M.z(0) / 10) * 10, zb = M.z(M.Hp);
     for (let x = xa; x <= xb; x += 10) el('line', { x1: M.X(x), y1: 0, x2: M.X(x), y2: M.Hp, class: x % 50 === 0 ? 'g50' : null }, g);
     for (let z = za; z <= zb; z += 10) el('line', { x1: 0, y1: M.Y(z), x2: M.Wp, y2: M.Y(z), class: z % 50 === 0 ? 'g50' : null }, g);
+    ctx.fondo?.(plano, M); // imagen de referencia (plano del cliente), debajo de los muros
 
     // muros
     const W = muros(esp);

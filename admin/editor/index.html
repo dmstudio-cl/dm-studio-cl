@@ -64,6 +64,11 @@ permalink: /admin/editor/
       <div class="ed-arbol" id="arbol"></div>
     </section>
     <section>
+      <h2>Imagen de referencia</h2>
+      <div id="ref-panel"></div>
+      <input type="file" id="ref-archivo" accept="image/*,application/pdf" hidden>
+    </section>
+    <section>
       <h2>Tiradores</h2>
       <p class="ed-ayuda">Arrastra uno sobre un frente. Luego muévelo o gíralo.</p>
       <div class="ed-biblio" id="biblio"></div>
@@ -104,6 +109,19 @@ permalink: /admin/editor/
 <dialog class="ed-dlg" id="dlg-proyectos">
   <div class="ed-dlg-cab"><h2>Proyectos de clientes</h2><button data-cerrar aria-label="Cerrar">✕</button></div>
   <div class="ed-dlg-cuerpo"></div>
+</dialog>
+<dialog class="ed-dlg ed-dlg-ancho" id="dlg-ref">
+  <div class="ed-dlg-cab"><h2>Calibrar imagen</h2><button id="ref-cancelar" aria-label="Cerrar">✕</button></div>
+  <div class="ed-dlg-cuerpo">
+    <p class="ed-ayuda" id="ref-paso"></p>
+    <label class="ed-campo" id="ref-pagina-caja" hidden>Página del PDF<select id="ref-pagina"></select></label>
+    <div class="ref-lienzo-caja"><canvas id="ref-lienzo"></canvas></div>
+    <div class="ed-campos ref-medidas">
+      <label class="ed-campo">Ancho (cm)<input type="number" id="ref-ancho" step="0.5" min="1" placeholder="Ej: 210"></label>
+      <label class="ed-campo"><span id="ref-titulo-alto">Alto (cm)</span><input type="number" id="ref-alto" step="0.5" min="1" placeholder="Ej: 95"></label>
+    </div>
+    <div class="ed-botones"><button id="ref-usar" class="ed-primario">Usar</button><button id="ref-reiniciar">Marcar de nuevo</button></div>
+  </div>
 </dialog>
 <dialog class="ed-dlg" id="dlg-publicar">
   <div class="ed-dlg-cab"><h2>Publicar versión</h2><button data-cerrar aria-label="Cerrar">✕</button></div>
