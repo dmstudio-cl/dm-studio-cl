@@ -25,6 +25,7 @@ collections:
     extension: json
     format: json
     create: true
+    identifier_field: titulo   # el nombre del archivo sale del título (sin esto Decap usaba todo el contenido, incluida la clave)
     slug: "{{year}}-{{slug}}"
     summary: "{{cliente.nombre}} · {{titulo}} · {{estado}}"
     sortable_fields: [titulo, estado]
