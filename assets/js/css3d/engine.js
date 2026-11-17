@@ -16,6 +16,7 @@ const STYLE = `
 .c3-f { backface-visibility: hidden; -webkit-backface-visibility: hidden; background-repeat: repeat; box-shadow: inset 0 0 0 .08em rgba(255,236,214,.13); /* canto levemente iluminado, como el borde redondeado */ }
 .c3-f > i { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 .c3-floor { backface-visibility: hidden; border-radius: 50%; }
+.c3-g > * { left: 0; top: 0; transform-origin: 0 0; } /* grupos (p. ej. un tirador girado): sus caras se ubican igual que en el rig */
 `;
 let styled = false;
 function injectStyle() {
@@ -43,9 +44,11 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
 
   // Cara rectangular: centro (cx,cy,cz) en cm de mundo, tamaño w×h, orientación por rotaciones CSS,
   // normal n en coordenadas CSS (y hacia abajo), fondo (textura) y recorte opcional (trapecio de las patas).
-  function face(parent, { w, h, at, rot = '', n, bg, size, clip }) {
+  // ref: etiqueta opcional (data-ref) para saber a qué pieza pertenece la cara al hacer clic.
+  function face(parent, { w, h, at, rot = '', n, bg, size, clip, ref }) {
     const f = document.createElement('div');
     f.className = 'c3-f';
+    if (ref) f.dataset.ref = ref;
     f.style.width = w + 'em'; f.style.height = h + 'em';
     f.style.transform = `translate3d(${at[0]}em, ${at[1]}em, ${at[2]}em) ${rot} translate(-50%, -50%)`;
     if (bg) { f.style.background = bg; if (size) f.style.backgroundSize = size; }
@@ -59,10 +62,11 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
 
   // Caja centrada en (x,y,z) con medidas w×h×d (cm, y hacia arriba).
   // tex(caraNombre, ancho, alto) → { bg, size } para cada cara.
-  function box({ w, h, d, x = 0, y = 0, z = 0, tex }) {
+  // parent/nrot: uso interno de group() (contenedor girado y cómo rotar las normales).
+  function box({ w, h, d, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n }) {
     const cy = -y; // a coordenadas CSS
     const T = (k, fw, fh) => (typeof tex === 'function' ? tex(k, fw, fh) : tex) || {};
-    const add = (k, fw, fh, at, rot, n) => { const t = T(k, fw, fh); face(rig, { w: fw, h: fh, at, rot, n, bg: t.bg, size: t.size }); };
+    const add = (k, fw, fh, at, rot, n) => { const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref }); };
     add('front', w, h, [x, cy, z + d / 2], '', [0, 0, 1]);
     add('back', w, h, [x, cy, z - d / 2], 'rotateY(180deg)', [0, 0, -1]);
     add('right', d, h, [x + w / 2, cy, z], 'rotateY(90deg)', [1, 0, 0]);
@@ -71,8 +75,20 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     add('bottom', w, d, [x, cy + h / 2, z], 'rotateX(-90deg)', [0, 1, 0]);
   }
 
+  // Grupo girado en el plano del frente: sus cajas usan coordenadas locales (centro del grupo = 0,0,0)
+  // y rz gira el conjunto en grados (antihorario, como en un plano). Sirve para tiradores girados.
+  function group({ x = 0, y = 0, z = 0, rz = 0 } = {}) {
+    const g = document.createElement('div');
+    g.className = 'c3-g';
+    g.style.transform = `translate3d(${x}em, ${-y}em, ${z}em) rotateZ(${-rz}deg)`;
+    rig.append(g);
+    const a = rad(-rz), c = Math.cos(a), s = Math.sin(a);
+    const nrot = ([nx, ny, nz]) => [nx * c - ny * s, nx * s + ny * c, nz]; // misma rotación que rotateZ de CSS
+    return { el: g, box: (o) => box({ ...o, parent: g, nrot }) };
+  }
+
   // Prisma vertical de "sides" caras, más ancho arriba (r1) que abajo (r2): patas cónicas.
-  function prism({ r1, r2, h, x = 0, y = 0, z = 0, sides = 8, bg }) {
+  function prism({ r1, r2, h, x = 0, y = 0, z = 0, sides = 8, bg, ref }) {
     const rMid = (r1 + r2) / 2;
     const side = 2 * rMid * Math.tan(Math.PI / sides) * 1.04; // leve solape para que no se vean rendijas
     const k = Math.min(1, r2 / r1) * 100;
@@ -84,7 +100,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
         w: side * (r1 / rMid), h,
         at: [x + n[0] * rMid, -y, z + n[2] * rMid],
         rot: `rotateY(${(a * 180 / Math.PI).toFixed(2)}deg)`,
-        n, bg, clip: `polygon(0 0, 100% 0, ${100 - inset}% 100%, ${inset}% 100%)`,
+        n, bg, ref, clip: `polygon(0 0, 100% 0, ${100 - inset}% 100%, ${inset}% 100%)`,
       });
     }
   }
@@ -100,6 +116,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   }
 
   // ----- vista
+  let locked = false, ortho = false;
   let rx0 = rx, ry0 = ry, curX = rx, curY = ry, tgtX = rx, tgtY = ry, frame = 0, spinning = autorotate;
   // Giro extra que se suma al del arrastre (p. ej. el que entrega el scroll).
   let extX = 0, extY = 0;
@@ -136,14 +153,14 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   function resize() {
     const s = Math.min(el.clientWidth, el.clientHeight || el.clientWidth) || 400;
     rig.style.fontSize = (s * fill / fitCm).toFixed(3) + 'px';
-    el.style.perspective = (s * 2.6).toFixed(0) + 'px';
+    el.style.perspective = ortho ? 'none' : (s * 2.6).toFixed(0) + 'px';
   }
   new ResizeObserver(resize).observe(el);
 
   // ----- interacción: horizontal gira; vertical inclina poco (y deja hacer scroll en táctil)
   let drag = null;
   el.addEventListener('pointerdown', (e) => {
-    if (e.button > 0) return;
+    if (e.button > 0 || locked) return;
     drag = { x: e.clientX, y: e.clientY, rx: tgtX, ry: tgtY, id: e.pointerId, mouse: e.pointerType === 'mouse' };
     spinning = false; hideHint();
     if (drag.mouse) el.setPointerCapture(e.pointerId);
@@ -159,7 +176,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
   el.addEventListener('keydown', (e) => {
-    const k = { ArrowLeft: -15, ArrowRight: 15 }[e.key]; if (!k) return;
+    const k = { ArrowLeft: -15, ArrowRight: 15 }[e.key]; if (!k || locked) return;
     e.preventDefault(); spinning = false; hideHint(); tgtY += k; request();
   });
   const hint = el.querySelector('.viewer-hint');
@@ -171,7 +188,19 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) spinning = false;
 
   return {
-    box, prism, floorShadow, rig,
+    box, prism, floorShadow, group, rig,
+    // Borra todas las piezas (para reconstruir el modelo tras un cambio en el editor).
+    clear() { rig.replaceChildren(); faces.length = 0; },
+    // Bloquea el giro con el mouse/teclado (vistas fijas del editor).
+    lock(on) { locked = !!on; },
+    // Límites de inclinación vertical (grados).
+    limits(min, max) { minRx = min; maxRx = max; },
+    // Vista ortogonal (sin perspectiva): el frente se ve como un plano a escala.
+    ortho(on) { ortho = !!on; resize(); },
+    // Escala actual en píxeles por centímetro y centro encuadrado (cm).
+    get scale() { return parseFloat(rig.style.fontSize) || 1; },
+    get center() { return center; },
+    get angles() { return [angX(), angY()]; },
     get faceCount() { return faces.length; },
     // Centro del mueble (cm, y hacia arriba) y tamaño de referencia para encuadrar.
     frame(c, size, f = fill) {

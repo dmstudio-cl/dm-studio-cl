@@ -1,0 +1,92 @@
+---
+layout: null
+title: Editor de modelos · DM Studio
+sitemap: false
+permalink: /admin/editor/
+---
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>{{ page.title }}</title>
+<link rel="icon" type="image/png" href="{{ '/assets/img/marca/favicon.png' | relative_url }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
+<link rel="stylesheet" href="{{ '/assets/css/editor.css' | relative_url }}">
+</head>
+<body class="ed">
+<header class="ed-top">
+  <a class="ed-marca" href="{{ '/admin/' | relative_url }}" title="Volver al administrador">
+    <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="" width="28" height="28"><span>Editor de modelos</span>
+  </a>
+  <input class="ed-nombre" id="nombre" aria-label="Nombre del modelo" spellcheck="false">
+  <div class="ed-grupo" role="group" aria-label="Vista">
+    <button data-vista="3d" aria-pressed="true" title="Vista 3D (1)">3D</button>
+    <button data-vista="frente" aria-pressed="false" title="Vista frontal a escala (2)">Frente</button>
+  </div>
+  <div class="ed-grupo" role="group" aria-label="Herramienta">
+    <button data-herr="sel" aria-pressed="true" title="Seleccionar y mover (V)">Seleccionar</button>
+    <button data-herr="dibujar" aria-pressed="false" title="Dibujar un módulo arrastrando en la vista frontal (M)">Dibujar módulo</button>
+    <button data-herr="div-v" aria-pressed="false" title="Dividir en columnas: clic en un frente (D)">Dividir │</button>
+    <button data-herr="div-h" aria-pressed="false" title="Dividir en filas: clic en un frente (H)">Dividir ─</button>
+  </div>
+  <div class="ed-grupo ed-acciones">
+    <button data-acc="deshacer" title="Deshacer (Ctrl+Z)">↶</button>
+    <button data-acc="rehacer" title="Rehacer (Ctrl+Y)">↷</button>
+    <button data-acc="encuadrar" title="Encuadrar (F)">Encuadrar</button>
+    <button data-acc="nuevo" title="Empezar un modelo vacío">Nuevo</button>
+    <button data-acc="importar" title="Abrir un modelo .json">Abrir</button>
+    <button data-acc="exportar" title="Descargar el modelo como .json">Guardar .json</button>
+    <input type="file" id="archivo" accept=".json,application/json" hidden>
+  </div>
+</header>
+
+<main class="ed-main">
+  <aside class="ed-panel ed-izq">
+    <section>
+      <h2>Capas</h2>
+      <div class="ed-capas" id="capas">
+        <label><input type="checkbox" data-capa="zocalo" checked> Zócalo</label>
+        <label><input type="checkbox" data-capa="cuerpo" checked> Cuerpo</label>
+        <label><input type="checkbox" data-capa="frentes" checked> Frentes</label>
+        <label><input type="checkbox" data-capa="tiradores" checked> Tiradores</label>
+        <label><input type="checkbox" data-capa="cubierta" checked> Cubierta</label>
+      </div>
+      <div class="ed-arbol" id="arbol"></div>
+    </section>
+    <section>
+      <h2>Tiradores</h2>
+      <p class="ed-ayuda">Arrastra uno sobre un frente. Luego muévelo o gíralo.</p>
+      <div class="ed-biblio" id="biblio"></div>
+    </section>
+    <section>
+      <h2>Melamina del frente</h2>
+      <select id="melamina" class="ed-input"></select>
+    </section>
+  </aside>
+
+  <section class="ed-lienzo" id="lienzo">
+    <div class="ed-escena" id="escena" aria-label="Modelo en CSS 3D"></div>
+    <svg class="ed-plano" id="plano" aria-hidden="true"></svg>
+    <p class="ed-estado" id="estado"></p>
+  </section>
+
+  <aside class="ed-panel ed-der">
+    <section>
+      <h2>Propiedades</h2>
+      <div id="props"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+  window.DM = { base: "{{ site.baseurl }}" };
+  window.MELAMINAS = {{ site.data.melaminas | jsonify }};
+</script>
+<script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>
+</body>
+</html>

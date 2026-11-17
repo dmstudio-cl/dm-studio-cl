@@ -1,0 +1,104 @@
+/* Editor de modelos CSS 3D (admin). Usa los tokens de main.css. */
+body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto 1fr; overflow: hidden; background: var(--ink); }
+.ed button { font: 500 .78rem/1 var(--sans); color: var(--bone); background: var(--ink-3); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.ed button:hover { border-color: var(--line-2); }
+.ed button[aria-pressed="true"] { background: var(--bone); color: var(--ink); border-color: var(--bone); }
+.ed-input, .ed input[type="number"], .ed input[type="text"], .ed select {
+  width: 100%; font: 400 .85rem/1.2 var(--mono); color: var(--bone); background: var(--ink); border: 1px solid var(--line-2); border-radius: 6px; padding: 7px 8px; }
+.ed input:focus, .ed select:focus { outline: 1px solid var(--bone); }
+
+/* barra superior */
+.ed-top { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; background: var(--ink-2); }
+.ed-marca { display: flex; align-items: center; gap: 8px; text-decoration: none; font: 500 .72rem/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; margin-right: 6px; }
+.ed-marca img { border-radius: 50%; }
+.ed-nombre { width: 220px; font: 400 1rem/1 var(--serif); background: transparent; color: var(--bone); border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; }
+.ed-nombre:hover, .ed-nombre:focus { border-color: var(--line-2); outline: none; }
+.ed-grupo { display: flex; gap: 4px; }
+.ed-acciones { margin-left: auto; }
+
+/* columnas */
+.ed-main { display: grid; grid-template-columns: 250px minmax(0, 1fr) 280px; min-height: 0; }
+.ed-panel { overflow: auto; padding: 14px; border-right: 1px solid var(--line); background: var(--ink-2); }
+.ed-der { border-right: 0; border-left: 1px solid var(--line); }
+.ed-panel section + section { margin-top: 22px; }
+.ed-panel h2 { font: 500 .68rem/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.ed-ayuda { font-size: .78rem; color: var(--muted); margin: 0 0 10px; }
+
+/* capas y árbol */
+.ed-capas { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: .82rem; margin-bottom: 12px; }
+.ed-capas label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.ed-arbol { font: 400 .8rem/1.3 var(--sans); }
+.ed-arbol button { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 5px; padding: 5px 6px; color: var(--bone); font: inherit; }
+.ed-arbol button:hover { background: var(--ink-3); }
+.ed-arbol button[aria-current="true"] { background: rgba(180, 50, 46, .25); color: #fff; }
+.ed-arbol .n1 { padding-left: 18px; color: var(--bone-2); }
+.ed-arbol .n2 { padding-left: 30px; color: var(--muted); }
+.ed-arbol .n3 { padding-left: 42px; color: var(--muted); }
+.ed-arbol small { font-family: var(--mono); color: var(--muted); }
+
+/* biblioteca de tiradores */
+.ed-biblio { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ed-biblio button { display: grid; gap: 6px; justify-items: center; padding: 10px 6px; touch-action: none; cursor: grab; text-align: center; font-size: .72rem; }
+.ed-biblio svg { width: 100%; height: 26px; }
+
+/* lienzo */
+.ed-lienzo { position: relative; min-height: 0; overflow: hidden;
+  background: radial-gradient(70% 70% at 50% 45%, #1b191b, var(--ink)); }
+.ed-escena { position: absolute; inset: 0; }
+.ed-plano { position: absolute; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; }
+.ed-lienzo.frente .ed-plano { display: block; }
+.ed-lienzo.frente .ed-escena { cursor: default; }
+.ed-estado { position: absolute; left: 12px; bottom: 10px; margin: 0; font: 400 .72rem/1.4 var(--mono); color: var(--muted); letter-spacing: .04em; pointer-events: none; }
+
+/* plano frontal (cotas y guías) */
+.ed-plano .grilla line { stroke: rgba(236, 231, 221, .05); }
+.ed-plano .grilla line.g50 { stroke: rgba(236, 231, 221, .1); }
+.ed-plano .piso { stroke: rgba(236, 231, 221, .35); }
+.ed-plano .celda { fill: transparent; stroke: rgba(236, 231, 221, .25); stroke-width: 1; cursor: pointer; }
+.ed-plano .celda:hover { fill: rgba(236, 231, 221, .06); }
+.ed-plano .celda.sel { stroke: var(--red-accent); stroke-width: 2; fill: rgba(180, 50, 46, .12); }
+.ed-plano .zona-zocalo { fill: transparent; cursor: pointer; }
+.ed-plano .zona-zocalo:hover { fill: rgba(236, 231, 221, .06); }
+.ed-plano .zona-zocalo.sel { fill: rgba(180, 50, 46, .15); stroke: var(--red-accent); }
+.ed-plano .modulo { fill: none; stroke: rgba(236, 231, 221, .5); stroke-dasharray: 4 4; pointer-events: none; }
+.ed-plano .modulo.sel { stroke: var(--red-accent); stroke-dasharray: none; stroke-width: 1.5; }
+.ed-plano .divisor { stroke: transparent; stroke-width: 10; cursor: col-resize; }
+.ed-plano .divisor.h { cursor: row-resize; }
+.ed-plano .divisor:hover, .ed-plano .divisor.activo { stroke: rgba(180, 50, 46, .55); }
+.ed-plano .tirador { fill: transparent; stroke: transparent; cursor: move; }
+.ed-plano .tirador:hover, .ed-plano .tirador.sel { stroke: var(--red-accent); stroke-width: 1.5; fill: rgba(180, 50, 46, .15); }
+.ed-plano .cota line, .ed-plano .cota path { stroke: rgba(236, 231, 221, .55); fill: none; }
+.ed-plano .cota circle { fill: rgba(236, 231, 221, .75); }
+.ed-plano .cota text { fill: var(--bone); font: 500 11px/1 var(--mono); letter-spacing: .04em; paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
+.ed-plano .borrador { fill: rgba(180, 50, 46, .15); stroke: var(--red-accent); stroke-dasharray: 5 4; }
+.ed-plano .guia { stroke: var(--red-accent); stroke-dasharray: 3 3; pointer-events: none; }
+.ed-lienzo.h-dibujar .ed-plano, .ed-lienzo.h-div-v .ed-plano .celda, .ed-lienzo.h-div-h .ed-plano .celda { cursor: crosshair; }
+
+/* selección en 3D */
+.c3-sel { box-shadow: inset 0 0 0 .3em rgba(180, 50, 46, .95) !important; }
+
+/* propiedades */
+.ed-props { display: grid; gap: 10px; }
+.ed-props .tit { font: 400 1.25rem/1.1 var(--serif); margin: 0; }
+.ed-props .sub { font: 400 .7rem/1.3 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: -4px 0 4px; }
+.ed-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ed-campo { display: grid; gap: 4px; font-size: .74rem; color: var(--muted); }
+.ed-campo.ancho2 { grid-column: span 2; }
+.ed-campo .u { position: relative; }
+.ed-campo .u input { padding-right: 30px; }
+.ed-campo .u::after { content: attr(data-u); position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: .7rem var(--mono); color: var(--muted); pointer-events: none; }
+.ed-check { display: flex; align-items: center; gap: 8px; font-size: .82rem; }
+.ed-botones { display: flex; flex-wrap: wrap; gap: 6px; }
+.ed-botones .peligro { color: var(--err); }
+.ed-vacio { color: var(--muted); font-size: .85rem; }
+.ed-vacio kbd { font: .72rem var(--mono); border: 1px solid var(--line-2); border-radius: 4px; padding: 1px 5px; }
+
+/* fantasma al arrastrar un tirador */
+.ed-fantasma { position: fixed; z-index: 50; pointer-events: none; padding: 6px 10px; border-radius: 999px; background: var(--red); color: #fff; font: 500 .72rem/1 var(--mono); transform: translate(-50%, -140%); }
+
+@media (max-width: 1000px) {
+  body.ed { height: auto; overflow: auto; }
+  .ed-main { grid-template-columns: 1fr; }
+  .ed-lienzo { height: 70vh; order: -1; }
+  .ed-panel { border: 0; border-top: 1px solid var(--line); }
+}
