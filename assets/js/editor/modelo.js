@@ -7,7 +7,7 @@
 //     id, nombre, tipo, ancho, alto, profundidad, zocalo, x, elevacion, z, cubierta,
 //     tablero,                                        // espesor de la melamina en mm (15 normal, 18 a veces)
 //     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro
-//     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas }] }],   // de izq. a der. / de arriba a abajo
+//     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas, hojas }] }],   // hojas: puertas de la sección (puerta_doble)   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
 //   }]
 // }
@@ -18,13 +18,16 @@ import { ARTEFACTOS, cubiertaCoccion, ACERO, CUBA, ESCURRIDOR, partesLavaplatos,
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
 export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
 export const MAX_HOJA = 45; // ancho máximo de una hoja de puerta (cm): más ancha daña las bisagras
+// Hojas de una sección con puertas (puerta_doble): al menos 2 y las necesarias para no pasar de 45 cm cada una
+export const hojasMin = (w) => Math.max(2, Math.ceil(w / MAX_HOJA - 1e-6));
+export const hojasDe = (fr, w) => Math.max(hojasMin(w), Math.round(+fr?.hojas || 0));
 export const GAP = .3;    // luz entre frentes
 export const CT = 3.8;    // espesor de cubierta
 export const OVER = 2;    // vuelo frontal de la cubierta
 
 export const TIPOS_FRENTE = {
   puerta: 'Puerta',
-  puerta_doble: 'Puerta doble',
+  puerta_doble: 'Puertas (2 o más hojas)',
   cajon: 'Cajón',
   panel: 'Panel fijo',
   abierto: 'Abierto (sin puerta)',
@@ -87,7 +90,8 @@ export function celdas(m) {
     frentes.forEach((fr, fi) => {
       const fh = (+fr.alto || 0) * ky;
       const repisas = fr.repisas != null && fr.repisas !== '' ? Math.max(0, Math.round(+fr.repisas) || 0) : fr.tipo === 'abierto' ? 1 : 0;
-      out.push({ col: ci, fila: fi, tipo: fr.tipo || 'puerta', repisas, x: x0 + cw / 2, y: ytop - fh / 2, w: cw, h: fh, x0, x1: x0 + cw, y0: ytop - fh, y1: ytop });
+      const hojas = fr.tipo === 'puerta_doble' ? hojasDe(fr, cw) : 1;
+      out.push({ col: ci, fila: fi, tipo: fr.tipo || 'puerta', repisas, hojas, x: x0 + cw / 2, y: ytop - fh / 2, w: cw, h: fh, x0, x1: x0 + cw, y0: ytop - fh, y1: ytop });
       ytop -= fh;
     });
     x0 += cw;
@@ -161,8 +165,12 @@ export function tiradoresCliente(m, sel) {
     const altoT = forma === 'boton' ? 0 : forma === 'perfil' ? 0 : largoBarra;
     const dy = forma === 'perfil' ? 0 : Math.max(0, c.h / 2 - altoT / 2 - (forma === 'boton' ? 6 : 4)) * (aereo ? -1 : 1);
     const margen = forma === 'perfil' ? .6 : forma === 'boton' ? 4 : 3.5;
-    if (tipo === 'puerta_doble') {
-      for (const s of [-1, 1]) out.push({ id: `${id}-${s}`, ...base, ...modeloDe(forma, c, 90), dx: s * (GAP / 2 + margen), dy, rot: forma === 'boton' ? 0 : 90 });
+    if (tipo === 'puerta_doble') { // cada hoja con su tirador, hacia el centro de la sección
+      const n = c.hojas, lw = (c.w - (n - 1) * GAP) / n;
+      for (let i = 0; i < n; i++) {
+        const cx = -c.w / 2 + lw / 2 + i * (lw + GAP), s = i < (n - 1) / 2 ? 1 : i > (n - 1) / 2 ? -1 : 1;
+        out.push({ id: `${id}-${i}`, ...base, ...modeloDe(forma, c, 90), dx: cx + s * (lw / 2 - margen), dy, rot: forma === 'boton' ? 0 : 90 });
+      }
     } else {
       const lado = (f.bisagra || 'izquierda') === 'izquierda' ? 1 : -1; // se abre por el lado contrario a la bisagra
       out.push({ id, ...base, ...modeloDe(forma, c, 90), dx: lado * (c.w / 2 - margen), dy, rot: forma === 'boton' ? 0 : 90 });
@@ -365,9 +373,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
             const dr = D - 1.1; // repisa completa: desde el fondo hasta 0,5 cm del canto
             for (const y of nivelesRepisa(c)) B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, M.cuerpo, ref);
           }
-        } else if (c.tipo === 'puerta_doble') {
-          const lw = (fw - GAP) / 2;
-          for (const s of [-1, 1]) B({ w: lw, h: fh, d: T, x: c.x + s * (lw + GAP) / 2, y: c.y, z: zf }, M.frente, ref);
+        } else if (c.tipo === 'puerta_doble') { // n hojas iguales (máx. 45 cm cada una)
+          const n = c.hojas, lw = (fw - (n - 1) * GAP) / n;
+          for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: c.y, z: zf }, M.frente, ref);
         } else {
           B({ w: fw, h: fh, d: T, x: c.x, y: c.y, z: zf }, M.frente, ref);
         }

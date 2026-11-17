@@ -121,6 +121,7 @@ collections:
                   - { label: Alto, name: alto, widget: number, value_type: float }
                   - { label: Bisagra, name: bisagra, widget: select, default: izquierda, options: [izquierda, derecha, arriba, abajo], required: false }
                   - { label: Repisas, name: repisas, widget: number, value_type: int, required: false }
+                  - { label: Hojas (puertas de la sección), name: hojas, widget: number, value_type: int, required: false }
           - label: Tiradores (ubicados en el editor)
             name: tiradores
             widget: list

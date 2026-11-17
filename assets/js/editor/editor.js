@@ -1,7 +1,7 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT } from './modelo.js';
+import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
 import { crearPlanta } from './planta.js';
@@ -121,22 +121,20 @@ function normalizar(m) {
   }
 }
 
-// Puertas: una hoja no pasa de 45 cm. Una puerta más ancha pasa a puerta doble (2 hojas) y, si la
-// sección supera 90 cm, se divide en secciones iguales con sus mismos frentes.
+// Puertas: una hoja no pasa de 45 cm. Una puerta más ancha pasa a una sección de varias hojas
+// (puerta_doble con f.hojas): 2 hasta 90 cm, 3 hasta 135 cm, etc. La sección no se divide, así se
+// pueden borrar divisiones y repartir las puertas como se quiera.
 function limitarPuertas(m) {
   const out = [];
-  for (let ci = 0; ci < m.columnas.length; ci++) {
-    const c = m.columnas[ci], w = +c.ancho;
+  for (const c of m.columnas) {
+    const w = +c.ancho, min = hojasMin(w);
     for (const f of c.frentes) {
-      if (f.tipo === 'puerta' && w > MAX_HOJA + .05) { f.tipo = 'puerta_doble'; out.push(`la puerta de ${cm(w)} cm pasó a puerta doble`); }
-    }
-    if (c.frentes.some((f) => f.tipo === 'puerta_doble') && w > 2 * MAX_HOJA + .05) {
-      const n = Math.ceil(w / (2 * MAX_HOJA) - 1e-6);
-      const partes = Array.from({ length: n }, () => ({ ...JSON.parse(JSON.stringify(c)), ancho: r1(w / n) }));
-      m.columnas.splice(ci, 1, ...partes);
-      for (const t of m.tiradores || []) if (t.col > ci) t.col += n - 1;
-      out.push(`la sección de ${cm(w)} cm se dividió en ${n}`);
-      ci += n - 1;
+      if (f.tipo === 'puerta' && w > MAX_HOJA + .05) { f.tipo = 'puerta_doble'; f.hojas = min; out.push(`la puerta de ${cm(w)} cm pasó a ${min} hojas`); }
+      else if (f.tipo === 'puerta_doble') {
+        const n = Math.round(+f.hojas || 0);
+        if (n < min) { if (n >= 2) out.push(`la sección de ${cm(w)} cm pasó a ${min} hojas`); f.hojas = min; }
+        else if (n > Math.max(min, Math.floor(w / 15))) f.hojas = Math.max(min, Math.floor(w / 15)); // hojas de al menos 15 cm
+      }
     }
   }
   return out;
@@ -1031,7 +1029,11 @@ function props() {
           ${f.tipo !== 'abierto' ? '<button data-a="quitar-puerta">Quitar puerta (sección abierta)</button>' : '<button data-a="poner-puerta">Poner puerta</button>'}</div>
           <p class="ed-ayuda">${f.tipo === 'abierto' ? 'Sin puerta: se ve el interior blanco y las repisas completas hasta el fondo.' : 'Detrás de la puerta: actívalas en Capas → Repisas para verlas punteadas.'}</p>`;
       })() : ''}
-      ${+col.ancho > MAX_HOJA && (f.tipo === 'puerta' || f.tipo === 'puerta_doble') ? `<p class="ed-ayuda">Sección de ${cm(col.ancho)} cm: lleva 2 hojas (máx. ${MAX_HOJA} cm por hoja).</p>` : ''}
+      ${f.tipo === 'puerta_doble' ? (() => {
+        const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.hojas || 2;
+        return `<div class="ed-repisas"><span>Puertas (hojas)</span><button data-a="hoja-" title="Una hoja menos">−</button><b>${n}</b><button data-a="hoja+" title="Una hoja más">+</button><small>${cm((+col.ancho) / n)} cm c/u</small></div>
+          <p class="ed-ayuda">Máximo ${MAX_HOJA} cm por hoja: con ${cm(col.ancho)} cm van al menos ${hojasMin(+col.ancho)}.</p>`;
+      })() : ''}
       <div class="ed-botones">
         <button data-a="div-h">Dividir en 2 filas</button><button data-a="div-v">Dividir en 2 columnas</button>
         ${sel.fila < col.frentes.length - 1 ? '<button data-a="unir-abajo">Unir con el de abajo</button>' : ''}
@@ -1229,6 +1231,15 @@ $('#props').addEventListener('click', (e) => {
     const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.repisas || 0;
     cambiar(() => { m.columnas[sel.col].frentes[sel.fila].repisas = Math.max(0, Math.min(12, n + (a === 'rep+' ? 1 : -1))); });
     if (a === 'rep+' && !capas.repisas && m.columnas[sel.col].frentes[sel.fila].tipo !== 'abierto') aviso('Repisa agregada detrás de la puerta. Activa Capas → Repisas para verla punteada.');
+    return;
+  }
+  if (a === 'hoja+' || a === 'hoja-') {
+    const f = m.columnas[sel.col].frentes[sel.fila], w = +m.columnas[sel.col].ancho;
+    const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.hojas || 2, min = hojasMin(w);
+    const nuevo = n + (a === 'hoja+' ? 1 : -1);
+    if (nuevo < min) { aviso(nuevo < 2 ? 'Para una sola puerta cambia el tipo a «Puerta» (hasta 45 cm).' : `Con ${cm(w)} cm no puede tener menos de ${min} hojas: quedarían de más de ${MAX_HOJA} cm.`); return; }
+    if (w / nuevo < 15) { aviso('Las hojas quedarían de menos de 15 cm.'); return; }
+    cambiar(() => { f.hojas = nuevo; });
     return;
   }
   if (a === 'quitar-puerta') { cambiar(() => aplicarCampo(m, 'f.tipo', 'abierto', sel)); return; }
