@@ -228,7 +228,7 @@ function dibujarPlano() {
 
   for (const m of modulosFrente()) {
     const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
-    const esSel = sel?.m === m.id;
+    const esSel = sel?.m === m.id, enMulti = !!sel?.ids?.includes(m.id);
     // zócalo
     if (Z > 0) el('rect', { x: M.X(ox), y: M.Y(oy + Z), width: W * M.s, height: Z * M.s, class: `zona-zocalo${esSel && sel.tipo === 'zocalo' ? ' sel' : ''}`, 'data-tipo': 'zocalo', 'data-m': m.id }, plano);
     // celdas (frentes)
@@ -237,7 +237,7 @@ function dibujarPlano() {
       el('rect', { x: M.X(ox + c.x0), y: M.Y(oy + c.y1), width: c.w * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
     }
     // contorno del módulo
-    el('rect', { x: M.X(ox), y: M.Y(oy + H), width: W * M.s, height: H * M.s, class: `modulo${esSel && (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') ? ' sel' : ''}` }, plano);
+    el('rect', { x: M.X(ox), y: M.Y(oy + H), width: W * M.s, height: H * M.s, class: `modulo${enMulti || (esSel && (sel.tipo === 'modulo' || sel.tipo === 'cuerpo')) ? ' sel' : ''}` }, plano);
     // divisores arrastrables
     const cs = celdas(m);
     m.columnas.forEach((col, ci) => {
@@ -306,9 +306,12 @@ plano.addEventListener('pointerdown', (e) => {
   plano.setPointerCapture(e.pointerId);
 
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
-  if (!t) { sel = null; render(); return; }
+  // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
+  if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
   const m = modulo(t.dataset.m);
   const d = t.dataset;
+  // Mayús + clic sobre un mueble: lo agrega o lo quita de la selección múltiple
+  if (e.shiftKey && herr === 'sel' && d.tipo !== 'div-v' && d.tipo !== 'div-h') { alternar(m.id); return; }
 
   if (d.tipo === 'celda' && (herr === 'div-v' || herr === 'div-h')) {
     const L = local(m, p);
@@ -337,6 +340,12 @@ plano.addEventListener('pointermove', (e) => {
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
   if (!gesto) return;
+  if (gesto.tipo === 'marco') {
+    gesto.b = p; dibujarPlano();
+    const a = gesto.a;
+    el('rect', { x: M.X(Math.min(a.x, p.x)), y: M.Y(Math.max(a.y, p.y)), width: Math.abs(p.x - a.x) * M.s, height: Math.abs(p.y - a.y) * M.s, class: 'marco' }, plano);
+    return;
+  }
   if (gesto.tipo === 'dibujar') {
     gesto.b = { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) };
     dibujarPlano();
@@ -373,6 +382,14 @@ plano.addEventListener('pointerup', (e) => {
   if (vista === 'planta') return planta.up(e);
   if (!gesto) return;
   const g = gesto; gesto = null;
+  if (g.tipo === 'marco') {
+    const M = mapa();
+    if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.y - g.a.y) * M.s) < 4) { if (!g.suma) sel = null; render(); return; }
+    const x0 = Math.min(g.a.x, g.b.x), x1 = Math.max(g.a.x, g.b.x), y0 = Math.min(g.a.y, g.b.y), y1 = Math.max(g.a.y, g.b.y);
+    const ids = modulosFrente().filter((m) => +m.x + +m.ancho > x0 && +m.x < x1 && +m.elevacion + +m.alto > y0 && +m.elevacion < y1).map((m) => m.id);
+    seleccionarVarios(ids, g.suma);
+    return;
+  }
   if (g.tipo === 'dibujar') {
     if (!g.b) return render();
     const x0 = Math.min(g.a.x, g.b.x), y0 = Math.min(g.a.y, g.b.y), w = Math.abs(g.b.x - g.a.x), h = Math.abs(g.b.y - g.a.y);
@@ -500,7 +517,6 @@ function ubicarTirador(m, ci, fi, modeloT, punto = null) {
 let toque = null;
 escena.addEventListener('pointerdown', (e) => { toque = { x: e.clientX, y: e.clientY }; });
 escena.addEventListener('pointerup', (e) => {
-  if (e.shiftKey) return; // Mayús: lo maneja la selección múltiple
   if (!toque || Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > 5) return;
   // El motor captura el puntero al arrastrar: se busca la cara que está bajo el cursor.
   const f = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]');
@@ -520,39 +536,6 @@ function alternar(id) {
   const ids = idsSel();
   seleccionarVarios(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
 }
-
-// 3D: Mayús + arrastrar dibuja un recuadro de selección (sin girar la vista); Mayús + clic alterna un mueble.
-let marco3d = null;
-escena.addEventListener('pointerdown', (e) => {
-  if (!e.shiftKey || vista !== '3d' || e.button > 0) return;
-  e.stopPropagation(); // el motor no empieza a girar
-  const r = lienzo.getBoundingClientRect();
-  const div = document.createElement('div'); div.className = 'ed-marco'; lienzo.append(div);
-  marco3d = { x0: e.clientX, y0: e.clientY, div, r };
-  const mover = (ev) => {
-    const x = Math.min(ev.clientX, marco3d.x0) - r.left, y = Math.min(ev.clientY, marco3d.y0) - r.top;
-    Object.assign(div.style, { left: x + 'px', top: y + 'px', width: Math.abs(ev.clientX - marco3d.x0) + 'px', height: Math.abs(ev.clientY - marco3d.y0) + 'px' });
-  };
-  const soltar = (ev) => {
-    window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
-    div.remove();
-    const x0 = Math.min(ev.clientX, marco3d.x0), x1 = Math.max(ev.clientX, marco3d.x0), y0 = Math.min(ev.clientY, marco3d.y0), y1 = Math.max(ev.clientY, marco3d.y0);
-    marco3d = null;
-    if (x1 - x0 < 5 && y1 - y0 < 5) { // fue un clic: alterna el mueble bajo el cursor
-      const f = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-ref]');
-      const id = f?.dataset.ref.split('|')[0];
-      if (id && modulo(id)) alternar(id);
-      return;
-    }
-    // mueble seleccionado si alguna de sus caras visibles toca el recuadro
-    const ids = modelo.modulos.filter((m) => [...st.rig.querySelectorAll(`[data-ref^="${m.id}|"]`)].some((f) => {
-      const b = f.getBoundingClientRect();
-      return b.width > 0 && b.right > x0 && b.left < x1 && b.bottom > y0 && b.top < y1;
-    })).map((m) => m.id);
-    seleccionarVarios(ids, true);
-  };
-  window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
-}, { capture: true });
 
 function desdeRef(ref) {
   const [m, k, a, b] = ref.split('|');
