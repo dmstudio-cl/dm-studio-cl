@@ -119,6 +119,34 @@ export async function startApp(api) {
     document.querySelectorAll('.ppanel').forEach((p) => { p.hidden = p.dataset.panel !== b.dataset.tab; });
   });
 
+  // ----- mis datos (perfil del cliente): se guardan en el Worker (D1), nunca en un repositorio
+  const pform = $('#perfilform');
+  const pstat = (t, estado = '') => { $('#perfilstatus').textContent = t; $('#perfilstatus').dataset.state = estado; };
+  let perfil = null;
+  function pintarPerfil() {
+    const d = perfil || { nombre: proyecto.cliente?.nombre || '', avisos_correo: true, avisos_whatsapp: true };
+    for (const k of ['nombre', 'email', 'telefono', 'comuna', 'direccion']) pform.elements[k].value = d[k] || '';
+    pform.elements.avisos_correo.checked = d.avisos_correo !== false;
+    pform.elements.avisos_whatsapp.checked = d.avisos_whatsapp !== false;
+    // punto rojo en la pestaña mientras falte el correo (para que el cliente reciba los avisos)
+    $('#perfildot').hidden = isOwner || !!perfil?.email;
+    if (isOwner) $('#perfilintro').textContent = perfil ? 'Datos que dejó el cliente. Puedes corregirlos si te los pidió.' : 'El cliente aún no completa sus datos.';
+  }
+  try { perfil = (await api.perfil?.())?.perfil || null; } catch { perfil = null; }
+  pintarPerfil();
+  pform.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = pform.elements;
+    const datos = { nombre: f.nombre.value.trim(), email: f.email.value.trim(), telefono: f.telefono.value.trim(), comuna: f.comuna.value.trim(), direccion: f.direccion.value.trim(), avisos_correo: f.avisos_correo.checked, avisos_whatsapp: f.avisos_whatsapp.checked };
+    if (datos.email && !f.email.checkValidity()) { pstat('Revisa tu correo: parece incompleto.', 'error'); f.email.focus(); return; }
+    pstat('Guardando…');
+    try {
+      const r = await api.guardarPerfil(datos);
+      perfil = r.perfil || datos; pintarPerfil();
+      pstat(datos.email && datos.avisos_correo ? 'Listo. Te avisaremos por correo cuando haya novedades.' : 'Listo, tus datos quedaron guardados.', 'ok');
+    } catch (err) { pstat(err.message, 'error'); }
+  });
+
   // ----- herramientas del visor
   let pinMode = false, pending = null;
   const pinBtn = document.querySelector('[data-tool="pin"]');

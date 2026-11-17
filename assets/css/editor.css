@@ -168,3 +168,12 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-plano .distancia circle { fill: var(--red-accent); }
 .ed-cota-input.texto { width: 220px; text-align: left; }
 .ed-lienzo.h-muros .ed-plano { cursor: crosshair; }
+
+/* ficha de contacto del cliente en Comentarios */
+.ed-contacto { display: grid; gap: 4px; margin-bottom: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--ink); font-size: .8rem; }
+.ed-contacto:empty { display: none; }
+.ed-contacto .sub { margin: 0 0 4px; }
+.ed-contacto div { display: flex; justify-content: space-between; gap: 8px; }
+.ed-contacto div span { color: var(--muted); }
+.ed-contacto div b { font-weight: 500; text-align: right; word-break: break-all; }
+.ed-contacto .ed-ayuda { margin: 6px 0 0; }

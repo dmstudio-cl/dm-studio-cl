@@ -30,6 +30,8 @@ export function workerApi(token, { owner = null, proyecto = null } = {}) {
     editar: (id, texto) => call('mensajes', { method: 'PATCH', body: JSON.stringify({ id, texto }) }),
     borrar: (id) => call('mensajes', { method: 'DELETE' }, { id }),
     aprobar: (sel) => call('aprobar', { method: 'POST', body: JSON.stringify({ seleccion: sel }) }),
+    perfil: () => call('perfil'),
+    guardarPerfil: (datos) => call('perfil', { method: 'PUT', body: JSON.stringify(datos) }),
   };
 }
 
@@ -85,6 +87,11 @@ export function demoApi() {
       const ap = { fecha: Date.now(), total: q.total, anticipo: q.anticipo, version: 1 };
       dwrite({ ...dread(), aprobacion: ap });
       return { aprobacion: ap };
+    },
+    async perfil() { return { perfil: dread().perfil || null }; },
+    async guardarPerfil(datos) {
+      if (datos.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(datos.email)) throw new Error('Revisa tu correo: parece incompleto.');
+      dwrite({ ...dread(), perfil: datos }); return { ok: true, perfil: datos };
     },
     reset() { localStorage.removeItem(DKEY); },
   };

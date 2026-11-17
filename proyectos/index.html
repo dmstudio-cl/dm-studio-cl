@@ -79,6 +79,7 @@ body_class: portal-page
       <button role="tab" aria-selected="false" data-tab="tirador">Tiradores</button>
       <button role="tab" aria-selected="false" data-tab="cubierta">Cubierta</button>
       <button role="tab" aria-selected="false" data-tab="detalle">Detalle</button>
+      <button role="tab" aria-selected="false" data-tab="perfil" id="tabperfil">Mis datos<i class="ptab-dot" id="perfildot" hidden></i></button>
     </div>
     <div class="ppanel" data-panel="melamina">
       <div class="filters small-filters" id="melfilters"></div>
@@ -91,6 +92,20 @@ body_class: portal-page
       <h2 class="eyebrow">Recomendados (se compran aparte)</h2>
       <div class="optlist" id="preclist"></div>
       <p class="small muted" id="pcond"></p>
+    </div>
+    <div class="ppanel" data-panel="perfil" hidden>
+      <form class="form pperfil" id="perfilform" novalidate>
+        <p class="small muted" id="perfilintro">Déjanos tus datos para avisarte cuando haya novedades en tu proyecto. Solo DM Studio los ve.</p>
+        <div class="field"><label for="pf-nombre">Nombre</label><input id="pf-nombre" name="nombre" autocomplete="name" maxlength="80"></div>
+        <div class="field"><label for="pf-email">Correo</label><input id="pf-email" name="email" type="email" autocomplete="email" maxlength="120" placeholder="tu@correo.cl"></div>
+        <div class="field"><label for="pf-tel">WhatsApp</label><input id="pf-tel" name="telefono" type="tel" autocomplete="tel" maxlength="20" placeholder="+56 9 1234 5678"></div>
+        <div class="field"><label for="pf-comuna">Comuna</label><input id="pf-comuna" name="comuna" autocomplete="address-level2" maxlength="60"></div>
+        <div class="field"><label for="pf-dir">Dirección <span class="muted">(opcional, para la entrega)</span></label><input id="pf-dir" name="direccion" autocomplete="street-address" maxlength="120"></div>
+        <label class="small check"><input type="checkbox" name="avisos_correo" checked> Avisarme por correo cuando haya una versión nueva o una respuesta</label>
+        <label class="small check"><input type="checkbox" name="avisos_whatsapp" checked> Pueden escribirme por WhatsApp</label>
+        <button class="btn btn-block" type="submit">Guardar mis datos</button>
+        <p class="small form-status" id="perfilstatus" role="status" aria-live="polite"></p>
+      </form>
     </div>
 
     <div class="pselected small mono" id="psel"></div>

@@ -57,7 +57,16 @@ export function linkWhatsApp(cliente, texto) {
   if (n.length === 9 && n.startsWith('9')) n = '56' + n; // celular chileno sin código de país
   return `https://wa.me/${n}?text=${encodeURIComponent(texto)}`;
 }
-const textoAviso = { enviado: 'Correo enviado al cliente.', 'sin-correo': 'El proyecto no tiene email del cliente: no se envió correo.', 'sin-configurar': 'El correo automático aún no está configurado en el Worker.', error: 'No se pudo enviar el correo (revisa el Apps Script).' };
+// Contacto del cliente: lo que dejó en «Mis datos» del portal (D1) tiene prioridad sobre lo de Decap.
+function contactoDe(info) {
+  const c = info?.raw?.cliente || {}, p = info?.perfil || {};
+  return {
+    nombre: p.nombre || c.nombre || '', email: p.email || c.email || '', telefono: p.telefono || c.telefono || '',
+    comuna: p.comuna || c.comuna || '', direccion: p.direccion || '',
+    avisos_correo: p.avisos_correo !== false, avisos_whatsapp: p.avisos_whatsapp !== false, completo: !!info?.perfil,
+  };
+}
+const textoAviso = { 'sin-permiso': 'El cliente pidió no recibir avisos por correo.', enviado: 'Correo enviado al cliente.', 'sin-correo': 'El proyecto no tiene email del cliente: no se envió correo.', 'sin-configurar': 'El correo automático aún no está configurado en el Worker.', error: 'No se pudo enviar el correo (revisa el Apps Script).' };
 
 // Convierte el proyecto del repo al modelo del editor (y viceversa al publicar).
 export function aModelo(raw, uid) {
@@ -108,7 +117,7 @@ export function iniciarProyectos(ed) {
   });
   dlgP.addEventListener('click', async (e) => {
     if (e.target.closest('[data-cerrar]')) return dlgP.close();
-    if (e.target.closest('[data-local]')) { info = null; mensajes = []; clearInterval(sondeo); ed.abrir(null, null); pintarBarra(); pintarComentarios(); return dlgP.close(); }
+    if (e.target.closest('[data-local]')) { info = null; mensajes = []; clearInterval(sondeo); ed.abrir(null, null); pintarBarra(); pintarComentarios(); pintarContacto(); return dlgP.close(); }
     const b = e.target.closest('[data-id]'); if (!b) return;
     b.disabled = true;
     try { await abrir(b.dataset.id); dlgP.close(); } catch (err) { ed.aviso(err.message); b.disabled = false; }
@@ -116,12 +125,25 @@ export function iniciarProyectos(ed) {
 
   async function abrir(id) {
     const { raw, sha } = await leerProyecto(id);
-    info = { id, sha, raw };
+    info = { id, sha, raw, perfil: null };
+    try { info.perfil = (await api('perfil', { p: id })).perfil; } catch { /* sin perfil */ }
+    pintarContacto();
     ed.abrir(raw, info);
     pintarBarra();
     await cargarComentarios();
     clearInterval(sondeo);
     sondeo = setInterval(() => { if (!document.hidden) cargarComentarios().catch(() => {}); }, 30000);
+  }
+
+  // --- ficha de contacto del cliente (arriba de los comentarios)
+  function pintarContacto() {
+    const el = $('#coment-cliente'); if (!el) return;
+    if (!info) { el.innerHTML = ''; return; }
+    const c = contactoDe(info);
+    const fila = (k, v) => (v ? `<div><span>${k}</span><b>${esc(v)}</b></div>` : '');
+    el.innerHTML = `<p class="sub">Cliente</p>
+      ${fila('Nombre', c.nombre)}${fila('Correo', c.email)}${fila('WhatsApp', c.telefono)}${fila('Comuna', c.comuna)}${fila('Dirección', c.direccion)}
+      <p class="ed-ayuda">${c.completo ? `Avisos por correo: ${c.avisos_correo ? 'sí' : 'no'} · WhatsApp: ${c.avisos_whatsapp ? 'sí' : 'no'}` : 'El cliente aún no completa «Mis datos» en el portal.'}</p>`;
   }
 
   // --- comentarios
@@ -144,7 +166,7 @@ export function iniciarProyectos(ed) {
     const etiqueta = (m) => ({ pin: `📍 ${nPin(m)}`, cambios: 'Cambios solicitados', version: 'Versión publicada', aprobacion: '✓ Aprobado' }[m.tipo] || '');
     lista.innerHTML = mensajes.map((m) => `
       <li class="ed-msg ${m.autor === 'estudio' ? 'yo' : ''} t-${m.tipo}${m.resuelto ? ' resuelto' : ''}" data-id="${m.id}">
-        <div class="cab"><b>${m.autor === 'estudio' ? 'DM Studio' : esc(info.raw.cliente?.nombre || 'Cliente')}</b><span>${fecha(m.creado)}</span></div>
+        <div class="cab"><b>${m.autor === 'estudio' ? 'DM Studio' : esc(contactoDe(info).nombre || 'Cliente')}</b><span>${fecha(m.creado)}</span></div>
         ${etiqueta(m) ? `<span class="etq">${etiqueta(m)}</span>` : ''}
         <p>${esc(m.texto)}</p>
         <div class="acc">
@@ -177,14 +199,15 @@ export function iniciarProyectos(ed) {
       const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto, tipo: 'chat', avisar } });
       ta.value = '';
       await cargarComentarios();
-      resultado($('#coment-resultado'), r.aviso, `Hola ${(info.raw.cliente?.nombre || '').split(' ')[0]}, te respondí en tu proyecto «${info.raw.titulo}»: ${texto}\n\nRevísalo aquí: ${portalUrl()}`);
+      resultado($('#coment-resultado'), r.aviso, `Hola ${contactoDe(info).nombre.split(' ')[0]}, te respondí en tu proyecto «${info.raw.titulo}»: ${texto}\n\nRevísalo aquí: ${portalUrl()}`);
     } catch (err) { $('#coment-resultado').innerHTML = `<p class="ed-error">${esc(err.message)}</p>`; }
     btn.disabled = false;
   });
 
   // Muestra el resultado del aviso por correo y, si hay número, el botón de WhatsApp (un toque).
   function resultado(el, aviso, textoWa) {
-    const wa = linkWhatsApp(info.raw.cliente, textoWa);
+    const c = contactoDe(info);
+    const wa = c.avisos_whatsapp ? linkWhatsApp(c, textoWa) : null;
     el.innerHTML = `${aviso ? `<p class="ed-ayuda">${esc(textoAviso[aviso] || '')}</p>` : '<p class="ed-ayuda">Guardado sin aviso por correo.</p>'}
       ${wa ? `<a class="ed-wa" href="${wa}" target="_blank" rel="noopener">Avisar por WhatsApp</a>` : '<p class="ed-ayuda">Sin número de WhatsApp en el proyecto.</p>'}`;
   }
@@ -197,7 +220,7 @@ export function iniciarProyectos(ed) {
       <form id="form-version" class="ed-form">
         <p class="ed-ayuda">Se guarda el modelo en el proyecto <b>${esc(info.raw.titulo)}</b> como <b>versión ${v}</b>, queda registrado en su chat y se le avisa.</p>
         <label class="ed-campo">¿Qué cambió?<textarea id="v-msg" rows="3" required placeholder="Ej: Agrandé el cajón superior a 22 cm y moví los tiradores al centro."></textarea></label>
-        <label class="ed-check"><input type="checkbox" id="v-avisar" checked> Avisar por correo${info.raw.cliente?.email ? ` a ${esc(info.raw.cliente.email)}` : ' (el proyecto no tiene email)'}</label>
+        <label class="ed-check"><input type="checkbox" id="v-avisar" checked> Avisar por correo${(() => { const c = contactoDe(info); return !c.email ? ' (el cliente aún no deja su correo)' : !c.avisos_correo ? ' (el cliente pidió no recibir correos)' : ` a ${esc(c.email)}`; })()}</label>
         <div class="ed-botones"><button type="submit" class="ed-primario">Publicar versión ${v}</button><button type="button" data-cerrar>Cancelar</button></div>
         <div id="v-resultado"></div>
       </form>`;
@@ -231,7 +254,7 @@ export function iniciarProyectos(ed) {
       btn.textContent = `Versión ${v} publicada`;
       out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}).${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
       const div = document.createElement('div'); out.append(div);
-      resultado(div, r.aviso, `Hola ${(raw.cliente?.nombre || '').split(' ')[0]}, publiqué la versión ${v} de tu proyecto «${raw.titulo}»: ${msg}\n\nRevísala aquí: ${portalUrl()}`);
+      resultado(div, r.aviso, `Hola ${contactoDe(info).nombre.split(' ')[0]}, publiqué la versión ${v} de tu proyecto «${raw.titulo}»: ${msg}\n\nRevísala aquí: ${portalUrl()}`);
     } catch (err) {
       out.innerHTML = `<p class="ed-error">${esc(err.message)}</p>`;
       btn.disabled = false; btn.textContent = 'Reintentar';
