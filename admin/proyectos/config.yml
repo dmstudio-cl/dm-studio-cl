@@ -93,6 +93,8 @@ collections:
           - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
           - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
           - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
+          - { label: Materiales por pieza (los asigna el editor), name: materiales, widget: string, required: false }
+          - { label: Piezas quitadas del cuerpo, name: quitar, widget: select, multiple: true, options: [piso, techo, fondo, izq, der], required: false }
           - { label: Mueble agrupado (lo usa el editor), name: grupo, widget: string, required: false }
           - { label: Nombre del mueble agrupado, name: grupo_nombre, widget: string, required: false }
           - label: Encimeras y lavaplatos (los ubica el editor)

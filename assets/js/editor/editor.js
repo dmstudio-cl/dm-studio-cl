@@ -86,6 +86,8 @@ function validarSel() {
   if (sel?.tipo === 'multi') { sel.ids = sel.ids.filter((id) => modulo(id)); if (sel.ids.length < 2) sel = sel.ids.length ? { tipo: 'modulo', m: sel.ids[0] } : null; }
   else if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
   else if (sel?.tipo === 'vano') { if (!vanoSel()) sel = null; }
+  else if (sel?.tipo === 'repisa') { const c = modulo(sel.m) && celdas(modulo(sel.m)).find((k) => k.col === sel.col && k.fila === sel.fila); if (!c || sel.i >= c.repisas) sel = c ? { tipo: 'frente', m: sel.m, col: sel.col, fila: sel.fila } : null; }
+  else if (sel?.tipo === 'pieza') { if (!modulo(sel.m)) sel = null; }
   else if (sel?.tipo === 'artefacto') { if (!modulo(sel.m)?.artefactos?.some((a) => a.id === sel.a)) sel = sel.m && modulo(sel.m) ? { tipo: 'modulo', m: sel.m } : null; }
   else if (sel?.tipo === 'div') { const m = modulo(sel.m); if (!m || (sel.dir === 'v' ? sel.col >= m.columnas.length - 1 : !m.columnas[sel.col] || sel.fila >= m.columnas[sel.col].frentes.length - 1)) sel = m ? { tipo: 'modulo', m: m.id } : null; }
   else if (sel && !modulo(sel.m)) sel = null;
@@ -147,7 +149,122 @@ const MEL = window.MELAMINAS || [];
 function mats() {
   const f = MEL.find((x) => x.id === modelo.frente);
   const frente = f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 60em 60em, ${f.hex}` : f.hex) : '#cfc6b8';
-  return { ...matsColores(modelo.colores, frente), cubierta: '#cfc9bc' };
+  return { ...matsColores(modelo.colores, frente), cubierta: '#cfc9bc', material: fondoMaterial };
+}
+// ===================== materiales por pieza (como Shapr3D: arrastrar una esfera sobre la pieza) =====================
+// Un material es una melamina del catálogo (su id) o un color ('color:#rrggbb'). Se guarda en m.materiales[pieza].
+const BASICOS = [['color:#f2f0eb', 'Blanco'], ['color:#d9d6cf', 'Hueso'], ['color:#8d8a85', 'Gris'], ['color:#3a3836', 'Gris grafito'],
+  ['color:#1d1c1b', 'Negro'], ['color:#b4b7b9', 'Aluminio'], ['color:#a97d4d', 'Madera natural'], ['color:#6b4a2e', 'Madera oscura']];
+function fondoMaterial(mid) {
+  if (!mid) return null;
+  if (mid.startsWith('color:')) return mid.slice(6);
+  const f = MEL.find((x) => x.id === mid);
+  return f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 60em 60em, ${f.hex}` : f.hex) : null;
+}
+const nombreMaterial = (mid) => (mid?.startsWith('color:') ? (BASICOS.find((b) => b[0] === mid)?.[1] || `Color ${mid.slice(6)}`) : MEL.find((x) => x.id === mid)?.nombre || mid);
+// Esfera de muestra: textura del material con brillo y sombra
+function esfera(mid) {
+  const f = !mid?.startsWith('color:') && MEL.find((x) => x.id === mid);
+  const base = f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 180% auto, ${f.hex}` : f.hex) : mid?.slice(6) || '#ccc';
+  return `background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.55), rgba(255,255,255,0) 38%), ${base};`;
+}
+// Clave de la pieza de un ref ("id|f|0|1", "id|cuerpo|piso"…) o de la selección actual
+const claveDeRef = (ref) => {
+  const [mid, ...r] = ref.split('|'); const k = r.join('|');
+  if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k)) return null;
+  return { m: mid, k };
+};
+function claveDeSel() {
+  if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
+  const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
+    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes' }[sel.tipo];
+  return k ? { m: sel.m, k } : null;
+}
+const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo' };
+function nombreClave(k) {
+  if (k === 'frentes') return 'todos los frentes del mueble';
+  if (k === 'cuerpo') return 'todo el cuerpo';
+  if (k === 'zocalo') return 'el zócalo'; if (k === 'cubierta') return 'la cubierta';
+  const p = k.split('|');
+  if (p[0] === 'cuerpo') return (NOMBRE_PIEZA[p[1]] || p[1]).toLowerCase();
+  if (p[0] === 'f') return p[3] === 'rep' ? `la repisa ${+p[4] + 1} (c${+p[1] + 1}·f${+p[2] + 1})` : p[3] === 'div' ? 'las divisiones de la sección' : `el frente c${+p[1] + 1}·f${+p[2] + 1}`;
+  return k;
+}
+function aplicarMaterial(dest, mid) {
+  const m = modulo(dest.m); if (!m) return;
+  cambiar(() => { m.materiales = { ...(m.materiales || {}), [dest.k]: mid }; });
+  aviso(`${nombreMaterial(mid)} aplicado en ${nombreClave(dest.k)} de «${m.nombre}». Ctrl+Z deshace.`);
+  if (!$('#tab-mat').hidden) pintarMateriales();
+}
+function pintarMateriales() {
+  const usados = new Map();
+  for (const m of modelo.modulos) for (const mid of Object.values(m.materiales || {})) usados.set(mid, (usados.get(mid) || 0) + 1);
+  const q = ($('#mat-buscar')?.value || '').toLowerCase();
+  const tarjeta = (mid, nombre, linea = '') => `<div class="ed-mat" data-mat="${esc(mid)}" title="Arrastra sobre una pieza, o haz clic para aplicarlo a la pieza seleccionada"><i class="ed-esfera" style="${esfera(mid)}"></i><span>${esc(nombre)}${linea ? `<br><small>${esc(linea)}</small>` : ''}</span></div>`;
+  const lineas = [...new Set(MEL.map((x) => x.linea || 'Melaminas'))];
+  const filtra = (n) => !q || n.toLowerCase().includes(q);
+  $('#materiales').innerHTML = `
+    <p class="ed-mat-ayuda"><b>Arrastra</b> un material sobre una puerta, cajón, costado, base, repisa, zócalo o cubierta (en 3D o en Frente). O selecciona la pieza y <b>haz clic</b> en el material. Lo general (melamina de frentes y colores) está en el panel izquierdo.</p>
+    <div class="ed-mat-grupo">Materiales usados</div>
+    <div class="ed-mat-usados">
+      <div class="ed-mat-usado"><i class="ed-esfera" style="${esfera(modelo.frente || 'color:#cfc6b8')}"></i><span>${esc(nombreMaterial(modelo.frente) || 'Sin elegir')}<small>Melamina general de frentes</small></span></div>
+      ${[...usados].map(([mid, n]) => `<div class="ed-mat-usado"><i class="ed-esfera" style="${esfera(mid)}"></i><span>${esc(nombreMaterial(mid))}<small>${n} pieza${n > 1 ? 's' : ''} con este material</small></span><button data-quitar-mat="${esc(mid)}" title="Volver al material general en esas piezas">Quitar</button></div>`).join('')}
+    </div>
+    <input type="search" id="mat-buscar" class="ed-mat-buscar" placeholder="Buscar material…" value="${esc(q)}">
+    <div class="ed-mat-grupo">Colores básicos</div>
+    <div class="ed-mat-grid">${BASICOS.filter((b) => filtra(b[1])).map(([mid, n]) => tarjeta(mid, n)).join('')}</div>
+    <label class="ed-mat-color">Color específico <input type="color" id="mat-color" value="#b4322e"> <span class="ed-mat" data-mat="color:#b4322e" id="mat-color-muestra" style="padding:4px 8px"><i class="ed-esfera" style="width:26px;height:26px;${esfera('color:#b4322e')}"></i></span></label>
+    ${lineas.map((l) => { const xs = MEL.filter((x) => (x.linea || 'Melaminas') === l && filtra(x.nombre)); return xs.length ? `<div class="ed-mat-grupo">Masisa · ${esc(l)}</div><div class="ed-mat-grid">${xs.map((x) => tarjeta(x.id, x.nombre)).join('')}</div>` : ''; }).join('')}`;
+}
+$('#materiales').addEventListener('input', (e) => {
+  if (e.target.id === 'mat-buscar') { const pos = e.target.selectionStart; pintarMateriales(); const i = $('#mat-buscar'); i.focus(); i.setSelectionRange(pos, pos); }
+  if (e.target.id === 'mat-color') { const m = $('#mat-color-muestra'); m.dataset.mat = `color:${e.target.value}`; m.querySelector('i').style.cssText = `width:26px;height:26px;${esfera(m.dataset.mat)}`; }
+});
+$('#materiales').addEventListener('click', (e) => {
+  const q = e.target.closest('[data-quitar-mat]')?.dataset.quitarMat;
+  if (q) { cambiar(() => modelo.modulos.forEach((m) => { for (const [k, v] of Object.entries(m.materiales || {})) if (v === q) delete m.materiales[k]; })); pintarMateriales(); }
+});
+// Arrastrar una esfera: al soltar sobre una pieza se le aplica; un clic la aplica a la pieza seleccionada
+$('#materiales').addEventListener('pointerdown', (e) => {
+  const b = e.target.closest('[data-mat]'); if (!b) return;
+  e.preventDefault();
+  const mid = b.dataset.mat, x0 = e.clientX, y0 = e.clientY;
+  let fantasma = null;
+  const destino = (ev) => {
+    const bajo = document.elementFromPoint(ev.clientX, ev.clientY);
+    const celda = bajo?.closest?.('[data-tipo="celda"]'), zoc = bajo?.closest?.('[data-tipo="zocalo"]'), cara = bajo?.closest?.('[data-ref]');
+    if (celda) return { m: celda.dataset.m, k: `f|${celda.dataset.col}|${celda.dataset.fila}` };
+    if (zoc) return { m: zoc.dataset.m, k: 'zocalo' };
+    if (cara && lienzo.contains(cara)) return claveDeRef(cara.dataset.ref);
+    return null;
+  };
+  const mover = (ev) => {
+    if (!fantasma && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 5) { fantasma = document.createElement('div'); fantasma.className = 'ed-fantasma-mat ed-esfera'; fantasma.style.cssText += esfera(mid); document.body.append(fantasma); }
+    if (!fantasma) return;
+    fantasma.style.left = ev.clientX + 'px'; fantasma.style.top = ev.clientY + 'px';
+    const d = destino(ev);
+    estadoEl.textContent = d ? `Soltar en ${nombreClave(d.k)} de «${modulo(d.m).nombre}»` : 'Suelta el material sobre una pieza del mueble';
+  };
+  const soltar = (ev) => {
+    window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
+    if (!fantasma) { // fue un clic
+      const d = claveDeSel();
+      if (d) aplicarMaterial(d, mid); else aviso('Selecciona una pieza (puerta, costado, base, repisa…) o arrastra el material sobre ella.');
+      return;
+    }
+    fantasma.remove();
+    const d = destino(ev);
+    if (d) aplicarMaterial(d, mid); else aviso('Suelta el material sobre una pieza del mueble.');
+  };
+  window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
+});
+// Bloque del panel de una pieza: su material propio (o el general) y cómo quitarlo
+function bloqueMaterial() {
+  const d = claveDeSel(); if (!d) return '';
+  const mid = modulo(d.m).materiales?.[d.k];
+  return `<div class="ed-material-pieza"><i class="ed-esfera" style="${esfera(mid || modelo.frente || 'color:#cfc6b8')}"></i>
+    <span style="flex:1">${mid ? `<b>${esc(nombreMaterial(mid))}</b><br><small>material propio</small>` : '<small>Material general</small>'}</span>
+    ${mid ? '<button data-a="quitar-material">Quitar</button>' : ''}<button data-a="ver-materiales">Cambiar…</button></div>`;
 }
 // Panel «Colores y materiales»: una lista corta por parte del mueble y del espacio
 function pintarColores() {
@@ -181,6 +298,8 @@ function selRef() {
   if (sel.tipo === 'multi') return sel.ids.map((id) => `${id}|`);
   if (sel.tipo === 'vano') return `vano|${sel.i}|${sel.v}`;
   if (sel.tipo === 'artefacto') return `${sel.m}|a|${sel.a}`;
+  if (sel.tipo === 'pieza') return `${sel.m}|cuerpo|${sel.p}`;
+  if (sel.tipo === 'repisa') return `${sel.m}|f|${sel.col}|${sel.fila}|rep|${sel.i}`;
   if (sel.tipo === 'div') return null;
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
@@ -847,7 +966,9 @@ function alternar(id) {
 }
 
 function desdeRef(ref) {
-  const [m, k, a, b] = ref.split('|');
+  const [m, k, a, b, e, i] = ref.split('|');
+  if (k === 'cuerpo' && a) return { tipo: 'pieza', m, p: a };
+  if (k === 'f' && e === 'rep') return { tipo: 'repisa', m, col: +a, fila: +b, i: +i };
   if (m === 'muro') return { tipo: 'muro', i: +k };
   if (m === 'vano') return { tipo: 'vano', i: +k, v: a };
   if (k === 'a') return { tipo: 'artefacto', m, a };
@@ -1085,12 +1206,27 @@ function props() {
         ${num('t.rot', 'Giro', t.rot, { u: '°', step: 1, min: -360 })}
       </div>
       <div class="ed-botones"><button data-a="rot-">⟲ 90°</button><button data-a="rot+">⟳ 90°</button><button data-a="centrar">Centrar</button><button data-a="borrar-tirador" class="peligro">Eliminar</button></div>`;
+  } else if (sel.tipo === 'pieza') {
+    const quitable = ['piso', 'techo', 'fondo', 'izq', 'der'].includes(sel.p);
+    h = `<p class="tit">${NOMBRE_PIEZA[sel.p] || sel.p}</p><p class="sub">${esc(m.nombre)} · tablero de ${+m.tablero || 15} mm</p>
+      ${sel.p === 'piso' ? '<p class="ed-ayuda">Si el mueble va apoyado sobre una cubierta u otro mueble, puedes quitar la base: el interior llega hasta abajo.</p>' : ''}
+      ${quitable ? '<div class="ed-botones"><button data-a="quitar-pieza" class="peligro">Quitar esta pieza (Supr)</button></div>' : ''}${bloqueMaterial()}`;
+  } else if (sel.tipo === 'repisa') {
+    const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila);
+    h = `<p class="tit">Repisa ${sel.i + 1} de ${c.repisas}</p><p class="sub">${esc(m.nombre)} · columna ${sel.col + 1}, fila ${sel.fila + 1}</p>
+      <div class="ed-botones"><button data-a="quitar-repisa" class="peligro">Quitar esta repisa (Supr)</button><button data-a="ver-seccion">Ver la sección</button></div>
+      <p class="ed-ayuda">Las repisas se reparten parejo en el alto de la sección.</p>${bloqueMaterial()}`;
   } else if (sel.tipo === 'cubierta') {
     h = `<p class="tit">Cubierta</p><p class="sub">${esc(m.nombre)} · ${cm(cubiertaDe(m).W)} × ${cm(cubiertaDe(m).Dc)} cm</p>
       <p class="sub" style="margin-top:10px">Agregar sobre la cubierta</p>
       <div class="ed-biblio ed-plantillas">${DE_CUBIERTA.map((k) => `<button type="button" data-a="art:${k}">${ARTEFACTOS[k].nombre}</button>`).join('')}</div>
       ${artefactosDe(m).map((a) => `<button class="ed-fila-art" data-a="ver-art:${a.id}">${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)} × ${cm(a.fondo)}</small></button>`).join('')}
       <div class="ed-botones"><button data-a="quitar-cubierta" class="peligro">Quitar cubierta</button></div>`;
+  }
+  if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo'].includes(sel.tipo)) h += bloqueMaterial();
+  // Piezas quitadas del cuerpo (se pueden restaurar)
+  if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
+    h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Piezas quitadas: ${m.quitar.map((p) => (NOMBRE_PIEZA[p] || p).toLowerCase()).join(', ')}</p><div class="ed-botones"><button data-a="restaurar-piezas">Restaurar piezas</button></div></div>`;
   }
   // En frentes, zócalo y tiradores también se muestran las medidas generales del módulo.
   if (sel.tipo === 'frente' || sel.tipo === 'zocalo' || sel.tipo === 'tirador') {
@@ -1280,6 +1416,11 @@ $('#props').addEventListener('click', (e) => {
     if (a === 'rep+' && !capas.repisas && m.columnas[sel.col].frentes[sel.fila].tipo !== 'abierto') aviso('Repisa agregada detrás de la puerta. Activa Capas → Repisas para verla punteada.');
     return;
   }
+  if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
+  if (a === 'restaurar-piezas') { cambiar(() => { delete m.quitar; }); return; }
+  if (a === 'ver-seccion') { sel = { tipo: 'frente', m: m.id, col: sel.col, fila: sel.fila }; render(); return; }
+  if (a === 'quitar-material') { const d = claveDeSel(); if (d) cambiar(() => { delete m.materiales[d.k]; }); return; }
+  if (a === 'ver-materiales') { $('.ed-tabs [data-tab="mat"]').click(); return; }
   if (a === 'hoja+' || a === 'hoja-') {
     const f = m.columnas[sel.col].frentes[sel.fila], w = +m.columnas[sel.col].ancho;
     const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.hojas || 2, min = hojasMin(w);
@@ -1304,6 +1445,18 @@ function borrarSel() {
   if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); return; }
   if (sel.tipo === 'artefacto') { const s = { ...sel }; cambiar((d) => { const m = d.modulos.find((x) => x.id === s.m); m.artefactos = (m.artefactos || []).filter((x) => x.id !== s.a); }); sel = { tipo: 'cubierta', m: s.m }; render(); return; }
+  if (sel.tipo === 'pieza') { // Supr sobre la base, el techo, el fondo o un costado: el mueble va sin esa pieza
+    const s = { ...sel }, m = modulo(s.m);
+    if (!['piso', 'techo', 'fondo', 'izq', 'der'].includes(s.p)) return;
+    cambiar(() => { m.quitar = [...new Set([...(m.quitar || []), s.p])]; });
+    aviso(`Se quitó: ${NOMBRE_PIEZA[s.p].toLowerCase()} de «${m.nombre}». Se restaura desde el panel del mueble o con Ctrl+Z.`);
+    sel = { tipo: 'modulo', m: m.id }; render(); return;
+  }
+  if (sel.tipo === 'repisa') { // Supr sobre una repisa: una menos en esa sección
+    const s = { ...sel }, m = modulo(s.m), c = celdas(m).find((k) => k.col === s.col && k.fila === s.fila);
+    cambiar(() => { m.columnas[s.col].frentes[s.fila].repisas = Math.max(0, (c?.repisas || 1) - 1); });
+    sel = { tipo: 'frente', m: m.id, col: s.col, fila: s.fila }; render(); return;
+  }
   if (sel.tipo === 'div') { // Supr sobre una división: las dos secciones quedan en una
     const s = { ...sel }, m = modulo(s.m);
     cambiar(() => (s.dir === 'v' ? unirDerecha(m, s.col) : unirAbajo(m, s.col, s.fila)));
@@ -1377,6 +1530,7 @@ const selMel = $('#melamina');
 selMel.innerHTML = MEL.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)} · ${esc(x.linea || '')}</option>`).join('');
 selMel.value = modelo.frente || '';
 pintarColores();
+selMel.addEventListener('change', () => { if (!$('#tab-mat').hidden) pintarMateriales(); });
 selMel.addEventListener('change', () => cambiar(() => { modelo.frente = selMel.value; }));
 
 $('.ed-acciones').addEventListener('click', (e) => {
@@ -1482,6 +1636,8 @@ new ResizeObserver(() => { encuadrar(true); dibujarPlano(); }).observe(lienzo);
 $$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
   $$('.ed-tabs [data-tab]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   $('#tab-props').hidden = b.dataset.tab !== 'props';
+  $('#tab-mat').hidden = b.dataset.tab !== 'mat';
+  if (b.dataset.tab === 'mat') pintarMateriales();
   $('#tab-coment').hidden = b.dataset.tab !== 'coment';
 }));
 

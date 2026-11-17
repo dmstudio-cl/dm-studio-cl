@@ -250,3 +250,22 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-izq #colores { margin-top: 8px; }
 .ed-izq select { width: 100%; }
 .ed-tag { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(180, 50, 46, .25); font: 500 .62rem/1.2 var(--mono); color: #e8c9a8; }
+
+/* biblioteca de materiales (arrastrar y soltar sobre una pieza) */
+.ed-mat-ayuda { font-size: .76rem; color: var(--muted); line-height: 1.45; margin: 0 0 10px; }
+.ed-mat-usados { display: grid; gap: 6px; margin-bottom: 14px; }
+.ed-mat-usado { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; }
+.ed-mat-usado small { display: block; color: var(--muted); font-family: var(--mono); font-size: .66rem; }
+.ed-mat-buscar { width: 100%; margin-bottom: 10px; }
+.ed-mat-grupo { font: 500 .66rem/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 14px 0 8px; }
+.ed-mat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.ed-mat { display: grid; justify-items: center; gap: 5px; padding: 8px 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--ink-3); cursor: grab; touch-action: none; user-select: none; }
+.ed-mat:hover { border-color: var(--line-2); }
+.ed-mat span { font-size: .66rem; line-height: 1.2; text-align: center; color: var(--bone); }
+.ed-esfera { width: 52px; height: 52px; border-radius: 50%; box-shadow: inset -6px -8px 14px rgba(0, 0, 0, .45), 0 4px 10px rgba(0, 0, 0, .35); }
+.ed-mat-usado .ed-esfera { width: 32px; height: 32px; }
+.ed-mat-color { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: .78rem; }
+.ed-mat-color input { width: 44px; height: 32px; padding: 0; border: 0; background: none; }
+.ed-fantasma-mat { position: fixed; z-index: 50; width: 42px; height: 42px; margin: -21px 0 0 -21px; border-radius: 50%; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+.ed-material-pieza { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; font-size: .78rem; }
+.ed-material-pieza .ed-esfera { width: 28px; height: 28px; flex: none; }

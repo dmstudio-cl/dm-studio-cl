@@ -6,6 +6,8 @@
 //   modulos: [{
 //     id, nombre, tipo, ancho, alto, profundidad, zocalo, x, elevacion, z, cubierta,
 //     tablero,                                        // espesor de la melamina en mm (15 normal, 18 a veces)
+//     materiales: { [pieza]: idMaterial },            // material propio de una pieza (editor): 'f|col|fila', 'cuerpo|izq', 'zocalo'…
+//     quitar: ['piso', 'techo', 'fondo', 'izq', 'der'], // tableros del cuerpo que no lleva
 //     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro
 //     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas, hojas }] }],   // hojas: puertas de la sección (puerta_doble)   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
@@ -349,40 +351,49 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
 
+    // Material propio de una pieza (si el editor le asignó uno), probando de la clave más específica a la general
+    const propio = (...claves) => {
+      for (const k of claves) { const mid = m.materiales?.[k]; const bg = mid && mats.material?.(mid); if (bg) return { bg }; }
+      return null;
+    };
+    const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
     if (ver('zocalo') && Z > 0) {
       const r = +m.zocalo_retiro || 0;
-      B({ w: W, h: Z, d: T, x: W / 2, y: Z / 2, z: D - r - T / 2 }, M.zocalo, `${id}|zocalo`); // tabla retranqueada bajo el cuerpo
+      B({ w: W, h: Z, d: T, x: W / 2, y: Z / 2, z: D - r - T / 2 }, propio('zocalo') || M.zocalo, `${id}|zocalo`); // tabla retranqueada bajo el cuerpo
     }
     if (ver('cuerpo')) {
-      const ref = `${id}|cuerpo`;
       // costados: por dentro siempre del color del cuerpo; por fuera, como se eligió (general o de este mueble)
       const MC = m.costados === 'frente' ? M.frente : m.costados === 'cuerpo' ? M.cuerpo : M.costado;
-      const lado = (cara) => (c) => (c === cara || c === 'front' || c === 'top' || c === 'bottom' ? MC : M.cuerpo);
-      B({ w: T, h: H - Z, d: D, x: T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('left'), ref);     // costado izq. (sobre el zócalo)
-      B({ w: T, h: H - Z, d: D, x: W - T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('right'), ref); // costado der.
-      B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, M.cuerpo, ref); // piso
-      B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, M.cuerpo, ref); // techo
-      B({ w: W - 2 * T, h: H - Z - 2 * T, d: .6, x: W / 2, y: Z + (H - Z) / 2, z: .3 }, M.cuerpo, ref); // fondo
+      const lado = (cara, p) => propio(`cuerpo|${p}`, 'cuerpo') || ((c) => (c === cara || c === 'front' || c === 'top' || c === 'bottom' ? MC : M.cuerpo));
+      const tab = (p) => propio(`cuerpo|${p}`, 'cuerpo') || M.cuerpo;
+      const piso = quitada('piso') ? Z : Z + T; // sin base: el interior llega hasta abajo (ej. sobre una cubierta)
+      if (!quitada('izq')) B({ w: T, h: H - Z, d: D, x: T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
+      if (!quitada('der')) B({ w: T, h: H - Z, d: D, x: W - T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
+      if (!quitada('piso')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, tab('piso'), `${id}|cuerpo|piso`); // base
+      if (!quitada('techo')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
+      if (!quitada('fondo')) B({ w: W - 2 * T, h: H - piso - T, d: .6, x: W / 2, y: piso + (H - piso - T) / 2, z: .3 }, tab('fondo'), `${id}|cuerpo|fondo`); // fondo
     }
     if (ver('frentes')) {
       for (const c of celdas(m)) {
-        const ref = `${id}|f|${c.col}|${c.fila}`;
+        const k = `f|${c.col}|${c.fila}`, ref = `${id}|${k}`;
         const fw = c.w - GAP, fh = c.h - GAP, zf = D + T / 2;
+        const MF = propio(k, 'frentes') || M.frente, MD = propio(`${k}|div`, 'cuerpo') || M.cuerpo;
         if (c.tipo === 'abierto') { // sin puerta: se ve el interior blanco, con sus divisiones y repisas
           if (ver('cuerpo')) {
-            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, M.cuerpo, ref);      // división izq.
-            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, M.cuerpo, ref);  // división der.
-            if (c.y1 < H - .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, M.cuerpo, ref);  // división arriba
-            if (c.y0 > Z + .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y0, z: D / 2 }, M.cuerpo, ref);  // división abajo
+            const rd = `${ref}|div`;
+            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, rd);      // división izq.
+            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, rd);  // división der.
+            if (c.y1 < H - .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, MD, rd);  // división arriba
+            if (c.y0 > Z + .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y0, z: D / 2 }, MD, rd);  // división abajo
             const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2);
             const dr = D - 1.1; // repisa completa: desde el fondo hasta 0,5 cm del canto
-            for (const y of nivelesRepisa(c)) B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, M.cuerpo, ref);
+            nivelesRepisa(c).forEach((y, i) => B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo, `${ref}|rep|${i}`));
           }
         } else if (c.tipo === 'puerta_doble') { // n hojas iguales (máx. 45 cm cada una)
           const n = c.hojas, lw = (fw - (n - 1) * GAP) / n;
-          for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: c.y, z: zf }, M.frente, ref);
+          for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: c.y, z: zf }, MF, ref);
         } else {
-          B({ w: fw, h: fh, d: T, x: c.x, y: c.y, z: zf }, M.frente, ref);
+          B({ w: fw, h: fh, d: T, x: c.x, y: c.y, z: zf }, MF, ref);
         }
       }
     }
@@ -402,7 +413,8 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     if (ver('cubierta') && m.cubierta) {
       // el canto (frente y costados) lleva el perfil del borde elegido; la cara de arriba, el material
       const canto = CANTOS[mats.borde] || '';
-      const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${M.cubierta.bg}` } : M.cubierta);
+      const MCub = propio('cubierta') || M.cubierta;
+      const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${MCub.bg}` } : MCub);
       B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, texCub, `${id}|cubierta`);
       for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M);
     }

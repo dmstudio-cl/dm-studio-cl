@@ -69,6 +69,8 @@ function contactoDe(info) {
 const textoAviso = { 'sin-permiso': 'El cliente pidió no recibir avisos por correo.', enviado: 'Correo enviado al cliente.', 'sin-correo': 'El proyecto no tiene email del cliente: no se envió correo.', 'sin-configurar': 'El correo automático aún no está configurado en el Worker.', error: 'No se pudo enviar el correo (revisa el Apps Script).' };
 
 // Convierte el proyecto del repo al modelo del editor (y viceversa al publicar).
+// Los materiales por pieza viajan como texto JSON (así Decap los conserva, igual que «plantilla»)
+const leerJSON = (v) => { if (!v) return undefined; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return undefined; } };
 export function aModelo(raw, uid) {
   return {
     nombre: raw.titulo || 'Proyecto',
@@ -76,7 +78,7 @@ export function aModelo(raw, uid) {
     espacio: raw.espacio ? JSON.parse(JSON.stringify(raw.espacio)) : null,
     colores: raw.colores ? { ...raw.colores } : {},
     modulos: (raw.modulos || []).map((m) => ({
-      ...m, id: m.id || uid(), tiradores: (m.tiradores || []).map((t) => ({ ...t, id: t.id || uid('t') })),
+      ...m, id: m.id || uid(), materiales: leerJSON(m.materiales), tiradores: (m.tiradores || []).map((t) => ({ ...t, id: t.id || uid('t') })),
       zocalo_retiro: m.zocalo_retiro ?? 5, x: +m.x || 0, elevacion: +m.elevacion || 0, z: +m.z || 0, rotacion: +m.rotacion || 0,
     })),
   };
@@ -239,7 +241,7 @@ export function iniciarProyectos(ed) {
       const { raw, sha } = await leerProyecto(info.id);
       const modelo = ed.modelo();
       const v = (+raw.version || 1) + 1;
-      raw.modulos = modelo.modulos;
+      raw.modulos = modelo.modulos.map((m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m)));
       raw.colores = modelo.colores || {};
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
