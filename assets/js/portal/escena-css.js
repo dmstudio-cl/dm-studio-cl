@@ -15,7 +15,15 @@ export function createScene(el) {
   el.prepend(host);
   const st = createStage(host, { rx: VISTAS['tres-cuartos'][0], ry: VISTAS['tres-cuartos'][1], minRx: -89, maxRx: -2 });
 
-  let proyecto = null, sel = {}, roomVisible = true, zoom = 1, modeloActual = null;
+  let proyecto = null, sel = {}, roomVisible = true, zoom = 1, modeloActual = null, catalogo = [], piezaSel = null;
+  // Fondo CSS de un material por pieza: melamina del catálogo (id) o color ('color:#rrggbb')
+  const fondoMaterial = (mid) => {
+    if (!mid) return null;
+    if (mid.startsWith('color:')) return mid.slice(6);
+    const x = catalogo.find((k) => k.id === mid);
+    return x ? (x.imagen && x.tipo !== 'unicolor' ? `url('${x.imagen}') center / 60em 60em, ${x.hex}` : x.hex) : null;
+  };
+  const leerJSON = (v) => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return {}; } };
   const listeners = [];
   st.onApply(() => listeners.forEach((fn) => fn()));
 
@@ -23,13 +31,15 @@ export function createScene(el) {
   function mats(s) {
     const m = s.melamina;
     const frente = m ? (m.imagen && m.tipo !== 'unicolor' ? `url('${m.imagen}') center / 60em 60em, ${m.hex}` : m.hex) : '#cfc6b8';
-    return { ...matsColores(proyecto?.colores, frente), cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto' };
+    return { ...matsColores(proyecto?.colores, frente), cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto', material: fondoMaterial };
   }
   function modelo(s) {
     return {
       espacio: espacioPortal(proyecto.espacio),
       modulos: (proyecto.modulos || []).map((m, i) => ({
         ...m, id: m.id || `m${i}`,
+        // materiales por pieza: los del estudio y encima los que eligió el cliente ("idMódulo|pieza")
+        materiales: { ...leerJSON(m.materiales), ...Object.fromEntries(Object.entries(s.materiales || {}).filter(([k]) => k.startsWith(`${m.id || `m${i}`}|`)).map(([k, v]) => [k.slice(k.indexOf('|') + 1), v])) },
         x: +m.x || 0, z: +m.z || 0, elevacion: +m.elevacion || 0, rotacion: +m.rotacion || 0,
         tiradores: tiradoresCliente(m, s.tirador),
       })),
@@ -37,7 +47,7 @@ export function createScene(el) {
   }
   function build() {
     modeloActual = modelo(sel);
-    dibujar(st, modeloActual, { capas: { muros: roomVisible }, mats: mats(sel) });
+    dibujar(st, modeloActual, { capas: { muros: roomVisible }, mats: mats(sel), sel: piezaSel });
     listeners.forEach((fn) => fn());
   }
   function encuadrar() {
@@ -108,7 +118,9 @@ export function createScene(el) {
   }
 
   return {
-    setProject(p, s) { proyecto = p; sel = s || {}; build(); encuadrar(); st.set(...VISTAS['tres-cuartos']); },
+    setProject(p, s, cat = []) { proyecto = p; sel = s || {}; catalogo = cat; build(); encuadrar(); st.set(...VISTAS['tres-cuartos']); },
+    // Pieza seleccionada para cambiarle el color (ref "idMódulo|pieza"; se resalta)
+    seleccionar(ref) { piezaSel = ref || null; build(); },
     update(s) { sel = s || {}; build(); },
     view(nombre = 'tres-cuartos') { zoom = 1; encuadrar(); st.view(...(VISTAS[nombre] || VISTAS['tres-cuartos'])); },
     toggleRoom() { roomVisible = !roomVisible; build(); encuadrar(); return roomVisible; },

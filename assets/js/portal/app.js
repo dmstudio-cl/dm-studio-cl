@@ -31,8 +31,9 @@ export async function startApp(api) {
     tirador: proyecto.seleccion?.tirador || tiradores[0]?.id || '',
     cubierta: proyecto.seleccion?.cubierta || cubiertas[0]?.id || '',
     borde: proyecto.seleccion?.borde || bordes[0]?.id || '',
+    materiales: { ...(proyecto.seleccion?.materiales || {}) }, // color propio por pieza: { "idMódulo|pieza": idMelamina }
   };
-  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde) });
+  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales });
   const aprobado = () => !!proyecto.aprobacion;
 
   // ----- cabecera
@@ -48,7 +49,7 @@ export async function startApp(api) {
 
   // ----- escena
   const scene = createScene($('#pcanvas'));
-  scene.setProject(proyecto, resolved());
+  scene.setProject(proyecto, resolved(), catalogo);
   $('#ploading').remove();
 
   // ----- listas de opciones
@@ -90,8 +91,83 @@ export async function startApp(api) {
       r.tirador && `Tirador: <b>${esc(r.tirador.nombre)}</b>`,
       r.cubierta && `Cubierta: <b>${esc(r.cubierta.nombre)}</b>`,
       r.borde && `Borde: <b>${esc(r.borde.nombre)}</b>`,
+      Object.keys(sel.materiales).length && `<b>${Object.keys(sel.materiales).length}</b> pieza${Object.keys(sel.materiales).length > 1 ? 's' : ''} con color propio`,
     ].filter(Boolean).join(' · ');
+    pintarPiezas();
   }
+
+  // ----- color por pieza (como el visor de materiales del estudio): tocar una pieza y luego un color,
+  // o arrastrar un color sobre la pieza. Tocar un color sin pieza elegida cambia todo el mueble.
+  let piezaSel = null; // "idMódulo|pieza"
+  const modNombre = (id) => (proyecto.modulos || []).find((m, i) => (m.id || `m${i}`) === id)?.nombre || 'el mueble';
+  const LADOS = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo' };
+  function nombrePieza(ref) {
+    const [mid, ...r] = ref.split('|'), [k, a, b, c, i] = r;
+    let n = r.join('|');
+    if (k === 'cuerpo') n = LADOS[a] || 'Cuerpo';
+    else if (k === 'zocalo') n = 'Zócalo';
+    else if (k === 'f') {
+      const tipo = (proyecto.modulos || []).find((m, j) => (m.id || `m${j}`) === mid)?.columnas?.[+a]?.frentes?.[+b]?.tipo;
+      const nom = { puerta: 'Puerta', puerta_doble: 'Puertas', cajon: 'Cajón', panel: 'Panel', abierto: 'Sección abierta' }[tipo] || 'Frente';
+      n = c === 'rep' ? `Repisa ${+i + 1}` : c === 'div' ? 'Divisiones de la sección' : `${nom} (columna ${+a + 1}, fila ${+b + 1})`;
+    }
+    return `${n} · ${modNombre(mid)}`;
+  }
+  // Piezas que el cliente puede pintar: frentes, cuerpo, repisas, divisiones y zócalo (no tiradores, cubierta ni artefactos)
+  const refPintable = (ref) => /^[^|]+\|(f\|\d+\|\d+(\|rep\|\d+|\|div)?|cuerpo\|(izq|der|piso|techo|fondo)|zocalo)$/.test(ref || '');
+  function elegirPieza(ref) {
+    piezaSel = ref; scene.seleccionar(ref);
+    document.querySelector('.ptabs [data-tab="melamina"]')?.click();
+    pintarPiezas();
+  }
+  function aplicarPieza(ref, id) {
+    if (aprobado() && !isOwner) { status('La propuesta ya fue aprobada. Para cambios, escríbenos en la conversación.'); return; }
+    if (id) sel.materiales[ref] = id; else delete sel.materiales[ref];
+    paintSelection(); scene.update(resolved()); schedule();
+    status(id ? `${byId(melaminas, id)?.nombre || 'Color'} en ${nombrePieza(ref)}.` : `${nombrePieza(ref)}: vuelve al color general.`);
+  }
+  function pintarPiezas() {
+    const box = $('#ppieza'); if (!box) return;
+    const lista = Object.entries(sel.materiales);
+    box.innerHTML = `
+      ${piezaSel ? `<div class="ppieza-sel"><span>Pieza elegida: <b>${esc(nombrePieza(piezaSel))}</b><br><small>Toca un color para aplicarlo solo aquí.</small></span>
+        <button type="button" data-pz="general">Color general</button><button type="button" data-pz="listo" aria-label="Terminar">✕</button></div>`
+        : '<p class="small muted ppieza-ayuda">Toca un color para <b>todo el mueble</b> (la cubierta se elige en su pestaña o tocándola). Para cambiar <b>una sola pieza</b> (una puerta, un costado, una repisa…), haz clic sobre ella en el modelo o arrastra el color encima. <b>Doble clic</b> para comentar.</p>'}
+      ${lista.length ? `<details class="ppieza-lista"><summary>${lista.length} pieza${lista.length > 1 ? 's' : ''} con color propio</summary>
+        ${lista.map(([ref, id]) => `<div><i style="background:${esc(byId(catalogo, id)?.hex || '#999')}"></i><span>${esc(nombrePieza(ref))} · ${esc(byId(catalogo, id)?.nombre || id)}</span><button type="button" data-pz-quitar="${esc(ref)}">Quitar</button></div>`).join('')}
+        <button type="button" data-pz="todas">Quitar todos los colores por pieza</button></details>` : ''}`;
+  }
+  $('#ppieza').addEventListener('click', (e) => {
+    const q = e.target.closest('[data-pz-quitar]')?.dataset.pzQuitar;
+    if (q) { aplicarPieza(q, null); return; }
+    const a = e.target.closest('[data-pz]')?.dataset.pz;
+    if (a === 'general' && piezaSel) aplicarPieza(piezaSel, null);
+    if (a === 'listo') { piezaSel = null; scene.seleccionar(null); pintarPiezas(); }
+    if (a === 'todas') { sel.materiales = {}; paintSelection(); scene.update(resolved()); schedule(); }
+  });
+  // Arrastrar un color desde la lista y soltarlo sobre una pieza del modelo
+  let arrastrado = false;
+  $('#mellist').addEventListener('pointerdown', (e) => {
+    const b = e.target.closest('[data-id]'); if (!b || e.button > 0) return;
+    const id = b.dataset.id, x0 = e.clientX, y0 = e.clientY;
+    let fantasma = null; arrastrado = false;
+    const mover = (ev) => {
+      if (!fantasma && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) {
+        if (ev.pointerType !== 'mouse' && Math.abs(ev.clientY - y0) > Math.abs(ev.clientX - x0)) return; // en táctil, deslizar vertical es desplazar la lista
+        fantasma = document.createElement('i'); fantasma.className = 'pfantasma'; fantasma.style.cssText = b.querySelector('i').getAttribute('style'); document.body.append(fantasma);
+        arrastrado = true;
+      }
+      if (fantasma) { fantasma.style.left = ev.clientX + 'px'; fantasma.style.top = ev.clientY + 'px'; }
+    };
+    const soltar = (ev) => {
+      window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
+      if (!fantasma) return;
+      fantasma.remove();
+      const ref = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('#pcanvas [data-ref]')?.dataset.ref;
+      if (refPintable(ref)) aplicarPieza(ref, id); else status('Suelta el color sobre una puerta, cajón, costado o repisa del mueble.');
+    };
+    window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
+  });
   paintSelection();
 
   // ----- precio y guardado (con espera para no saturar)
@@ -117,7 +193,11 @@ export async function startApp(api) {
     scene.update(resolved());
     schedule();
   }
-  $('#mellist').addEventListener('click', (e) => { const b = e.target.closest('[data-id]'); if (b) choose('melamina', b.dataset.id); });
+  $('#mellist').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-id]'); if (!b) return;
+    if (arrastrado) { arrastrado = false; return; } // fue un arrastre, no un clic
+    if (piezaSel) aplicarPieza(piezaSel, b.dataset.id); else choose('melamina', b.dataset.id);
+  });
   document.querySelectorAll('.optlist').forEach((l) => l.addEventListener('click', (e) => {
     const b = e.target.closest('.opt[data-kind]'); if (b) choose(b.dataset.kind, b.dataset.id);
   }));
@@ -225,16 +305,23 @@ export async function startApp(api) {
     if (!pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
     if (openPinAt(e.clientX, e.clientY)) setPinMode(false);
   });
-  cv.addEventListener('dblclick', (e) => { e.preventDefault(); openPinAt(e.clientX, e.clientY); });
+  // Doble clic = comentar; por eso el clic simple (elegir pieza o cubierta) espera un instante y se anula si llega el segundo clic
+  let clicPendiente = 0;
+  cv.addEventListener('dblclick', (e) => { e.preventDefault(); clearTimeout(clicPendiente); openPinAt(e.clientX, e.clientY); });
   // Clic simple sobre una cubierta (sin arrastrar y fuera del modo comentario): abre los bordes
   cv.addEventListener('click', (e) => {
-    if (pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || !bordes.length) return;
-    const cara = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref$="|cubierta"]');
-    if (!cara) return;
-    document.querySelector('.ptabs [data-tab="cubierta"]')?.click();
-    const lista = $('#bordelist');
-    lista.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    lista.classList.remove('flash'); void lista.offsetWidth; lista.classList.add('flash');
+    if (pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    if (e.detail > 1) { clearTimeout(clicPendiente); return; } // segundo clic de un doble clic
+    const ref = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]')?.dataset.ref;
+    clearTimeout(clicPendiente);
+    clicPendiente = setTimeout(() => {
+      if (refPintable(ref)) { elegirPieza(ref); return; } // una pieza: se le cambia el color
+      if (!/\|cubierta$/.test(ref || '')) { if (piezaSel) { piezaSel = null; scene.seleccionar(null); pintarPiezas(); } return; } // fondo: suelta la pieza
+      document.querySelector('.ptabs [data-tab="cubierta"]')?.click(); // la cubierta: su material y su borde
+      const lista = $('#bordelist');
+      lista.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      lista.classList.remove('flash'); void lista.offsetWidth; lista.classList.add('flash');
+    }, 260);
   });
   cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
   $('#pinpop [data-cancel]').addEventListener('click', closePinPop);
@@ -366,6 +453,7 @@ export async function startApp(api) {
     Object.assign(proyecto, p);
     proyecto.aprobacion = p.aprobacion || null;
     if (p.seleccion?.melamina) sel.melamina = p.seleccion.melamina; // la versión publicada trae la melamina del estudio
+    sel.materiales = { ...(p.seleccion?.materiales || {}) };           // y lo que el estudio decidió por pieza manda
     paintSelection();
     scene.update(resolved());
     $('#pdims').innerHTML = (proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join('');
@@ -430,6 +518,7 @@ export async function startApp(api) {
         <tr><th>Tirador</th><td>${esc(r.tirador?.nombre || '—')}</td></tr>
         <tr><th>Cubierta</th><td>${esc(r.cubierta?.nombre || '—')}</td></tr>
         <tr><th>Borde</th><td>${esc(r.borde?.nombre || '—')}</td></tr>
+        ${Object.keys(sel.materiales).length ? `<tr><th>Colores por pieza</th><td>${Object.entries(sel.materiales).map(([ref, id]) => `${esc(nombrePieza(ref))}: ${esc(byId(catalogo, id)?.nombre || id)}`).join('<br>')}</td></tr>` : ''}
         <tr><th>Total</th><td><b>${lastQuote ? clp(lastQuote.total) : '—'}</b></td></tr>
         <tr><th>Anticipo 50%</th><td>${lastQuote ? clp(lastQuote.anticipo) : '—'}</td></tr>
       </table>`;
@@ -458,6 +547,7 @@ async function notifyApproval(p, r, ap, mode) {
     `Tirador: ${r.tirador?.nombre || '—'}`,
     `Cubierta: ${r.cubierta?.nombre || '—'}`,
     `Borde de cubierta: ${r.borde?.nombre || '—'}`,
+    ...(Object.keys(r.materiales || {}).length ? [`Colores por pieza: ${Object.keys(r.materiales).length} (ver el detalle en el portal)`] : []),
     `Total: ${clp(ap.total)}`,
     `Anticipo 50%: ${clp(ap.anticipo)}`,
   ].join('\n');
