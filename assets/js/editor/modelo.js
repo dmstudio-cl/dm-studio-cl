@@ -5,14 +5,17 @@
 //   nombre, frente: <id melamina>,
 //   modulos: [{
 //     id, nombre, tipo, ancho, alto, profundidad, zocalo, x, elevacion, z, cubierta,
+//     tablero,                                        // espesor de la melamina en mm (15 normal, 18 a veces)
 //     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro
-//     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra }] }],   // de izq. a der. / de arriba a abajo
+//     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas }] }],   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
 //   }]
 // }
 // Capas: zócalo → cuerpo (costados, piso, techo, fondo) → frentes (puertas, cajones…) → tiradores → cubierta.
 
-export const T = 1.8;     // espesor de tablero
+export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
+export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
+export const MAX_HOJA = 45; // ancho máximo de una hoja de puerta (cm): más ancha daña las bisagras
 export const GAP = .3;    // luz entre frentes
 export const CT = 3.8;    // espesor de cubierta
 export const OVER = 2;    // vuelo frontal de la cubierta
@@ -22,7 +25,7 @@ export const TIPOS_FRENTE = {
   puerta_doble: 'Puerta doble',
   cajon: 'Cajón',
   panel: 'Panel fijo',
-  abierto: 'Abierto (repisa)',
+  abierto: 'Abierto (sin puerta)',
 };
 
 // ----- Biblioteca de tiradores prehechos -----
@@ -59,7 +62,7 @@ export function nuevoModulo({ x = 0, pz = 0, rotacion = 0, elevacion = 0, ancho 
     id: uid(), nombre: aereo ? 'Aéreo' : 'Módulo', tipo: aereo ? 'aereo' : 'base',
     ancho, alto, profundidad: profundidad ?? (aereo ? 35 : 58), zocalo: z, zocalo_retiro: 5,
     x, elevacion, z: pz, rotacion, cubierta: false,
-    columnas: [{ ancho, frentes: [{ tipo: 'puerta', alto: alto - z, bisagra: 'izquierda' }] }],
+    columnas: [{ ancho, frentes: [{ tipo: ancho > MAX_HOJA ? 'puerta_doble' : 'puerta', alto: alto - z, bisagra: 'izquierda' }] }],
     tiradores: [],
   };
 }
@@ -81,13 +84,17 @@ export function celdas(m) {
     let ytop = H;
     frentes.forEach((fr, fi) => {
       const fh = (+fr.alto || 0) * ky;
-      out.push({ col: ci, fila: fi, tipo: fr.tipo || 'puerta', x: x0 + cw / 2, y: ytop - fh / 2, w: cw, h: fh, x0, x1: x0 + cw, y0: ytop - fh, y1: ytop });
+      const repisas = fr.repisas != null && fr.repisas !== '' ? Math.max(0, Math.round(+fr.repisas) || 0) : fr.tipo === 'abierto' ? 1 : 0;
+      out.push({ col: ci, fila: fi, tipo: fr.tipo || 'puerta', repisas, x: x0 + cw / 2, y: ytop - fh / 2, w: cw, h: fh, x0, x1: x0 + cw, y0: ytop - fh, y1: ytop });
       ytop -= fh;
     });
     x0 += cw;
   });
   return out;
 }
+
+// Alturas (y local) de las repisas de una celda: repartidas parejo en su alto.
+export const nivelesRepisa = (c) => Array.from({ length: c.repisas || 0 }, (_, i) => c.y0 + c.h * (i + 1) / (c.repisas + 1));
 
 // ----- bordes de cubierta -----
 // Luz y sombra sobre el canto (frente y costados de la cubierta) que sugieren el perfil del borde.
@@ -175,7 +182,7 @@ export function espacioPortal(esp) {
 // ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
 // Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
-export const fondoTotal = (m) => +m.profundidad + T; // cuerpo + frentes
+export const fondoTotal = (m) => +m.profundidad + tablero(m); // cuerpo + frentes
 
 // Esquinas del mueble en planta (atrás-izq, atrás-der, frente-der, frente-izq), en coordenadas del espacio.
 export function huella(m) {
@@ -314,6 +321,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const W = +m.ancho, H = +m.alto, D = +m.profundidad;
     const Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
     const id = m.id;
+    const T = tablero(m); // 1,5 cm (melamina 15 mm) o 1,8 cm
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
 
@@ -333,8 +341,16 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       for (const c of celdas(m)) {
         const ref = `${id}|f|${c.col}|${c.fila}`;
         const fw = c.w - GAP, fh = c.h - GAP, zf = D + T / 2;
-        if (c.tipo === 'abierto') {
-          if (ver('cuerpo')) B({ w: c.w - 2 * T, h: T, d: D - 2, x: c.x, y: c.y, z: D / 2 }, M.cuerpo, ref); // repisa
+        if (c.tipo === 'abierto') { // sin puerta: se ve el interior blanco, con sus divisiones y repisas
+          if (ver('cuerpo')) {
+            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, M.cuerpo, ref);      // división izq.
+            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, M.cuerpo, ref);  // división der.
+            if (c.y1 < H - .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, M.cuerpo, ref);  // división arriba
+            if (c.y0 > Z + .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y0, z: D / 2 }, M.cuerpo, ref);  // división abajo
+            const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2);
+            const dr = D - 1.1; // repisa completa: desde el fondo hasta 0,5 cm del canto
+            for (const y of nivelesRepisa(c)) B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, M.cuerpo, ref);
+          }
         } else if (c.tipo === 'puerta_doble') {
           const lw = (fw - GAP) / 2;
           for (const s of [-1, 1]) B({ w: lw, h: fh, d: T, x: c.x + s * (lw + GAP) / 2, y: c.y, z: zf }, M.frente, ref);

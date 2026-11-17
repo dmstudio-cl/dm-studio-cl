@@ -300,7 +300,7 @@ export function crearPlanta(ctx) {
       if (!g.b) return dibujar();
       const x0 = Math.min(g.a.x, g.b.x), z0 = Math.min(g.a.z, g.b.z), w = Math.abs(g.b.x - g.a.x), d = Math.abs(g.b.z - g.a.z);
       if (w < 10 || d < 10) return dibujar();
-      const m = nuevoModulo({ x: x0, pz: z0, ancho: w, profundidad: Math.max(5, d - 1.8) });
+      const m = nuevoModulo({ x: x0, pz: z0, ancho: w, profundidad: Math.max(5, d - 1.5) });
       ctx.cambiar((md) => { md.modulos.push(m); iman(m, md.espacio); });
       ctx.setSel({ tipo: 'modulo', m: m.id }); ctx.setHerr('sel'); ctx.render();
       return;

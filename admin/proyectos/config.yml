@@ -90,6 +90,7 @@ collections:
           - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
           - { label: Giro en planta (grados), name: rotacion, widget: number, value_type: float, default: 0, hint: "Lo ajusta el editor. 90 = el frente mira hacia +X." }
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
+          - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
           - label: Columnas (de izquierda a derecha)
             name: columnas
             widget: list
@@ -104,6 +105,7 @@ collections:
                   - { label: Tipo, name: tipo, widget: select, options: [puerta, puerta_doble, cajon, panel, abierto, campana] }
                   - { label: Alto, name: alto, widget: number, value_type: float }
                   - { label: Bisagra, name: bisagra, widget: select, default: izquierda, options: [izquierda, derecha, arriba, abajo], required: false }
+                  - { label: Repisas, name: repisas, widget: number, value_type: int, required: false }
           - label: Tiradores (ubicados en el editor)
             name: tiradores
             widget: list

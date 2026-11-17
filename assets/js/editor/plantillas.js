@@ -4,7 +4,7 @@
 // así se conserva aunque el proyecto pase por Decap o se publique.
 import { uid } from './modelo.js';
 
-const T = 1.8; // espesor de frente
+const T = 1.5; // espesor de frente (melamina 15 mm)
 export const PLANTILLAS = {
   lineal: { nombre: 'Cocina lineal', medidas: ['largoA'] },
   L: { nombre: 'Cocina en L', medidas: ['largoA', 'largoB'] },
@@ -42,7 +42,7 @@ function repartir(largo) {
 
 function columnasPara(ancho, util, rol, i) {
   if (rol === 'relleno') return [{ ancho, frentes: [{ tipo: 'panel', alto: util }] }];
-  if (rol === 'lavaplatos' || ancho >= 70) return [{ ancho, frentes: [{ tipo: 'puerta_doble', alto: util, bisagra: 'izquierda' }] }];
+  if (rol === 'lavaplatos' || ancho > 45) return [{ ancho, frentes: [{ tipo: 'puerta_doble', alto: util, bisagra: 'izquierda' }] }];
   if (rol === 'cajonera') {
     const h = Math.round((util / 3) * 2) / 2;
     return [{ ancho, frentes: [{ tipo: 'cajon', alto: h }, { tipo: 'cajon', alto: h }, { tipo: 'cajon', alto: Math.round((util - 2 * h) * 10) / 10 }] }];
@@ -64,7 +64,7 @@ export function generar(tipo, p, gid = uid('g')) {
     columnas: columnasPara(ancho, util, rol, i), tiradores: [], plantilla: meta,
   });
   const aereo = (nombre, ancho, x, z, rot) => {
-    const doble = ancho >= 70;
+    const doble = ancho > 45; // una hoja no pasa de 45 cm
     const cols = doble ? [{ ancho: ancho / 2, frentes: [{ tipo: 'puerta', alto: p.altoAereo, bisagra: 'izquierda' }] }, { ancho: ancho / 2, frentes: [{ tipo: 'puerta', alto: p.altoAereo, bisagra: 'derecha' }] }]
       : [{ ancho, frentes: [{ tipo: 'puerta', alto: p.altoAereo, bisagra: 'izquierda' }] }];
     return {

@@ -1,6 +1,7 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
+import { nivelesRepisa, MAX_HOJA } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
@@ -26,7 +27,7 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
@@ -101,7 +102,9 @@ function normalizar(m) {
     const sh = c.frentes.reduce((a, f) => a + +f.alto, 0) || 1;
     c.frentes.forEach((f) => { f.alto = r1(+f.alto * HU / sh); });
   });
-  m.tiradores = (m.tiradores || []).filter((t) => m.columnas[t.col]?.frentes[t.fila]);
+  const cambios = limitarPuertas(m);
+  if (cambios.length) aviso(`Una hoja de puerta no pasa de ${MAX_HOJA} cm (bisagras): ${cambios.join('; ')}.`);
+  m.tiradores = (m.tiradores || []).filter((t) => m.columnas[t.col]?.frentes[t.fila] && m.columnas[t.col].frentes[t.fila].tipo !== 'abierto');
   // Cada tirador se mantiene dentro de su frente (si el frente se achica, el tirador lo acompaña)
   const cs = celdas(m);
   for (const t of m.tiradores) {
@@ -113,6 +116,27 @@ function normalizar(m) {
     t.dx = r1(Math.max(-mx, Math.min(mx, +t.dx || 0)));
     t.dy = r1(Math.max(-my, Math.min(my, +t.dy || 0)));
   }
+}
+
+// Puertas: una hoja no pasa de 45 cm. Una puerta más ancha pasa a puerta doble (2 hojas) y, si la
+// sección supera 90 cm, se divide en secciones iguales con sus mismos frentes.
+function limitarPuertas(m) {
+  const out = [];
+  for (let ci = 0; ci < m.columnas.length; ci++) {
+    const c = m.columnas[ci], w = +c.ancho;
+    for (const f of c.frentes) {
+      if (f.tipo === 'puerta' && w > MAX_HOJA + .05) { f.tipo = 'puerta_doble'; out.push(`la puerta de ${cm(w)} cm pasó a puerta doble`); }
+    }
+    if (c.frentes.some((f) => f.tipo === 'puerta_doble') && w > 2 * MAX_HOJA + .05) {
+      const n = Math.ceil(w / (2 * MAX_HOJA) - 1e-6);
+      const partes = Array.from({ length: n }, () => ({ ...JSON.parse(JSON.stringify(c)), ancho: r1(w / n) }));
+      m.columnas.splice(ci, 1, ...partes);
+      for (const t of m.tiradores || []) if (t.col > ci) t.col += n - 1;
+      out.push(`la sección de ${cm(w)} cm se dividió en ${n}`);
+      ci += n - 1;
+    }
+  }
+  return out;
 }
 
 // ===================== materiales =====================
@@ -330,7 +354,11 @@ function dibujarPlano() {
     // celdas (frentes)
     for (const c of celdas(m)) {
       const s = esSel && sel.tipo === 'frente' && sel.col === c.col && sel.fila === c.fila;
-      el('rect', { x: M.X(ox + c.x0), y: M.Y(oy + c.y1), width: c.w * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      el('rect', { x: M.X(ox + c.x0), y: M.Y(oy + c.y1), width: c.w * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}${c.tipo === 'abierto' ? ' abierta' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      // repisas: con puerta se ven punteadas (detrás de la puerta); sin puerta, llenas
+      if (capas.repisas && c.tipo !== 'cajon') for (const y of nivelesRepisa(c)) {
+        el('line', { x1: M.X(ox + c.x0 + 1.5), y1: M.Y(oy + y), x2: M.X(ox + c.x1 - 1.5), y2: M.Y(oy + y), class: `repisa${c.tipo === 'abierto' ? '' : ' oculta'}` }, plano);
+      }
     }
     // contorno del módulo
     el('rect', { x: M.X(ox), y: M.Y(oy + H), width: W * M.s, height: H * M.s, class: `modulo${enMulti || (esSel && (sel.tipo === 'modulo' || sel.tipo === 'cuerpo')) ? ' sel' : ''}` }, plano);
@@ -356,6 +384,44 @@ function dibujarPlano() {
     }
     if (esSel) cotas(m, M);
   }
+  const ms = sel?.m && !['multi', 'vano', 'muro'].includes(sel.tipo) ? modulosFrente().find((m) => m.id === sel.m) : null;
+  if (ms) cotasLaterales(ms, M);
+}
+
+// ----- distancias a los lados en Frente: al objeto más cercano (mueble, ventana o puerta, extremo del muro)
+// Cuentan solo los objetos que comparten altura con el mueble (un basal bajo una ventana no choca con ella).
+function obstaculosFrente(m) {
+  const W = muroActivo(), y0 = +m.elevacion, y1 = y0 + +m.alto, out = [];
+  const choca = (a, b) => b > y0 + .1 && a < y1 - .1;
+  for (const o of modulosFrente()) if (o.id !== m.id && choca(+o.elevacion, +o.elevacion + +o.alto)) out.push({ a: xF(o), b: xF(o) + +o.ancho, nombre: o.nombre });
+  if (W) {
+    for (const v of vanosDe(W)) if (choca(v.antepecho, v.antepecho + v.alto)) out.push({ a: v.desde, b: v.desde + v.ancho, nombre: VANOS[v.tipo].nombre });
+    out.push({ a: -1e6, b: 0, nombre: 'muro' }, { a: W.largo, b: 1e6, nombre: 'muro' });
+  }
+  return out;
+}
+function vecinosFrente(m) {
+  const x0 = xF(m), x1 = x0 + +m.ancho;
+  let izq = null, der = null;
+  for (const o of obstaculosFrente(m)) {
+    if (o.b <= x0 + .05) { if (!izq || o.b > izq.x) izq = { x: o.b, nombre: o.nombre }; }
+    else if (o.a >= x1 - .05) { if (!der || o.a < der.x) der = { x: o.a, nombre: o.nombre }; }
+  }
+  return { x0, x1, izq, der };
+}
+function cotasLaterales(m, M) {
+  const V = vecinosFrente(m), g = el('g', { class: 'cota lateral' }, plano);
+  const y = M.Y(+m.elevacion + +m.alto * .78); // más arriba que la cota de alto (que va a media altura)
+  const lado = (a, b, k, nombre) => {
+    const d = b - a; if (d < .05) return; // pegado: no hay cota
+    el('line', { x1: M.X(a), y1: y, x2: M.X(b), y2: y }, g);
+    el('circle', { cx: M.X(a), cy: y, r: 2.5 }, g); el('circle', { cx: M.X(b), cy: y, r: 2.5 }, g);
+    const t = el('text', { x: M.X((a + b) / 2), y: y - 7, 'text-anchor': 'middle', class: 'editable', 'data-cota': k, 'data-m': m.id }, g);
+    t.textContent = cm(d);
+    el('text', { x: M.X((a + b) / 2), y: y + 15, 'text-anchor': 'middle', class: 'hasta' }, g).textContent = `a ${nombre}`;
+  };
+  if (V.izq) lado(V.izq.x, V.x0, 'dist-izq', V.izq.nombre);
+  if (V.der) lado(V.x1, V.der.x, 'dist-der', V.der.nombre);
 }
 
 // Cotas del módulo seleccionado: ancho total, alto total, ancho de columnas y medidas de cada frente.
@@ -433,6 +499,7 @@ plano.addEventListener('pointerdown', (e) => {
   }
   if (d.tipo === 'celda') sel = { tipo: 'frente', m: m.id, col: +d.col, fila: +d.fila };
   else if (d.tipo === 'zocalo') sel = { tipo: 'zocalo', m: m.id };
+  if ((d.tipo === 'celda' || d.tipo === 'zocalo') && herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), movido: false, antes: JSON.stringify(modelo) };
   render();
 });
 
@@ -442,6 +509,21 @@ plano.addEventListener('pointermove', (e) => {
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
   if (!gesto) return;
+  if (gesto.tipo === 'mover-f') { // mover el mueble a lo largo del frente (o del muro)
+    const m = modulo(gesto.m); if (!m) return;
+    if (!gesto.movido && Math.abs(p.x - gesto.p0.x) * M.s < 4) return; // aún es un clic
+    gesto.movido = true;
+    const w = +m.ancho;
+    let s = snap(gesto.x0 + p.x - gesto.p0.x, .5);
+    if (!e.altKey) { // imán: se pega a los bordes vecinos a menos de 3 cm (Alt lo desactiva)
+      let mejor = 3;
+      for (const o of obstaculosFrente(m)) {
+        for (const c of [o.b, o.a - w]) if (Math.abs(s - c) < mejor) { mejor = Math.abs(s - c); s = c; }
+      }
+    }
+    moverFrente(m, s - xF(m));
+    render({ panel: false }); return;
+  }
   if (gesto.tipo === 'vano') {
     const x = vanoSel(); if (!x) return;
     x.raw.desde = Math.min(Math.max(0, snap(gesto.desde + p.x - gesto.p0.x, .5)), x.w.largo - x.v.ancho);
@@ -523,7 +605,9 @@ function editarCota(t) {
   const m = modulo(t.dataset.m); if (!m) return;
   const k = t.dataset.cota, col = +t.dataset.col, fila = +t.dataset.fila;
   const cs = celdas(m), c = cs.find((x) => x.col === col && x.fila === fila);
-  const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho }[k];
+  const V = vecinosFrente(m);
+  const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho,
+    'dist-izq': V.izq ? V.x0 - V.izq.x : 0, 'dist-der': V.der ? V.der.x - V.x1 : 0 }[k];
   const inp = document.createElement('input');
   inp.className = 'ed-cota-input';
   inp.value = k === 'cel' ? `${cm(c.w)} × ${cm(c.h)}` : cm(valor);
@@ -541,7 +625,9 @@ function editarCota(t) {
     if (!nums.length) return;
     sel = k === 'cel' ? { tipo: 'frente', m: m.id, col, fila } : { tipo: 'modulo', m: m.id };
     cambiar(() => {
-      if (k === 'cel') {
+      if (k === 'dist-izq' && V.izq) moverFrente(m, V.izq.x + nums[0] - V.x0);
+      else if (k === 'dist-der' && V.der) moverFrente(m, V.der.x - nums[0] - V.x1);
+      else if (k === 'cel') {
         // "40 × 37" → ancho de columna y alto del frente; un solo número → alto del frente
         if (nums.length > 1 && Math.abs(nums[0] - c.w) > .05) aplicarCampo(m, 'c.ancho', nums[0], { col });
         const alto = nums.length > 1 ? nums[1] : nums[0];
@@ -797,6 +883,7 @@ function props() {
         ${num('profundidad', 'Profundidad', m.profundidad)}${num('zocalo', 'Zócalo', m.zocalo)}
         ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
         ${num('elevacion', 'Altura del piso', m.elevacion)}${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
+        ${opciones('tablero', 'Tablero', String(+m.tablero || 15), { 15: 'Melamina 15 mm', 18: 'Melamina 18 mm' }, 'ancho2')}
       </div>
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
@@ -814,6 +901,13 @@ function props() {
         ${tieneBis ? opciones('f.bisagra', 'Bisagra', f.bisagra || 'izquierda', { izquierda: 'Izquierda', derecha: 'Derecha', arriba: 'Arriba (abatible)', abajo: 'Abajo' }, 'ancho2') : ''}
         ${num('f.alto', 'Alto del frente', f.alto)}${num('c.ancho', 'Ancho de columna', col.ancho)}
       </div>
+      ${f.tipo !== 'cajon' ? (() => {
+        const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.repisas || 0;
+        return `<div class="ed-repisas"><span>Repisas</span><button data-a="rep-" title="Quitar una repisa">−</button><b>${n}</b><button data-a="rep+" title="Agregar una repisa">+</button>
+          ${f.tipo !== 'abierto' ? '<button data-a="quitar-puerta">Quitar puerta (sección abierta)</button>' : '<button data-a="poner-puerta">Poner puerta</button>'}</div>
+          <p class="ed-ayuda">${f.tipo === 'abierto' ? 'Sin puerta: se ve el interior blanco y las repisas completas hasta el fondo.' : 'Detrás de la puerta: actívalas en Capas → Repisas para verlas punteadas.'}</p>`;
+      })() : ''}
+      ${+col.ancho > MAX_HOJA && (f.tipo === 'puerta' || f.tipo === 'puerta_doble') ? `<p class="ed-ayuda">Sección de ${cm(col.ancho)} cm: lleva 2 hojas (máx. ${MAX_HOJA} cm por hoja).</p>` : ''}
       <div class="ed-botones">
         <button data-a="div-h">Dividir en 2 filas</button><button data-a="div-v">Dividir en 2 columnas</button>
         ${sel.fila < col.frentes.length - 1 ? '<button data-a="unir-abajo">Unir con el de abajo</button>' : ''}
@@ -877,6 +971,8 @@ function aplicarCampo(m, k, v, s = {}) {
     m.zocalo = v;
   } else if (k === 'rotacion') {
     rotarEnCentro(m, v); // gira alrededor del centro del mueble
+  } else if (k === 'tablero') {
+    m.tablero = +v === 18 ? 18 : 15;
   } else if (k === 'tipo') {
     m.tipo = v; if (v === 'aereo') m.zocalo = 0;
   } else {
@@ -979,6 +1075,14 @@ $('#props').addEventListener('click', (e) => {
   if (a === 'div-v') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirV(m, sel.col, c.x)); return; }
   if (a === 'unir-abajo') { cambiar(() => unirAbajo(m, sel.col, sel.fila)); return; }
   if (a === 'unir-der') { cambiar(() => unirDerecha(m, sel.col)); return; }
+  if (a === 'rep+' || a === 'rep-') {
+    const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.repisas || 0;
+    cambiar(() => { m.columnas[sel.col].frentes[sel.fila].repisas = Math.max(0, Math.min(12, n + (a === 'rep+' ? 1 : -1))); });
+    if (a === 'rep+' && !capas.repisas && m.columnas[sel.col].frentes[sel.fila].tipo !== 'abierto') aviso('Repisa agregada detrás de la puerta. Activa Capas → Repisas para verla punteada.');
+    return;
+  }
+  if (a === 'quitar-puerta') { cambiar(() => aplicarCampo(m, 'f.tipo', 'abierto', sel)); return; }
+  if (a === 'poner-puerta') { cambiar(() => aplicarCampo(m, 'f.tipo', +m.columnas[sel.col].ancho > MAX_HOJA ? 'puerta_doble' : 'puerta', sel)); return; }
   if (a === 'tirador') { const t = ubicarTirador(m, sel.col, sel.fila, 'barra-128'); cambiar(() => m.tiradores.push(t)); sel = { tipo: 'tirador', m: m.id, t: t.id }; render(); return; }
   if (a === 'quitar-cubierta') { cambiar(() => { m.cubierta = false; }); sel = { tipo: 'modulo', m: m.id }; render(); return; }
   const t = m.tiradores.find((x) => x.id === sel.t);
