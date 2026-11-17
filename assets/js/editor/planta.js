@@ -76,7 +76,7 @@ export function crearPlanta(ctx) {
 
     // muebles: huella, frente marcado y nombre
     for (const m of modelo.modulos) {
-      const h = huella(m), esSel = sel?.m === m.id;
+      const h = huella(m), esSel = sel?.m === m.id || !!sel?.ids?.includes(m.id);
       el('polygon', { points: h.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `huella${esSel ? ' sel' : ''}`, 'data-tipo': 'huella', 'data-m': m.id }, plano);
       el('line', { x1: M.X(h[2][0]), y1: M.Y(h[2][1]), x2: M.X(h[3][0]), y2: M.Y(h[3][1]), class: 'frente-linea' }, plano);
       const [cx, cz] = centro(m);
@@ -212,8 +212,11 @@ export function crearPlanta(ctx) {
     }
     if (herr === 'dibujar') { gesto = { tipo: 'nuevo', a: { x: snap(p.x), z: snap(p.z) }, b: null }; return; }
     const t = e.target.closest('[data-tipo]');
-    if (!t) { ctx.setSel(null); ctx.render(); return; }
+    // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
+    if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
     const d = t.dataset;
+    // Mayús + clic sobre un mueble: lo agrega o lo quita de la selección múltiple
+    if (d.tipo === 'huella' && e.shiftKey) { ctx.alternar(d.m); return; }
     if (d.tipo === 'huella') {
       const m = modelo.modulos.find((x) => x.id === d.m);
       const s = ctx.sel();
@@ -230,6 +233,12 @@ export function crearPlanta(ctx) {
     if (dib) { cursor = siguiente(p, e.shiftKey); dibujar(); return; }
     if (!gesto) return;
     if (gesto.tipo === 'nuevo') { gesto.b = { x: snap(p.x), z: snap(p.z) }; dibujar(); return; }
+    if (gesto.tipo === 'marco') {
+      gesto.b = p; dibujar();
+      const M = mapa(), a = gesto.a;
+      el('rect', { x: M.X(Math.min(a.x, p.x)), y: M.Y(Math.min(a.z, p.z)), width: Math.abs(p.x - a.x) * M.s, height: Math.abs(p.z - a.z) * M.s, class: 'marco' }, plano);
+      return;
+    }
     if (gesto.tipo === 'mover') {
       const m = modelo.modulos.find((x) => x.id === gesto.m);
       m.x = snap(gesto.x0 + p.x - gesto.p0.x); m.z = snap(gesto.z0 + p.z - gesto.p0.z);
@@ -252,6 +261,17 @@ export function crearPlanta(ctx) {
   function up(e) {
     if (!gesto) return;
     const g = gesto; gesto = null;
+    if (g.tipo === 'marco') {
+      const M = mapa();
+      if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.z - g.a.z) * M.s) < 4) { if (!g.suma) { ctx.setSel(null); ctx.render(); } else dibujar(); return; }
+      const x0 = Math.min(g.a.x, g.b.x), x1 = Math.max(g.a.x, g.b.x), z0 = Math.min(g.a.z, g.b.z), z1 = Math.max(g.a.z, g.b.z);
+      const ids = ctx.modelo().modulos.filter((m) => {
+        const h = huella(m), xs = h.map((q) => q[0]), zs = h.map((q) => q[1]);
+        return Math.max(...xs) > x0 && Math.min(...xs) < x1 && Math.max(...zs) > z0 && Math.min(...zs) < z1; // toca el recuadro
+      }).map((m) => m.id);
+      ctx.seleccionarVarios(ids, g.suma);
+      return;
+    }
     if (g.tipo === 'nuevo') {
       if (!g.b) return dibujar();
       const x0 = Math.min(g.a.x, g.b.x), z0 = Math.min(g.a.z, g.b.z), w = Math.abs(g.b.x - g.a.x), d = Math.abs(g.b.z - g.a.z);

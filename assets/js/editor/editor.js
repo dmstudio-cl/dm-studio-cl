@@ -5,6 +5,7 @@ import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, mu
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla } from './plantillas.js';
+import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -78,7 +79,8 @@ function cambiar(fn) {
 function deshacer() { if (!hist.length) return; fut.push(JSON.stringify(modelo)); modelo = JSON.parse(hist.pop()); validarSel(); guardar(); render(); }
 function rehacer() { if (!fut.length) return; hist.push(JSON.stringify(modelo)); modelo = JSON.parse(fut.pop()); validarSel(); guardar(); render(); }
 function validarSel() {
-  if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
+  if (sel?.tipo === 'multi') { sel.ids = sel.ids.filter((id) => modulo(id)); if (sel.ids.length < 2) sel = sel.ids.length ? { tipo: 'modulo', m: sel.ids[0] } : null; }
+  else if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
   else if (sel && !modulo(sel.m)) sel = null;
 }
 // Termina un gesto de arrastre: si cambió algo, queda un paso en el historial.
@@ -123,6 +125,7 @@ function mats() {
 // ===================== dibujo =====================
 function selRef() {
   if (!sel) return null;
+  if (sel.tipo === 'multi') return sel.ids.map((id) => `${id}|`);
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
     frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`, muro: `muro|${sel.i}`,
@@ -497,12 +500,60 @@ function ubicarTirador(m, ci, fi, modeloT, punto = null) {
 let toque = null;
 escena.addEventListener('pointerdown', (e) => { toque = { x: e.clientX, y: e.clientY }; });
 escena.addEventListener('pointerup', (e) => {
+  if (e.shiftKey) return; // Mayús: lo maneja la selección múltiple
   if (!toque || Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > 5) return;
   // El motor captura el puntero al arrastrar: se busca la cara que está bajo el cursor.
   const f = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]');
   sel = f ? desdeRef(f.dataset.ref) : null;
   render();
 });
+// ----- selección múltiple
+const idsSel = () => (sel?.tipo === 'multi' ? sel.ids : sel?.m && sel.tipo !== 'muro' ? [sel.m] : []);
+function seleccionarVarios(ids, sumar = false) {
+  const set = new Set(sumar ? [...idsSel(), ...ids] : ids);
+  const lista = [...set];
+  sel = lista.length >= 2 ? { tipo: 'multi', ids: lista } : lista.length ? { tipo: 'modulo', m: lista[0] } : null;
+  render();
+  if (lista.length >= 2) aviso(`${lista.length} módulos seleccionados. Mayús + clic agrega o quita.`);
+}
+function alternar(id) {
+  const ids = idsSel();
+  seleccionarVarios(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+}
+
+// 3D: Mayús + arrastrar dibuja un recuadro de selección (sin girar la vista); Mayús + clic alterna un mueble.
+let marco3d = null;
+escena.addEventListener('pointerdown', (e) => {
+  if (!e.shiftKey || vista !== '3d' || e.button > 0) return;
+  e.stopPropagation(); // el motor no empieza a girar
+  const r = lienzo.getBoundingClientRect();
+  const div = document.createElement('div'); div.className = 'ed-marco'; lienzo.append(div);
+  marco3d = { x0: e.clientX, y0: e.clientY, div, r };
+  const mover = (ev) => {
+    const x = Math.min(ev.clientX, marco3d.x0) - r.left, y = Math.min(ev.clientY, marco3d.y0) - r.top;
+    Object.assign(div.style, { left: x + 'px', top: y + 'px', width: Math.abs(ev.clientX - marco3d.x0) + 'px', height: Math.abs(ev.clientY - marco3d.y0) + 'px' });
+  };
+  const soltar = (ev) => {
+    window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
+    div.remove();
+    const x0 = Math.min(ev.clientX, marco3d.x0), x1 = Math.max(ev.clientX, marco3d.x0), y0 = Math.min(ev.clientY, marco3d.y0), y1 = Math.max(ev.clientY, marco3d.y0);
+    marco3d = null;
+    if (x1 - x0 < 5 && y1 - y0 < 5) { // fue un clic: alterna el mueble bajo el cursor
+      const f = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('[data-ref]');
+      const id = f?.dataset.ref.split('|')[0];
+      if (id && modulo(id)) alternar(id);
+      return;
+    }
+    // mueble seleccionado si alguna de sus caras visibles toca el recuadro
+    const ids = modelo.modulos.filter((m) => [...st.rig.querySelectorAll(`[data-ref^="${m.id}|"]`)].some((f) => {
+      const b = f.getBoundingClientRect();
+      return b.width > 0 && b.right > x0 && b.left < x1 && b.bottom > y0 && b.top < y1;
+    })).map((m) => m.id);
+    seleccionarVarios(ids, true);
+  };
+  window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
+}, { capture: true });
+
 function desdeRef(ref) {
   const [m, k, a, b] = ref.split('|');
   if (k === 'f') return { tipo: 'frente', m, col: +a, fila: +b };
@@ -588,6 +639,14 @@ function props() {
     P.innerHTML = `<div class="ed-vacio"><p>Selecciona una pieza en la vista o en las capas.</p>
       <p>Para crear: vista <b>Frente</b> → <b>Dibujar módulo</b> <kbd>M</kbd> y arrastra.<br>Para dividir: <kbd>D</kbd> columnas, <kbd>H</kbd> filas, y clic en un frente.<br>Medidas: arrastra los divisores o escríbelas aquí en cm.</p>
       <p><kbd>Supr</kbd> borra · <kbd>Ctrl Z</kbd> deshace · <kbd>R</kbd> gira un tirador 90° · flechas mueven 1 cm (Mayús: 10).</p></div>`;
+    return;
+  }
+  if (sel.tipo === 'multi') {
+    const mods = sel.ids.map(modulo).filter(Boolean);
+    P.innerHTML = `<div class="ed-props"><p class="tit">${mods.length} módulos</p><p class="sub">Selección múltiple</p>
+      <ul class="ed-sel-lista">${mods.map((m) => `<li>${esc(m.nombre)} <small>${cm(m.ancho)} × ${cm(m.alto)}</small></li>`).join('')}</ul>
+      <div class="ed-botones"><button data-a="unir" class="ed-primario">Unir en un mueble</button><button data-a="borrar-multi" class="peligro">Eliminar ${mods.length}</button></div>
+      <p class="ed-ayuda" id="unir-aviso">Une módulos que estén uno junto al otro en la misma pared, con el mismo alto y zócalo. Quedan con un solo cuerpo y una sola cubierta. Mayús + clic agrega o quita; las flechas los mueven juntos.</p></div>`;
     return;
   }
   if (sel.tipo === 'muro') {
@@ -755,6 +814,19 @@ $('#props').addEventListener('click', (e) => {
     else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); });
     return;
   }
+  if (b.dataset.a === 'unir') {
+    const ids = sel.ids, r = unirModulos(ids.map(modulo));
+    if (r.error) { $('#unir-aviso').textContent = r.error; $('#unir-aviso').classList.add('ed-error'); aviso(r.error); return; }
+    cambiar((d) => {
+      const i = Math.min(...ids.map((id) => d.modulos.findIndex((m) => m.id === id)));
+      d.modulos = d.modulos.filter((m) => !ids.includes(m.id));
+      d.modulos.splice(i, 0, r.modulo);
+    });
+    sel = { tipo: 'modulo', m: r.modulo.id }; render();
+    aviso(`Unidos en «${r.modulo.nombre}» (${cm(r.modulo.ancho)} cm). ${r.aviso || ''} Ctrl+Z deshace.`);
+    return;
+  }
+  if (b.dataset.a === 'borrar-multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (b.dataset.a === 'eliminar-muro' || b.dataset.a === 'restaurar-muro') {
     const i = sel.i, oculto = b.dataset.a === 'eliminar-muro';
     cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto }; });
@@ -790,6 +862,7 @@ $('#props').addEventListener('click', (e) => {
 
 function borrarSel() {
   if (!sel) return;
+  if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (se puede restaurar)
     const i = sel.i;
     cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto: true }; });
@@ -907,7 +980,20 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') { zoom = 1; encuadrar(true); dibujarPlano(); }
   else if (k === 'delete' || k === 'backspace') { e.preventDefault(); borrarSel(); }
   else if (k === 'r' && sel?.tipo === 'tirador') { const m = modulo(sel.m), t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.rot = ((+t.rot || 0) + 90) % 360; }); }
-  else if (k === 'r' && sel && sel.tipo !== 'muro') { const m = modulo(sel.m); cambiar(() => planta.rotar(m, 90)); }
+  else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') { const m = modulo(sel.m); cambiar(() => planta.rotar(m, 90)); }
+  else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel?.tipo === 'multi') { // subir / bajar varios
+    e.preventDefault();
+    const paso = (e.shiftKey ? 10 : 1) * (e.key === 'PageUp' ? 1 : -1), ids = sel.ids;
+    cambiar((d) => d.modulos.filter((m) => ids.includes(m.id)).forEach((m) => { m.elevacion = Math.max(0, +m.elevacion + paso); }));
+  }
+  else if (e.key.startsWith('Arrow') && sel?.tipo === 'multi') { // mover varios juntos
+    e.preventDefault();
+    const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0, ids = sel.ids;
+    cambiar((d) => d.modulos.filter((m) => ids.includes(m.id)).forEach((m) => {
+      m.x = +m.x + dx;
+      if (vista === 'planta') m.z = +m.z - dy; else m.elevacion = Math.max(0, +m.elevacion + dy);
+    }));
+  }
   else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel && sel.tipo !== 'muro') { // subir / bajar
     e.preventDefault();
     const m = modulo(sel.m), paso = (e.shiftKey ? 10 : 1) * (e.key === 'PageUp' ? 1 : -1);
@@ -977,6 +1063,8 @@ const planta = crearPlanta({
   cambiar, registrar, render, aviso, herr: () => herr, setHerr, vista: () => vista,
   escala: () => ({ s: st.scale, c: st.center, Wp: lienzo.clientWidth, Hp: lienzo.clientHeight }),
   fondo: (svg, M) => referencias.pintar(svg, M, 'planta'),
+  seleccionarVarios: (ids, sumar) => seleccionarVarios(ids, sumar),
+  alternar: (id) => alternar(id),
   estado: (t) => { estadoEl.textContent = `${ayuda()}   ·   ${t}`; },
   plano, lienzo,
 });

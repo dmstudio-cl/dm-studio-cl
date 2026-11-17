@@ -328,7 +328,10 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     }
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
-  if (sel) for (const f of st.rig.querySelectorAll('[data-ref]')) if (f.dataset.ref.startsWith(sel)) f.classList.add('c3-sel');
+  if (sel) {
+    const pref = [].concat(sel);
+    for (const f of st.rig.querySelectorAll('[data-ref]')) if (pref.some((p) => f.dataset.ref.startsWith(p))) f.classList.add('c3-sel');
+  }
 }
 
 // Muros "casa de muñecas": solo se dibuja la cara interior (y el canto superior). Como las caras
