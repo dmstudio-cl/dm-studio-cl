@@ -1,7 +1,7 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro } from './modelo.js';
+import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla } from './plantillas.js';
@@ -81,6 +81,7 @@ function rehacer() { if (!fut.length) return; hist.push(JSON.stringify(modelo));
 function validarSel() {
   if (sel?.tipo === 'multi') { sel.ids = sel.ids.filter((id) => modulo(id)); if (sel.ids.length < 2) sel = sel.ids.length ? { tipo: 'modulo', m: sel.ids[0] } : null; }
   else if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
+  else if (sel?.tipo === 'vano') { if (!vanoSel()) sel = null; }
   else if (sel && !modulo(sel.m)) sel = null;
 }
 // Termina un gesto de arrastre: si cambió algo, queda un paso en el historial.
@@ -126,6 +127,7 @@ function mats() {
 function selRef() {
   if (!sel) return null;
   if (sel.tipo === 'multi') return sel.ids.map((id) => `${id}|`);
+  if (sel.tipo === 'vano') return `vano|${sel.i}|${sel.v}`;
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
     frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`, muro: `muro|${sel.i}`,
@@ -140,12 +142,40 @@ function muroActivo() {
   if (muroFrente == null) return null;
   const w = murosDe(modelo.espacio)[muroFrente];
   if (!w || w.oculto) { muroFrente = null; return null; }
-  const u = [w.n[1], -w.n[0]];
-  const sa = w.a[0] * u[0] + w.a[1] * u[1], sb = w.b[0] * u[0] + w.b[1] * u[1];
-  const O = sa <= sb ? w.a : w.b; // punto del muro donde empieza la medida (izquierda)
-  const rot = ((Math.round(Math.atan2(w.n[0], w.n[1]) * 180 / Math.PI) % 360) + 360) % 360; // giro de un mueble apoyado en él
-  const linea = w.a[0] * w.n[0] + w.a[1] * w.n[1];
-  return { ...w, u, O, rot, linea };
+  return { ...w, ...ejeMuro(w) };
+}
+// ----- ventanas y puertas
+// Vano seleccionado: { w (muro), v (medidas válidas), raw (registro guardado, para editar) }
+function vanoSel(d = modelo) {
+  if (sel?.tipo !== 'vano') return null;
+  const w = murosDe(d.espacio)[sel.i]; if (!w) return null;
+  const v = vanosDe(w).find((x) => x.id === sel.v); if (!v) return null;
+  return { w, v, raw: d.espacio.muros[sel.i].vanos.find((x) => x.id === sel.v) };
+}
+// Muro donde se inserta un vano: el que se ve de frente o el seleccionado
+function muroParaVano() {
+  const W = vista === 'frente' && muroActivo(); if (W) return W.i;
+  if (sel?.tipo === 'muro' || sel?.tipo === 'vano') return sel.i;
+  return null;
+}
+$('#vanos').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-vano]')?.dataset.vano; if (!t) return;
+  const i = muroParaVano();
+  if (i == null) { aviso('Elige primero un muro: selecciónalo en Planta o míralo de frente (selector de muro en la vista Frente).'); return; }
+  const w = murosDe(modelo.espacio)[i], def = VANOS[t];
+  const ancho = Math.min(def.ancho, w.largo), alto = Math.min(def.alto, w.alto);
+  const v = { id: uid('v'), tipo: t, desde: Math.round((w.largo - ancho) / 2), ancho, alto, antepecho: def.puerta ? 0 : Math.min(def.antepecho, w.alto - alto) };
+  cambiar((d) => { const m = d.espacio.muros; while (m.length <= i) m.push({ espesor: 15 }); m[i] = { ...(m[i] || {}), vanos: [...(m[i]?.vanos || []), v] }; });
+  sel = { tipo: 'vano', i, v: v.id };
+  muroFrente = i;
+  if (vista !== 'frente') setVista('frente');
+  render();
+  encuadrar(true); dibujarPlano();
+  aviso(`${def.nombre} agregada al muro ${i + 1}. Arrástrala o cambia sus medidas en el panel derecho.`);
+});
+function cambiarVano(f) {
+  const s = { ...sel };
+  cambiar((d) => { sel = s; const x = vanoSel(d); if (!x) return; f(x.raw, x.w, VANOS[x.raw.tipo] || VANOS.vano); });
 }
 const proyS = (W, x, z) => (x - W.O[0]) * W.u[0] + (z - W.O[1]) * W.u[1]; // posición a lo largo del muro
 function enMuro(m, W) {
@@ -278,6 +308,18 @@ function dibujarPlano() {
   if (W) { // contorno del muro que se está viendo, con su largo
     el('rect', { x: M.X(0), y: M.Y(W.alto), width: W.largo * M.s, height: W.alto * M.s, class: 'muro-frente' }, plano);
     el('text', { x: M.X(0) + 8, y: M.Y(W.alto) + 18, class: 'muro-frente-txt' }, plano).textContent = `Muro ${W.i + 1}${W.etiqueta ? ' · ' + W.etiqueta : ''} · ${cm(W.largo)} × ${cm(W.alto)} cm`;
+    for (const v of vanosDe(W)) {
+      const esSel = sel?.tipo === 'vano' && sel.i === W.i && sel.v === v.id;
+      el('rect', { x: M.X(v.desde), y: M.Y(v.antepecho + v.alto), width: v.ancho * M.s, height: v.alto * M.s, class: `vano${esSel ? ' sel' : ''}`, 'data-tipo': 'vano', 'data-i': W.i, 'data-v': v.id }, plano);
+      el('text', { x: M.X(v.desde + v.ancho / 2), y: M.Y(v.antepecho + v.alto / 2) + 4, 'text-anchor': 'middle', class: 'vano-txt' }, plano).textContent = `${VANOS[v.tipo].nombre} ${cm(v.ancho)} × ${cm(v.alto)}`;
+      if (esSel) { // cotas: a cada extremo del muro y antepecho
+        const g = el('g', { class: 'cota' }, plano), yb = M.Y(0) + 34;
+        const lin = (x1, y1, x2, y2, t, vert) => { el('line', { x1, y1, x2, y2 }, g); el('text', { x: vert ? x1 + 8 : (x1 + x2) / 2, y: vert ? (y1 + y2) / 2 + 4 : y1 - 6, 'text-anchor': vert ? 'start' : 'middle' }, g).textContent = t; };
+        lin(M.X(0), yb, M.X(v.desde), yb, `${cm(v.desde)}`);
+        lin(M.X(v.desde + v.ancho), yb, M.X(W.largo), yb, `${cm(W.largo - v.desde - v.ancho)}`);
+        if (v.antepecho > 0) lin(M.X(v.desde + v.ancho) + 14, M.Y(v.antepecho), M.X(v.desde + v.ancho) + 14, M.Y(0), `antepecho ${cm(v.antepecho)}`, true);
+      }
+    }
   }
 
   for (const m of modulosFrente()) {
@@ -362,6 +404,12 @@ plano.addEventListener('pointerdown', (e) => {
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
   // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
   if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
+  if (t.dataset.tipo === 'vano') { // ventana o puerta: seleccionar y arrastrar
+    sel = { tipo: 'vano', i: +t.dataset.i, v: t.dataset.v };
+    const x = vanoSel();
+    gesto = { tipo: 'vano', p0: p, desde: x.v.desde, ante: x.v.antepecho, antes: JSON.stringify(modelo) };
+    render(); return;
+  }
   const m = modulo(t.dataset.m);
   const d = t.dataset;
   // Mayús + clic sobre un mueble: lo agrega o lo quita de la selección múltiple
@@ -394,6 +442,12 @@ plano.addEventListener('pointermove', (e) => {
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
   if (!gesto) return;
+  if (gesto.tipo === 'vano') {
+    const x = vanoSel(); if (!x) return;
+    x.raw.desde = Math.min(Math.max(0, snap(gesto.desde + p.x - gesto.p0.x, .5)), x.w.largo - x.v.ancho);
+    if (!VANOS[x.v.tipo].puerta) x.raw.antepecho = Math.min(Math.max(0, snap(gesto.ante + p.y - gesto.p0.y, .5)), x.w.alto - x.v.alto);
+    render({ panel: false }); return;
+  }
   if (gesto.tipo === 'marco') {
     gesto.b = p; dibujarPlano();
     const a = gesto.a;
@@ -595,6 +649,8 @@ function alternar(id) {
 
 function desdeRef(ref) {
   const [m, k, a, b] = ref.split('|');
+  if (m === 'muro') return { tipo: 'muro', i: +k };
+  if (m === 'vano') return { tipo: 'vano', i: +k, v: a };
   if (k === 'f') return { tipo: 'frente', m, col: +a, fila: +b };
   if (k === 't') return { tipo: 'tirador', m, t: a };
   return { tipo: k, m };
@@ -646,7 +702,7 @@ function arbol() {
   const act = (s) => (sel && JSON.stringify(s) === JSON.stringify(sel) ? ' aria-current="true"' : '');
   const btn = (s, cls, html) => `<button class="${cls}" data-sel='${esc(JSON.stringify(s))}'${act(s)}>${html}</button>`;
   const W = murosDe(modelo.espacio);
-  const hEsp = W.length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Espacio · ${W.length} muros</div>${W.map((w) => btn({ tipo: 'muro', i: w.i }, 'n1', `${esc(w.etiqueta || `Muro ${w.i + 1}`)} <small>${cm(w.largo)}</small>`)).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
+  const hEsp = W.length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Espacio · ${W.length} muros</div>${W.map((w) => btn({ tipo: 'muro', i: w.i }, 'n1', `${esc(w.etiqueta || `Muro ${w.i + 1}`)} <small>${cm(w.largo)}</small>`) + vanosDe(w).map((v) => btn({ tipo: 'vano', i: w.i, v: v.id }, 'n3', `${VANOS[v.tipo].nombre} <small>${cm(v.ancho)}×${cm(v.alto)}</small>`)).join('')).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
   $('#arbol').innerHTML = hEsp + modelo.modulos.map((m) => {
     const Z = Zde(m);
     let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>`);
@@ -678,6 +734,20 @@ function props() {
     P.innerHTML = `<div class="ed-vacio"><p>Selecciona una pieza en la vista o en las capas.</p>
       <p>Para crear: vista <b>Frente</b> → <b>Dibujar módulo</b> <kbd>M</kbd> y arrastra.<br>Para dividir: <kbd>D</kbd> columnas, <kbd>H</kbd> filas, y clic en un frente.<br>Medidas: arrastra los divisores o escríbelas aquí en cm.</p>
       <p><kbd>Supr</kbd> borra · <kbd>Ctrl Z</kbd> deshace · <kbd>R</kbd> gira un tirador 90° · flechas mueven 1 cm (Mayús: 10).</p></div>`;
+    return;
+  }
+  if (sel.tipo === 'vano') {
+    const x = vanoSel(); if (!x) { sel = null; return props(); }
+    const { w, v } = x, def = VANOS[v.tipo];
+    P.innerHTML = `<div class="ed-props"><p class="tit">${def.nombre}</p><p class="sub">Muro ${w.i + 1}${w.etiqueta ? ' · ' + esc(w.etiqueta) : ''} · ${cm(w.largo)} cm</p>
+      <div class="ed-campos">
+        <label class="ed-campo ancho2">Modelo<select data-k="v.tipo">${Object.entries(VANOS).map(([k, d]) => `<option value="${k}"${k === v.tipo ? ' selected' : ''}>${d.nombre}</option>`).join('')}</select></label>
+        ${num('v.ancho', 'Ancho', v.ancho)}${num('v.alto', 'Alto', v.alto)}
+        ${def.puerta ? '' : num('v.antepecho', 'Antepecho (desde el piso)', v.antepecho, { min: 0 })}
+        ${num('v.desde', 'Desde el extremo izq.', v.desde, { min: 0 })}${num('v.hasta', 'Hasta el extremo der.', Math.round((w.largo - v.desde - v.ancho) * 10) / 10, { min: 0 })}
+      </div>
+      <div class="ed-botones"><button data-a="centrar-vano">Centrar en el muro</button><button data-a="borrar-vano" class="peligro">Eliminar</button></div>
+      <p class="ed-ayuda">Medidas en cm. Arrástrala en la vista Frente del muro; las flechas la mueven (Mayús: 10 cm).</p></div>`;
     return;
   }
   if (sel.tipo === 'multi') {
@@ -828,6 +898,17 @@ $('#props').addEventListener('change', (e) => {
   const k = inp.dataset.k;
   const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? +inp.value : inp.value;
   const s = { ...sel };
+  if (s.tipo === 'vano') {
+    cambiarVano((r, w, def) => {
+      if (k === 'v.tipo' && VANOS[v]) { r.tipo = v; if (VANOS[v].puerta) r.antepecho = 0; else if (!(+r.antepecho > 0)) r.antepecho = VANOS[v].antepecho; }
+      if (k === 'v.ancho' && v > 0) r.ancho = v;
+      if (k === 'v.alto' && v > 0) r.alto = v;
+      if (k === 'v.antepecho' && v >= 0) r.antepecho = v;
+      if (k === 'v.desde' && v >= 0) r.desde = v;
+      if (k === 'v.hasta' && v >= 0) r.desde = Math.max(0, w.largo - (+r.ancho || def.ancho) - v);
+    });
+    return;
+  }
   if (s.tipo === 'muro') {
     cambiar((d) => {
       const e = d.espacio;
@@ -851,6 +932,12 @@ $('#props').addEventListener('click', (e) => {
     const del = (m) => leerPlantilla(m)?.g === pl.g;
     if (b.dataset.a === 'borrar-cocina') { cambiar((d) => { d.modulos = d.modulos.filter((m) => !del(m)); }); sel = null; render(); }
     else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); });
+    return;
+  }
+  if (b.dataset.a === 'borrar-vano' || b.dataset.a === 'centrar-vano') {
+    const s = { ...sel };
+    if (b.dataset.a === 'borrar-vano') { cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); }
+    else cambiarVano((r, w, def) => { r.desde = Math.round((w.largo - (+r.ancho || def.ancho)) / 2 * 10) / 10; });
     return;
   }
   if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
@@ -903,6 +990,7 @@ $('#props').addEventListener('click', (e) => {
 function borrarSel() {
   if (!sel) return;
   if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
+  if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); return; }
   if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (se puede restaurar)
     const i = sel.i;
     cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto: true }; });
@@ -1020,6 +1108,15 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') { zoom = 1; encuadrar(true); dibujarPlano(); }
   else if (k === 'delete' || k === 'backspace') { e.preventDefault(); borrarSel(); }
   else if (k === 'r' && sel?.tipo === 'tirador') { const m = modulo(sel.m), t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.rot = ((+t.rot || 0) + 90) % 360; }); }
+  else if (e.key.startsWith('Arrow') && sel?.tipo === 'vano') { // mover la ventana o puerta en su muro
+    e.preventDefault();
+    const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0;
+    cambiarVano((r, w, def) => {
+      r.desde = Math.min(Math.max(0, (+r.desde || 0) + dx), w.largo - (+r.ancho || def.ancho));
+      if (!def.puerta) r.antepecho = Math.min(Math.max(0, (+r.antepecho || 0) + dy), w.alto - (+r.alto || def.alto));
+    });
+  }
+  else if (sel?.tipo === 'vano' && (k === 'r' || e.key === 'PageUp' || e.key === 'PageDown')) { /* no aplica */ }
   else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') { const m = modulo(sel.m); cambiar(() => planta.rotar(m, 90)); }
   else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel?.tipo === 'multi') { // subir / bajar varios
     e.preventDefault();

@@ -206,9 +206,41 @@ export function muros(esp) {
     // "Adentro" = hacia el centro de los puntos (sirve para habitaciones y para cocinas en L o en U)
     if ((cx - (a[0] + b[0]) / 2) * nn[0] + (cz - (a[1] + b[1]) / 2) * nn[1] < 0) nn = [-nn[0], -nn[1]];
     const meta = esp.muros?.[i] || {};
-    out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '', oculto: !!meta.oculto });
+    out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '', oculto: !!meta.oculto, vanos: Array.isArray(meta.vanos) ? meta.vanos : [] });
   }
   return out;
+}
+
+// ----- ventanas y puertas (vanos) en los muros -----
+// Modelos de referencia: se insertan con estas medidas y luego se ajustan (ancho, alto, antepecho).
+export const VANOS = {
+  ventana: { nombre: 'Ventana', ancho: 120, alto: 110, antepecho: 100, hojas: 2 },
+  ventana_cocina: { nombre: 'Ventana sobre cubierta', ancho: 100, alto: 70, antepecho: 110, hojas: 2 },
+  ventana_alta: { nombre: 'Ventana alta', ancho: 80, alto: 40, antepecho: 170, hojas: 1 },
+  ventanal: { nombre: 'Ventanal corredero', ancho: 180, alto: 210, antepecho: 0, hojas: 2 },
+  puerta: { nombre: 'Puerta', ancho: 80, alto: 200, antepecho: 0, hojas: 1, puerta: true },
+  puerta_doble: { nombre: 'Puerta doble', ancho: 140, alto: 200, antepecho: 0, hojas: 2, puerta: true },
+  vano: { nombre: 'Vano libre', ancho: 90, alto: 210, antepecho: 0, hojas: 0 },
+};
+// Eje de un muro mirado desde adentro: u = de izquierda a derecha, O = extremo izquierdo (desde = 0),
+// rot = giro de un mueble apoyado en él, linea = posición de su cara interior a lo largo de n.
+export function ejeMuro(w) {
+  const u = [w.n[1], -w.n[0]];
+  const sa = w.a[0] * u[0] + w.a[1] * u[1], sb = w.b[0] * u[0] + w.b[1] * u[1];
+  const O = sa <= sb ? w.a : w.b;
+  const rot = ((Math.round(Math.atan2(w.n[0], w.n[1]) * 180 / Math.PI) % 360) + 360) % 360;
+  return { u, O, rot, linea: w.a[0] * w.n[0] + w.a[1] * w.n[1] };
+}
+// Vanos del muro con medidas válidas (dentro del muro). desde = distancia desde el extremo izquierdo.
+export function vanosDe(w) {
+  return (w.vanos || []).filter(Boolean).map((v) => {
+    const def = VANOS[v.tipo] || VANOS.vano;
+    const ancho = Math.min(Math.max(10, +v.ancho || def.ancho), w.largo);
+    const alto = Math.min(Math.max(10, +v.alto || def.alto), w.alto);
+    const antepecho = def.puerta ? 0 : Math.min(Math.max(0, +v.antepecho || 0), w.alto - alto);
+    const desde = Math.min(Math.max(0, +v.desde || 0), w.largo - ancho);
+    return { id: v.id || '', tipo: VANOS[v.tipo] ? v.tipo : 'vano', ancho, alto, antepecho, desde };
+  });
 }
 
 // Distancia desde el punto p, en la dirección dir, hasta la cara interior del muro más cercano.
@@ -270,6 +302,10 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     cubierta: { bg: mats.cubierta || '#cfc9bc' },
     muro: { bg: mats.muro || '#57534e' },     // muros claros sobre el fondo oscuro, para que el espacio se lea
     cantoMuro: { bg: '#b9b2a7' },
+    marco: { bg: '#d8d5cf' },
+    vidrio: { bg: 'linear-gradient(135deg, rgba(196, 220, 232, .42), rgba(120, 150, 170, .18) 60%, rgba(196, 220, 232, .3))' },
+    hoja: { bg: '#b49a78' },
+    manilla: { bg: '#2a2725' },
     piso: mats.piso || '#2a2826',
   };
   if (ver('muros')) dibujarEspacio(st, modelo.espacio, M);
@@ -334,6 +370,34 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
   }
 }
 
+// Ventana o puerta en el grupo del muro: marco y vidrio u hoja(s).
+function dibujarVano(g, v, m, xl, k, M) {
+  const def = VANOS[v.tipo], ref = `vano|${m.i}|${v.id}`, e = m.espesor;
+  const cx = xl(v.desde + v.ancho / 2), y0 = v.antepecho, y1 = v.antepecho + v.alto, cy = (y0 + y1) / 2;
+  // Solo caras que miran hacia adentro: así el vano desaparece junto con su muro (casa de muñecas).
+  if (!def.hojas) return; // vano libre
+  const zf = -e / 2; // plano del marco: al centro del muro
+  const barra = (w, h, x, y) => g.box({ w, h, d: 1, x, y, z: zf + .5, tex: M.marco, ref, caras: ['front'] });
+  const F = 4; // ancho del perfil del marco (cm)
+  if (def.puerta) {
+    const n = def.hojas, hw = (v.ancho - 2 * F) / n;
+    barra(F, v.alto, xl(v.desde + F / 2), cy); barra(F, v.alto, xl(v.desde + v.ancho - F / 2), cy); barra(v.ancho, F, cx, y1 - F / 2);
+    for (let i = 0; i < n; i++) {
+      const d0 = v.desde + F + i * hw, dc = d0 + hw / 2;
+      g.box({ w: hw - .4, h: v.alto - F - .3, d: 1, x: xl(dc), y: (v.alto - F) / 2, z: zf + 1, tex: M.hoja, ref, caras: ['front'] });
+      // manilla: en una hoja, al lado derecho; en dos hojas, hacia el centro
+      const dm = n === 1 ? d0 + hw - 7 : i === 0 ? d0 + hw - 6 : d0 + 6;
+      g.box({ w: 2.5, h: 12, d: 2, x: xl(dm), y: 100, z: zf + 2.6, tex: M.manilla, ref, caras: ['front'] });
+    }
+    return;
+  }
+  // ventana: vidrio + marco perimetral + parante entre hojas
+  g.box({ w: v.ancho - 2 * F, h: v.alto - 2 * F, d: .4, x: cx, y: cy, z: zf, tex: M.vidrio, ref, caras: ['front'] });
+  barra(F, v.alto, xl(v.desde + F / 2), cy); barra(F, v.alto, xl(v.desde + v.ancho - F / 2), cy);
+  barra(v.ancho - 2 * F, F, cx, y1 - F / 2); barra(v.ancho - 2 * F, F, cx, y0 + F / 2);
+  for (let i = 1; i < def.hojas; i++) barra(F * .8, v.alto - 2 * F, xl(v.desde + v.ancho * i / def.hojas), cy);
+}
+
 // Muros "casa de muñecas": solo se dibuja la cara interior (y el canto superior). Como las caras
 // tienen backface-visibility: hidden, los muros que dan hacia la cámara desaparecen solos y siempre
 // se ve el interior. Piso con la forma de la planta (clip-path) si el espacio está cerrado.
@@ -362,7 +426,26 @@ function dibujarEspacio(st, esp, M) {
     if (izq[0] * m.n[0] + izq[1] * m.n[1] < 0) ry += 180;
     const g = st.group({ x: (m.a[0] + m.b[0]) / 2, y: 0, z: (m.a[1] + m.b[1]) / 2, ry });
     const ref = `muro|${m.i}`;
-    g.box({ w: m.largo, h: m.alto, d: m.espesor, x: 0, y: m.alto / 2, z: -m.espesor / 2, tex: M.muro, ref, caras: ['front'] });
+    // posición local (eje x del grupo) de un punto a "d" cm del extremo izquierdo del muro
+    const E = ejeMuro(m), gx = Math.cos(ry * Math.PI / 180), gz = -Math.sin(ry * Math.PI / 180);
+    const mid = [(m.a[0] + m.b[0]) / 2, (m.a[1] + m.b[1]) / 2];
+    const xl = (d) => (E.O[0] + d * E.u[0] - mid[0]) * gx + (E.O[1] + d * E.u[1] - mid[1]) * gz;
+    const k = Math.sign(E.u[0] * gx + E.u[1] * gz) || 1; // +1 si "derecha" del muro = +x local
+    const V = vanosDe(m);
+    // cara del muro en franjas verticales, sin los huecos
+    const cortes = [...new Set([0, m.largo, ...V.flatMap((v) => [v.desde, v.desde + v.ancho])])].sort((p, q) => p - q);
+    for (let j = 0; j < cortes.length - 1; j++) {
+      const d0 = cortes[j], d1 = cortes[j + 1]; if (d1 - d0 < .05) continue;
+      const dm = (d0 + d1) / 2;
+      let tramos = [[0, m.alto]];
+      for (const v of V) {
+        if (dm <= v.desde || dm >= v.desde + v.ancho) continue;
+        const h0 = v.antepecho, h1 = v.antepecho + v.alto;
+        tramos = tramos.flatMap(([y0, y1]) => [[y0, Math.min(y1, h0)], [Math.max(y0, h1), y1]]).filter(([y0, y1]) => y1 - y0 > .05);
+      }
+      for (const [y0, y1] of tramos) g.box({ w: d1 - d0, h: y1 - y0, d: m.espesor, x: xl(dm), y: (y0 + y1) / 2, z: -m.espesor / 2, tex: M.muro, ref, caras: ['front'] });
+    }
+    for (const v of V) dibujarVano(g, v, m, xl, k, M);
     // canto superior, alargado en las esquinas para cerrar el encuentro con el muro vecino
     const e0 = conectado(m.i, false) ? m.espesor : 0, e1 = conectado(m.i, true) ? m.espesor : 0;
     const ux = Math.cos(ry * Math.PI / 180), uz = -Math.sin(ry * Math.PI / 180); // eje x local en el espacio

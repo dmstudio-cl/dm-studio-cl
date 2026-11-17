@@ -170,6 +170,19 @@ collections:
               - { label: Espesor (cm), name: espesor, widget: number, value_type: float, default: 15 }
               - { label: Alto (cm), name: alto, widget: number, value_type: float, required: false }
               - { label: Eliminado (no se dibuja), name: oculto, widget: boolean, default: false, required: false }
+              - label: Ventanas y puertas (se dibujan en el editor)
+                name: vanos
+                widget: list
+                required: false
+                collapsed: true
+                summary: "{{fields.tipo}} {{fields.ancho}}×{{fields.alto}}"
+                fields:
+                  - { label: ID, name: id, widget: string, required: false }
+                  - { label: Modelo, name: tipo, widget: select, options: [ventana, ventana_cocina, ventana_alta, ventanal, puerta, puerta_doble, vano] }
+                  - { label: Desde el extremo izquierdo (cm), name: desde, widget: number, value_type: float }
+                  - { label: Ancho (cm), name: ancho, widget: number, value_type: float }
+                  - { label: Alto (cm), name: alto, widget: number, value_type: float }
+                  - { label: Antepecho (cm), name: antepecho, widget: number, value_type: float, default: 0 }
           - { label: Fotos del cliente, name: fotos, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
 
       - label: Costos internos (NUNCA se muestran al cliente)

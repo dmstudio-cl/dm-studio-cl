@@ -1,7 +1,7 @@
 // Vista Planta del editor: dibujar los muros del espacio, etiquetarlos y ubicar los muebles
 // (mover, girar) con cotas de distancia a los muros. Coordenadas en cm: x a lo largo del muro
 // principal, z hacia la habitación. En pantalla, z crece hacia abajo (el muro del fondo queda arriba).
-import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo } from './modelo.js';
+import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS } from './modelo.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -58,6 +58,29 @@ export function crearPlanta(ctx) {
       const pts = [w.a, w.b, [w.b[0] + o[0], w.b[1] + o[1]], [w.a[0] + o[0], w.a[1] + o[1]]];
       const esSel = sel?.tipo === 'muro' && sel.i === w.i;
       el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `muro${esSel ? ' sel' : ''}${w.oculto ? ' oculto' : ''}`, 'data-tipo': 'muro', 'data-i': w.i }, plano);
+    }
+    // ventanas y puertas: hueco en el muro, vidrio o batiente de la puerta
+    for (const w of W) {
+      if (w.oculto) continue;
+      const E = ejeMuro(w), P = (d, o = 0) => [E.O[0] + d * E.u[0] - w.n[0] * o, E.O[1] + d * E.u[1] - w.n[1] * o];
+      for (const v of vanosDe(w)) {
+        const def = VANOS[v.tipo], esSel = sel?.tipo === 'vano' && sel.i === w.i && sel.v === v.id;
+        const a = v.desde, b = v.desde + v.ancho;
+        const hueco = [P(a), P(b), P(b, w.espesor), P(a, w.espesor)];
+        const gv = el('g', { class: `vano-planta${esSel ? ' sel' : ''}`, 'data-tipo': 'vano', 'data-i': w.i, 'data-v': v.id }, plano);
+        el('polygon', { points: hueco.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' ') }, gv);
+        if (def.puerta) { // hoja(s) abiertas hacia adentro con su arco
+          const hojas = def.hojas === 2 ? [[a, v.ancho / 2, 1], [b, v.ancho / 2, -1]] : [[a, v.ancho, 1]];
+          for (const [d, r, s] of hojas) {
+            const bis = P(d), punta = [bis[0] + w.n[0] * r, bis[1] + w.n[1] * r], cierre = P(d + s * r);
+            el('line', { x1: M.X(bis[0]), y1: M.Y(bis[1]), x2: M.X(punta[0]), y2: M.Y(punta[1]), class: 'hoja' }, gv);
+            el('path', { d: `M ${M.X(cierre[0])} ${M.Y(cierre[1])} A ${r * M.s} ${r * M.s} 0 0 ${s * (E.u[0] * w.n[1] - E.u[1] * w.n[0]) > 0 ? 1 : 0} ${M.X(punta[0])} ${M.Y(punta[1])}`, class: 'arco' }, gv);
+          }
+        } else if (def.hojas) { // ventana: vidrio al centro del muro
+          const p0 = P(a, w.espesor / 2), p1 = P(b, w.espesor / 2);
+          el('line', { x1: M.X(p0[0]), y1: M.Y(p0[1]), x2: M.X(p1[0]), y2: M.Y(p1[1]), class: 'vidrio' }, gv);
+        }
+      }
     }
     // cotas de largo (por dentro) y etiquetas (por fuera), editables
     const cg = el('g', { class: 'cota' }, plano);
@@ -225,6 +248,7 @@ export function crearPlanta(ctx) {
       ctx.render(); return;
     }
     if (d.tipo === 'muro') { ctx.setSel({ tipo: 'muro', i: +d.i }); ctx.render(); return; }
+    if (d.tipo === 'vano') { ctx.setSel({ tipo: 'vano', i: +d.i, v: d.v }); ctx.render(); return; }
     if (d.tipo === 'vertice') { gesto = { tipo: 'vertice', i: +d.i, antes: JSON.stringify(modelo) }; return; }
   }
   function move(e) {
