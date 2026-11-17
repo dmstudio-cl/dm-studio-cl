@@ -35,7 +35,8 @@ export async function startApp(api) {
   // ----- cabecera
   const estados = { propuesta: 'Propuesta', cambios: 'Cambios solicitados', aprobado: 'Aprobado', fabricacion: 'En fabricación', entregado: 'Entregado' };
   $('#ptitle').textContent = proyecto.titulo;
-  $('#pmeta').textContent = `${isOwner ? 'Vista del estudio · ' : ''}Propuesta v${proyecto.version || 1} · ${estados[proyecto.estado] || ''}`;
+  const paintMeta = () => { $('#pmeta').textContent = `${isOwner ? 'Vista del estudio · ' : ''}Propuesta v${proyecto.version || 1} · ${estados[proyecto.estado] || ''}`; };
+  paintMeta();
   $('#pclient').textContent = proyecto.cliente?.nombre || '';
   if (proyecto.vigencia) $('#pvalid').textContent = `Precio válido hasta el ${new Date(proyecto.vigencia + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}.`;
   $('#pdemo').hidden = api.mode !== 'demo';
@@ -304,7 +305,24 @@ export async function startApp(api) {
       if (editing && mensajes.some((m) => m.id === editing)) { paintPins(); return; }
       editing = null;
       paintChat(); paintPins();
+      await revisarVersion();
     } catch (e) { if (e.code === 401) location.reload(); }
+  }
+  // Si el estudio publicó una versión nueva (mensaje "Versión N: …" en el chat), se recarga el
+  // proyecto y el modelo se actualiza sin recargar la página ni mover la cámara.
+  async function revisarVersion() {
+    const nueva = Math.max(0, ...mensajes.filter((m) => m.tipo === 'version').map((m) => +(/Versi[oó]n (\d+)/.exec(m.texto)?.[1] || 0)));
+    if (nueva <= (+proyecto.version || 1)) return;
+    const p = await api.proyecto();
+    if ((+p.version || 1) <= (+proyecto.version || 1)) return; // el servidor aún no la ve: se reintenta en la próxima revisión
+    Object.assign(proyecto, p);
+    proyecto.aprobacion = p.aprobacion || null;
+    if (p.seleccion?.melamina) sel.melamina = p.seleccion.melamina; // la versión publicada trae la melamina del estudio
+    paintSelection();
+    scene.update(resolved());
+    $('#pdims').innerHTML = (proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join('');
+    paintMeta(); paintApproval(); quote();
+    status(`DM Studio publicó la versión ${proyecto.version}: ya la estás viendo.`);
   }
   async function send(msg) {
     try { await api.enviar(msg); await refresh(); } catch (e) { status(e.message); }

@@ -226,7 +226,7 @@ export function iniciarProyectos(ed) {
       ed.abrir(raw, info, { conservarVista: true });
       pintarBarra();
       // 2) Registro en el chat del proyecto + aviso por correo (lo envía el Worker)
-      const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto: `Versión ${v}: ${msg}`, tipo: 'version', avisar: $('#v-avisar').checked } });
+      const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto: `Versión ${v}: ${msg}`, tipo: 'version', avisar: $('#v-avisar').checked, melamina: modelo.frente || '' } }); // la melamina del editor manda
       await cargarComentarios();
       btn.textContent = `Versión ${v} publicada`;
       out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}).${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
