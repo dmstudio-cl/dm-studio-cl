@@ -133,14 +133,62 @@ function selRef() {
 }
 // En la vista Frente se trabaja el mueble seleccionado de frente y sin girar (si no hay
 // selección, todos). En Planta y 3D se ve el espacio completo con los muebles ubicados.
+// Frente por muro: se ven de frente los muebles apoyados en ese muro, medidos desde su extremo izquierdo
+// (mirando el muro desde adentro). u = a lo largo del muro (izq → der), n = hacia adentro del espacio.
+let muroFrente = null; // índice del muro o null (= mueble seleccionado / todos)
+function muroActivo() {
+  if (muroFrente == null) return null;
+  const w = murosDe(modelo.espacio)[muroFrente];
+  if (!w || w.oculto) { muroFrente = null; return null; }
+  const u = [w.n[1], -w.n[0]];
+  const sa = w.a[0] * u[0] + w.a[1] * u[1], sb = w.b[0] * u[0] + w.b[1] * u[1];
+  const O = sa <= sb ? w.a : w.b; // punto del muro donde empieza la medida (izquierda)
+  const rot = ((Math.round(Math.atan2(w.n[0], w.n[1]) * 180 / Math.PI) % 360) + 360) % 360; // giro de un mueble apoyado en él
+  const linea = w.a[0] * w.n[0] + w.a[1] * w.n[1];
+  return { ...w, u, O, rot, linea };
+}
+const proyS = (W, x, z) => (x - W.O[0]) * W.u[0] + (z - W.O[1]) * W.u[1]; // posición a lo largo del muro
+function enMuro(m, W) {
+  const dr = Math.abs((((+m.rotacion || 0) - W.rot) % 360 + 360) % 360);
+  if (Math.min(dr, 360 - dr) > 1) return false; // no mira hacia afuera de este muro
+  const t = +m.x * W.n[0] + +m.z * W.n[1];
+  if (Math.abs(t - W.linea) > 60) return false; // demasiado lejos del muro (ej. una isla)
+  const s = proyS(W, +m.x, +m.z);
+  return s + +m.ancho > -5 && s < W.largo + 5;
+}
+// Posición horizontal del mueble en la vista Frente
+const xF = (m) => { const W = vista === 'frente' && muroActivo(); return W ? proyS(W, +m.x, +m.z) : +m.x; };
+// Mover a lo largo de la vista Frente (en un muro: siguiendo el muro)
+function moverFrente(m, dx) {
+  const W = vista === 'frente' && muroActivo();
+  if (W) { m.x = +m.x + dx * W.u[0]; m.z = +m.z + dx * W.u[1]; } else m.x = +m.x + dx;
+}
 function modulosFrente() {
+  const W = muroActivo();
+  if (W) return modelo.modulos.filter((m) => enMuro(m, W));
   const s = sel && sel.tipo !== 'muro' ? modulo(sel.m) : null;
   return s ? [s] : modelo.modulos;
 }
 function modeloVista() {
   if (vista !== 'frente') return modelo;
-  return { ...modelo, espacio: null, modulos: modulosFrente().map((m) => ({ ...m, rotacion: 0, z: 0 })) };
+  const W = muroActivo();
+  return {
+    ...modelo,
+    // el muro activo solo sirve para encuadrar (no se dibuja en 3D)
+    espacio: W ? { alto: W.alto, puntos: [{ x: 0, z: 0 }, { x: W.largo, z: 0 }], muros: [{ alto: W.alto }] } : null,
+    modulos: modulosFrente().map((m) => ({ ...m, x: xF(m), rotacion: 0, z: 0 })),
+  };
 }
+function opcionesMuroFrente() {
+  const s = $('#muro-frente'), ws = murosDe(modelo.espacio).filter((w) => !w.oculto);
+  s.hidden = vista !== 'frente' || !ws.length;
+  s.innerHTML = `<option value="">Mueble seleccionado / todos</option>${ws.map((w) => `<option value="${w.i}"${muroFrente === w.i ? ' selected' : ''}>Muro ${w.i + 1}${w.etiqueta ? ' · ' + esc(w.etiqueta) : ''} · ${cm(w.largo)} cm</option>`).join('')}`;
+}
+$('#muro-frente').addEventListener('change', (e) => {
+  muroFrente = e.target.value === '' ? null : +e.target.value;
+  if (sel?.tipo === 'muro') sel = null;
+  render(); encuadrar(true);
+});
 function render({ panel = true } = {}) {
   const mv = modeloVista();
   dibujar(st, mv, { capas: vista === 'frente' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef() });
@@ -149,6 +197,7 @@ function render({ panel = true } = {}) {
   encuadrar(false);
   dibujarPlano();
   if (panel) { arbol(); props(); }
+  opcionesMuroFrente();
   $('#nombre').value = modelo.nombre || '';
 }
 
@@ -180,7 +229,7 @@ function pisoGrilla(mv = modelo) {
 // Encuadre: en Frente cabe completo a escala; en 3D, con margen para girar.
 let encuadreHecho = '';
 function encuadrar(forzar = true) {
-  const L = limites(modeloVista(), { conMuros: vista !== 'frente' && capas.muros });
+  const L = limites(modeloVista(), { conMuros: vista === 'frente' ? !!muroActivo() : capas.muros });
   const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
   if (!forzar && clave === encuadreHecho) return;
   encuadreHecho = clave;
@@ -225,9 +274,14 @@ function dibujarPlano() {
   for (let y = ya; y <= yb; y += 10) el('line', { x1: 0, y1: M.Y(y), x2: M.Wp, y2: M.Y(y), class: y % 50 === 0 ? 'g50' : null }, g);
   el('line', { x1: 0, y1: M.Y(0), x2: M.Wp, y2: M.Y(0), class: 'piso' }, plano);
   referencias.pintar(plano, M, 'frente'); // foto o plano del cliente, a escala
+  const W = muroActivo();
+  if (W) { // contorno del muro que se está viendo, con su largo
+    el('rect', { x: M.X(0), y: M.Y(W.alto), width: W.largo * M.s, height: W.alto * M.s, class: 'muro-frente' }, plano);
+    el('text', { x: M.X(0) + 8, y: M.Y(W.alto) + 18, class: 'muro-frente-txt' }, plano).textContent = `Muro ${W.i + 1}${W.etiqueta ? ' · ' + W.etiqueta : ''} · ${cm(W.largo)} × ${cm(W.alto)} cm`;
+  }
 
   for (const m of modulosFrente()) {
-    const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
+    const ox = xF(m), oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
     const esSel = sel?.m === m.id, enMulti = !!sel?.ids?.includes(m.id);
     // zócalo
     if (Z > 0) el('rect', { x: M.X(ox), y: M.Y(oy + Z), width: W * M.s, height: Z * M.s, class: `zona-zocalo${esSel && sel.tipo === 'zocalo' ? ' sel' : ''}`, 'data-tipo': 'zocalo', 'data-m': m.id }, plano);
@@ -265,7 +319,7 @@ function dibujarPlano() {
 // Cotas del módulo seleccionado: ancho total, alto total, ancho de columnas y medidas de cada frente.
 function cotas(m, M) {
   const g = el('g', { class: 'cota' }, plano);
-  const ox = +m.x, oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
+  const ox = xF(m), oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
   // edit: qué medida representa la cota (clic sobre el texto para escribirla en cm)
   const linea = (x1, y1, x2, y2, texto, vertical = false, edit = null) => {
     el('line', { x1, y1, x2, y2 }, g);
@@ -293,7 +347,7 @@ function cotas(m, M) {
 
 // ===================== interacción en la vista frontal =====================
 let gesto = null;
-const local = (m, p) => ({ x: p.x - +m.x, y: p.y - +m.elevacion });
+const local = (m, p) => ({ x: p.x - xF(m), y: p.y - +m.elevacion });
 
 plano.addEventListener('pointerdown', (e) => {
   if (vista === 'planta') return planta.down(e);
@@ -386,7 +440,7 @@ plano.addEventListener('pointerup', (e) => {
     const M = mapa();
     if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.y - g.a.y) * M.s) < 4) { if (!g.suma) sel = null; render(); return; }
     const x0 = Math.min(g.a.x, g.b.x), x1 = Math.max(g.a.x, g.b.x), y0 = Math.min(g.a.y, g.b.y), y1 = Math.max(g.a.y, g.b.y);
-    const ids = modulosFrente().filter((m) => +m.x + +m.ancho > x0 && +m.x < x1 && +m.elevacion + +m.alto > y0 && +m.elevacion < y1).map((m) => m.id);
+    const ids = modulosFrente().filter((m) => xF(m) + +m.ancho > x0 && xF(m) < x1 && +m.elevacion + +m.alto > y0 && +m.elevacion < y1).map((m) => m.id);
     seleccionarVarios(ids, g.suma);
     return;
   }
@@ -396,6 +450,8 @@ plano.addEventListener('pointerup', (e) => {
     if (w < 10 || h < 10) return render();
     const elev = y0 < 6 ? 0 : y0; // cerca del piso: se apoya en el piso
     const m = nuevoModulo({ x: x0, elevacion: elev, ancho: w, alto: elev ? h : h + y0 });
+    const Wm = muroActivo();
+    if (Wm) { m.x = Wm.O[0] + x0 * Wm.u[0]; m.z = Wm.O[1] + x0 * Wm.u[1]; m.rotacion = Wm.rot; }
     cambiar((d) => d.modulos.push(m));
     sel = { tipo: 'modulo', m: m.id };
     setHerr('sel'); render();
@@ -644,7 +700,7 @@ function props() {
       <label class="ed-check"><input type="checkbox" data-k="e.cerrado"${modelo.espacio.cerrado ? ' checked' : ''}> Espacio cerrado (une el último muro con el primero)</label>
       <div class="ed-botones">${w.oculto
         ? '<button data-a="restaurar-muro" class="ed-primario">Restaurar este muro</button>'
-        : '<button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>'}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+        : '<button data-a="ver-muro" class="ed-primario">Ver de frente</button><button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>'}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
       ${w.oculto ? '<p class="ed-ayuda">Muro eliminado: no se dibuja ni lo ve el cliente. Queda punteado en Planta para poder restaurarlo.</p>' : ''}
       <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p></div>`;
     return;
@@ -797,6 +853,7 @@ $('#props').addEventListener('click', (e) => {
     else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); });
     return;
   }
+  if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
   if (b.dataset.a === 'unir') {
     const ids = sel.ids, r = unirModulos(ids.map(modulo));
     if (r.error) { $('#unir-aviso').textContent = r.error; $('#unir-aviso').classList.add('ed-error'); aviso(r.error); return; }
@@ -973,8 +1030,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
     const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0, ids = sel.ids;
     cambiar((d) => d.modulos.filter((m) => ids.includes(m.id)).forEach((m) => {
-      m.x = +m.x + dx;
-      if (vista === 'planta') m.z = +m.z - dy; else m.elevacion = Math.max(0, +m.elevacion + dy);
+      if (vista === 'planta') { m.x = +m.x + dx; m.z = +m.z - dy; } else { moverFrente(m, dx); m.elevacion = Math.max(0, +m.elevacion + dy); }
     }));
   }
   else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel && sel.tipo !== 'muro') { // subir / bajar
@@ -988,7 +1044,7 @@ window.addEventListener('keydown', (e) => {
     const m = modulo(sel.m);
     if (sel.tipo === 'tirador') { const t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.dx = +t.dx + dx; t.dy = +t.dy + dy; }); }
     else if (vista === 'planta') cambiar(() => { m.x = +m.x + dx; m.z = +m.z - dy; }); // en planta, ↑ va hacia el muro del fondo
-    else cambiar(() => { m.x = +m.x + dx; m.elevacion = Math.max(0, +m.elevacion + dy); });
+    else cambiar(() => { moverFrente(m, dx); m.elevacion = Math.max(0, +m.elevacion + dy); });
   }
 });
 
