@@ -1,7 +1,7 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin } from './modelo.js';
+import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
@@ -435,7 +435,10 @@ function modulosFrente() {
   const s = sel && sel.tipo !== 'muro' ? modulo(sel.m) : null;
   return s ? [s] : modelo.modulos;
 }
+// Vista «Abajo»: el mueble seleccionado visto desde el piso (sin girar), para ver y ajustar el marco del zócalo
+const moduloInferior = () => { const m = sel?.m && modulo(sel.m); return m && !m.artefacto ? m : null; };
 function modeloVista() {
+  if (vista === 'inferior') { const m = moduloInferior(); return { ...modelo, espacio: null, modulos: m ? [{ ...m, x: 0, z: 0, rotacion: 0, elevacion: 0 }] : [] }; }
   if (vista !== 'frente') return modelo;
   const W = muroActivo();
   return {
@@ -457,9 +460,9 @@ $('#muro-frente').addEventListener('change', (e) => {
 });
 function render({ panel = true } = {}) {
   const mv = modeloVista();
-  dibujar(st, mv, { capas: vista === 'frente' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef() });
-  if (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros) pisoGrilla(mv);
-  if (vista !== 'frente') dibujarPines();
+  dibujar(st, mv, { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef() });
+  if (vista !== 'inferior' && (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros)) pisoGrilla(mv); // desde abajo el piso taparía el mueble
+  if (vista !== 'frente' && vista !== 'inferior') dibujarPines();
   encuadrar(false);
   dibujarPlano();
   if (panel) { arbol(); props(); }
@@ -504,9 +507,10 @@ function encuadrar(forzar = true) {
   let px; // px por cm
   if (vista === 'frente') px = Math.min(Wp / ((L.w + 60) * 1.15), Hp / ((L.h + 50) * 1.15));
   else if (vista === 'planta') px = Math.min(Wp / ((L.w + 110) * 1.1), Hp / ((L.d + 110) * 1.1));
+  else if (vista === 'inferior') px = Math.min(Wp / ((L.w + 70) * 1.15), Hp / ((L.d + 70) * 1.15));
   else { const diag = Math.hypot(L.w, L.h, L.d); px = Math.min(Wp, Hp) / (diag * 1.25); }
   px *= zoom;
-  st.frame([(L.x0 + L.x1) / 2, vista === 'frente' ? L.h / 2 + 5 : vista === 'planta' ? 0 : L.h / 2, (L.z0 + L.z1) / 2], s0 / px, 1);
+  st.frame([(L.x0 + L.x1) / 2, vista === 'frente' ? L.h / 2 + 5 : vista === 'planta' || vista === 'inferior' ? 0 : L.h / 2, (L.z0 + L.z1) / 2], s0 / px, 1);
 }
 
 // ----- vista frontal: coordenadas mundo (cm) ↔ pantalla (px)
@@ -527,8 +531,49 @@ const el = (tag, attrs = {}, parent) => {
   return n;
 };
 
+// ----- vista «Abajo»: coordenadas locales del mueble (x, z) ↔ pantalla. Desde abajo, la pared (z = 0) queda arriba.
+function mapaInf() {
+  const Wp = lienzo.clientWidth, Hp = lienzo.clientHeight, s = st.scale, c = st.center, k = signoInf();
+  return { s, Wp, Hp, X: (x) => Wp / 2 + (x - c[0]) * s, Y: (z) => Hp / 2 + k * (z - c[2]) * s, x: (px) => c[0] + (px - Wp / 2) / s, z: (py) => c[2] + k * (py - Hp / 2) / s };
+}
+// Sentido del eje z en pantalla con la cámara mirando hacia arriba (se mide una vez con el motor)
+let _signoInf = 0;
+function signoInf() {
+  if (_signoInf) return _signoInf;
+  try { const P = st.proyeccion(); const a = P.transformPoint(new DOMPoint(0, 0, 0)), b = P.transformPoint(new DOMPoint(0, 0, 10)); _signoInf = (b.y / b.w - a.y / a.w) >= 0 ? 1 : -1; } catch (e) { _signoInf = -1; }
+  return _signoInf;
+}
+function dibujarInferior() {
+  const M = mapaInf();
+  plano.setAttribute('viewBox', `0 0 ${M.Wp} ${M.Hp}`);
+  plano.replaceChildren();
+  const m = moduloInferior();
+  if (!m) { el('text', { x: M.Wp / 2, y: M.Hp / 2, 'text-anchor': 'middle', class: 'inf-vacio' }, plano).textContent = 'Selecciona un mueble para verlo desde abajo'; return; }
+  const W = +m.ancho, D = +m.profundidad, DT = fondoTotal(m), T = tablero(m), Z = Zde(m);
+  const R = (x0, z0, x1, z1, attrs) => el('rect', { x: Math.min(M.X(x0), M.X(x1)), y: Math.min(M.Y(z0), M.Y(z1)), width: Math.abs(M.X(x1) - M.X(x0)), height: Math.abs(M.Y(z1) - M.Y(z0)), ...attrs }, plano);
+  R(0, 0, W, DT, { class: 'inf-mueble' }); // contorno del mueble (con los frentes)
+  el('text', { x: M.X(W / 2), y: M.Y(-6), 'text-anchor': 'middle', class: 'inf-txt' }, plano).textContent = 'pared (atrás)';
+  el('text', { x: M.X(W / 2), y: M.Y(DT + 6) + 4, 'text-anchor': 'middle', class: 'inf-txt' }, plano).textContent = 'frente';
+  if (!Z) { el('text', { x: M.X(W / 2), y: M.Y(DT / 2), 'text-anchor': 'middle', class: 'inf-txt' }, plano).textContent = 'Este mueble no lleva zócalo (alto 0)'; return; }
+  const z = marcoZocalo(m, T), es = sel?.tipo === 'zocalo';
+  R(z.x0 + T, z.z0 + T, z.x1 - T, z.z1 - T, { class: 'inf-mover', 'data-tipo': 'zoc-mover' }); // interior: arrastrar mueve el marco
+  const lados = { f: [z.x0, z.z1 - T, z.x1, z.z1], a: [z.x0, z.z0, z.x1, z.z0 + T], i: [z.x0, z.z0, z.x0 + T, z.z1], d: [z.x1 - T, z.z0, z.x1, z.z1] };
+  for (const [l, [a, b, c, d]] of Object.entries(lados)) R(a, b, c, d, { class: `inf-lado${es ? ' sel' : ''}`, 'data-tipo': 'zoc-lado', 'data-lado': l });
+  // cotas: retiros del marco a los bordes del cuerpo (se pueden escribir)
+  const g = el('g', { class: 'cota' }, plano);
+  const cota = (x1, z1, x2, z2, v, k) => {
+    if (v < .05) return;
+    el('line', { x1: M.X(x1), y1: M.Y(z1), x2: M.X(x2), y2: M.Y(z2) }, g);
+    el('text', { x: (M.X(x1) + M.X(x2)) / 2 + (z1 === z2 ? 0 : 6), y: (M.Y(z1) + M.Y(z2)) / 2 + (z1 === z2 ? -6 : 4), 'text-anchor': z1 === z2 ? 'middle' : 'start', class: 'editable', 'data-cota': k, 'data-m': m.id }, g).textContent = cm(v);
+  };
+  const zm = (z.z0 + z.z1) / 2, xm = (z.x0 + z.x1) / 2;
+  cota(0, zm, z.x0, zm, z.izq, 'zocalo_izq'); cota(z.x1, zm, W, zm, z.der, 'zocalo_der');
+  cota(xm, 0, xm, z.z0, z.atras, 'zocalo_atras'); cota(xm, z.z1, xm, D, z.frente, 'zocalo_retiro');
+  el('text', { x: M.X(xm), y: M.Y(zm) + 4, 'text-anchor': 'middle', class: 'inf-txt' }, plano).textContent = `zócalo ${cm(z.x1 - z.x0)} × ${cm(z.z1 - z.z0)} · alto ${cm(Z)}`;
+}
 function dibujarPlano() {
   if (vista === 'planta') return planta.dibujar();
+  if (vista === 'inferior') return dibujarInferior();
   if (vista !== 'frente') return;
   const M = mapa();
   plano.setAttribute('viewBox', `0 0 ${M.Wp} ${M.Hp}`);
@@ -681,8 +726,19 @@ function cotas(m, M) {
 let gesto = null;
 const local = (m, p) => ({ x: p.x - xF(m), y: p.y - +m.elevacion });
 
+let gInf = null;
 plano.addEventListener('pointerdown', (e) => {
   if (vista === 'planta') return planta.down(e);
+  if (vista === 'inferior') {
+    const cota = e.target.closest('[data-cota]'); if (cota) { e.preventDefault(); editarCota(cota); return; }
+    const t = e.target.closest('[data-tipo^="zoc-"]'), m = moduloInferior();
+    if (!t || !m) { if (m) { sel = { tipo: 'modulo', m: m.id }; render(); } return; }
+    const M = mapaInf(), r = plano.getBoundingClientRect();
+    plano.setPointerCapture(e.pointerId);
+    sel = { tipo: 'zocalo', m: m.id };
+    gInf = { tipo: t.dataset.tipo, lado: t.dataset.lado, x0: M.x(e.clientX - r.left), z0: M.z(e.clientY - r.top), ini: marcoZocalo(m), antes: JSON.stringify(modelo) };
+    render(); return;
+  }
   if (e.button > 0) return;
   const M = mapa(), r = plano.getBoundingClientRect();
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
@@ -741,6 +797,24 @@ plano.addEventListener('pointerdown', (e) => {
 
 plano.addEventListener('pointermove', (e) => {
   if (vista === 'planta') return planta.move(e);
+  if (vista === 'inferior') {
+    if (!gInf) return;
+    const m = moduloInferior(); if (!m) return;
+    const M = mapaInf(), r = plano.getBoundingClientRect(), x = M.x(e.clientX - r.left), z = M.z(e.clientY - r.top);
+    const W = +m.ancho, D = +m.profundidad, k = gInf.ini, dx = snap(x - gInf.x0, .5), dz = snap(z - gInf.z0, .5), cl = (v) => Math.max(0, r1(v));
+    if (gInf.tipo === 'zoc-mover') { // mover el marco completo dentro del mueble
+      const mx = Math.max(-k.izq, Math.min(k.der, dx)), mz = Math.max(-k.atras, Math.min(k.frente, dz));
+      m.zocalo_izq = cl(k.izq + mx); m.zocalo_der = cl(k.der - mx); m.zocalo_atras = cl(k.atras + mz); m.zocalo_retiro = cl(k.frente - mz);
+    } else { // un lado: cambia ese retiro
+      if (gInf.lado === 'i') m.zocalo_izq = cl(k.izq + dx);
+      if (gInf.lado === 'd') m.zocalo_der = cl(k.der - dx);
+      if (gInf.lado === 'a') m.zocalo_atras = cl(k.atras + dz);
+      if (gInf.lado === 'f') m.zocalo_retiro = cl(k.frente - dz);
+    }
+    const v = marcoZocalo(m); m.zocalo_izq = r1(v.izq); m.zocalo_der = r1(v.der); m.zocalo_atras = r1(v.atras); m.zocalo_retiro = r1(v.frente);
+    estadoEl.textContent = `Retiros: frente ${cm(v.frente)} · atrás ${cm(v.atras)} · izq. ${cm(v.izq)} · der. ${cm(v.der)} cm`;
+    render({ panel: false }); return;
+  }
   const M = mapa(), r = plano.getBoundingClientRect();
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
@@ -813,6 +887,12 @@ plano.addEventListener('pointermove', (e) => {
 
 plano.addEventListener('pointerup', (e) => {
   if (vista === 'planta') return planta.up(e);
+  if (vista === 'inferior') {
+    if (!gInf) return;
+    const g = gInf; gInf = null;
+    if (JSON.stringify(modelo) !== g.antes) { hist.push(g.antes); fut.length = 0; guardar(); }
+    render(); return;
+  }
   if (!gesto) return;
   const g = gesto; gesto = null;
   if (g.tipo === 'marco') {
@@ -849,7 +929,9 @@ function editarCota(t) {
   const k = t.dataset.cota, col = +t.dataset.col, fila = +t.dataset.fila;
   const cs = celdas(m), c = cs.find((x) => x.col === col && x.fila === fila);
   const V = vecinosFrente(m);
+  const mz = marcoZocalo(m);
   const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho,
+    zocalo_retiro: mz.frente, zocalo_atras: mz.atras, zocalo_izq: mz.izq, zocalo_der: mz.der,
     'dist-izq': V.izq ? V.x0 - V.izq.x : 0, 'dist-der': V.der ? V.der.x - V.x1 : 0 }[k];
   const inp = document.createElement('input');
   inp.className = 'ed-cota-input';
@@ -866,7 +948,7 @@ function editarCota(t) {
     if (!aplicar) return;
     const nums = (txt.match(/\d+(\.\d+)?/g) || []).map(Number);
     if (!nums.length) return;
-    sel = k === 'cel' ? { tipo: 'frente', m: m.id, col, fila } : { tipo: 'modulo', m: m.id };
+    sel = k === 'cel' ? { tipo: 'frente', m: m.id, col, fila } : k.startsWith('zocalo_') ? { tipo: 'zocalo', m: m.id } : { tipo: 'modulo', m: m.id };
     cambiar(() => {
       if (k === 'dist-izq' && V.izq) moverFrente(m, V.izq.x + nums[0] - V.x0);
       else if (k === 'dist-der' && V.der) moverFrente(m, V.der.x - nums[0] - V.x1);
@@ -1176,9 +1258,12 @@ function props() {
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
   } else if (sel.tipo === 'zocalo') {
-    h = `<p class="tit">Zócalo</p><p class="sub">${esc(m.nombre)}</p>
-      <div class="ed-campos">${num('zocalo', 'Alto', m.zocalo)}${num('zocalo_retiro', 'Retiro', m.zocalo_retiro)}</div>
-      <p class="ed-ayuda">El retiro es cuánto queda el zócalo hacia adentro respecto del frente.</p>`;
+    const z = marcoZocalo(m);
+    h = `<p class="tit">Zócalo</p><p class="sub">${esc(m.nombre)} · marco de 4 lados · ${cm(z.x1 - z.x0)} × ${cm(z.z1 - z.z0)} cm</p>
+      <div class="ed-campos">${num('zocalo', 'Alto', m.zocalo)}${num('zocalo_retiro', 'Retiro del frente', z.frente)}
+        ${num('zocalo_atras', 'Retiro de atrás', z.atras)}${num('zocalo_izq', 'Retiro izquierdo', z.izq)}${num('zocalo_der', 'Retiro derecho', z.der)}</div>
+      <div class="ed-botones">${vista !== 'inferior' ? '<button data-a="ver-abajo" class="ed-primario">Ver desde abajo</button>' : ''}<button data-a="zocalo-centrar">Centrar a los lados</button></div>
+      <p class="ed-ayuda">Cada retiro es cuánto entra el zócalo desde ese borde del mueble. Desde abajo puedes arrastrar cada lado o el marco completo.</p>`;
   } else if (sel.tipo === 'frente') {
     const col = m.columnas[sel.col], f = col?.frentes[sel.fila];
     if (!f) { sel = { tipo: 'modulo', m: m.id }; return props(); }
@@ -1428,6 +1513,8 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
+  if (a === 'ver-abajo') { setVista('inferior'); render(); return; }
+  if (a === 'zocalo-centrar') { const z = marcoZocalo(m), v = r1((z.izq + z.der) / 2); cambiar(() => { m.zocalo_izq = v; m.zocalo_der = v; }); return; }
   if (a === 'restaurar-piezas') { cambiar(() => { delete m.quitar; }); return; }
   if (a === 'ver-seccion') { sel = { tipo: 'frente', m: m.id, col: sel.col, fila: sel.fila }; render(); return; }
   if (a === 'quitar-material') { const d = claveDeSel(); if (d) cambiar(() => { delete m.materiales[d.k]; }); return; }
@@ -1493,9 +1580,11 @@ function setVista(v) {
   $$('[data-vista]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
   lienzo.classList.toggle('frente', v === 'frente');
   lienzo.classList.toggle('planta', v === 'planta');
+  lienzo.classList.toggle('inferior', v === 'inferior');
   planta.cancelar();
   if (v === 'frente') { st.lock(true); st.limits(-89, 89); st.ortho(true); st.set(0, 0); if (herr === 'muros') setHerr('sel'); }
   else if (v === 'planta') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(-90, 0); if (herr.startsWith('div')) setHerr('sel'); }
+  else if (v === 'inferior') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(90, 0); if (herr !== 'sel') setHerr('sel'); }
   else { st.lock(false); st.limits(-70, 0); st.ortho(false); st.set(-24, -30); if (herr !== 'sel') setHerr('sel'); }
   render({ panel: false });
   encuadrar(true); dibujarPlano();
@@ -1513,6 +1602,7 @@ function setHerr(h) {
 }
 function ayuda() {
   if (vista === '3d') return 'Arrastra para girar · clic para seleccionar · rueda para acercar';
+  if (vista === 'inferior') return 'Vista desde abajo · arrastra un lado del zócalo para cambiar su retiro, o el centro para moverlo · clic en una cota para escribirla';
   if (vista === 'planta') return {
     sel: 'Arrastra un mueble para moverlo (imán a los muros, Alt sin imán) · R gira · clic en una cota para escribirla',
     dibujar: 'Arrastra para dibujar la huella de un mueble (ancho × fondo)',
@@ -1614,6 +1704,7 @@ window.addEventListener('keydown', (e) => {
   if (k === '1') setVista('3d');
   else if (k === '2') setVista('frente');
   else if (k === '3') setVista('planta');
+  else if (k === '4') setVista('inferior');
   else if (k === 'w') setHerr('muros');
   else if (k === 'v' || k === 'escape') { setHerr('sel'); if (k === 'escape') { sel = null; render(); } }
   else if (k === 'm') setHerr('dibujar');

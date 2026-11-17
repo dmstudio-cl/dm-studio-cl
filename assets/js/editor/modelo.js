@@ -8,7 +8,8 @@
 //     tablero,                                        // espesor de la melamina en mm (15 normal, 18 a veces)
 //     materiales: { [pieza]: idMaterial },            // material propio de una pieza (editor): 'f|col|fila', 'cuerpo|izq', 'zocalo'…
 //     quitar: ['piso', 'techo', 'fondo', 'izq', 'der'], // tableros del cuerpo que no lleva
-//     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro
+//     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro desde el frente
+//     zocalo_atras, zocalo_izq, zocalo_der,           // retiros del marco del zócalo hacia la pared y los costados
 //     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas, hojas }] }],   // hojas: puertas de la sección (puerta_doble)   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
 //   }]
@@ -99,6 +100,16 @@ export function celdas(m) {
     x0 += cw;
   });
   return out;
+}
+
+// Marco del zócalo en coordenadas locales (x desde el costado izq., z desde la pared), con medidas válidas
+export function marcoZocalo(m, T = tablero(m)) {
+  const W = +m.ancho, D = +m.profundidad, min = 2 * T + 5;
+  const izq = Math.max(0, +m.zocalo_izq || 0), der = Math.max(0, +m.zocalo_der || 0);
+  const atras = Math.max(0, +m.zocalo_atras || 0), frente = Math.max(0, +m.zocalo_retiro || 0);
+  const x0 = Math.min(izq, W - min), x1 = Math.max(x0 + min, W - der);
+  const z0 = Math.min(atras, D - min), z1 = Math.max(z0 + min, D - frente);
+  return { x0, x1, z0, z1, izq: x0, der: W - x1, atras: z0, frente: D - z1 };
 }
 
 // Alturas (y local) de las repisas de una celda: repartidas parejo en su alto.
@@ -357,9 +368,13 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       return null;
     };
     const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
-    if (ver('zocalo') && Z > 0) {
-      const r = +m.zocalo_retiro || 0;
-      B({ w: W, h: Z, d: T, x: W / 2, y: Z / 2, z: D - r - T / 2 }, propio('zocalo') || M.zocalo, `${id}|zocalo`); // tabla retranqueada bajo el cuerpo
+    if (ver('zocalo') && Z > 0) { // marco de 4 tablas bajo el cuerpo (no se ve vacío por los costados)
+      const zr = marcoZocalo(m, T), MZ = propio('zocalo') || M.zocalo, rz = `${id}|zocalo`;
+      const ancho = zr.x1 - zr.x0, fondo = zr.z1 - zr.z0;
+      B({ w: ancho, h: Z, d: T, x: (zr.x0 + zr.x1) / 2, y: Z / 2, z: zr.z1 - T / 2 }, MZ, rz);              // frente
+      B({ w: ancho, h: Z, d: T, x: (zr.x0 + zr.x1) / 2, y: Z / 2, z: zr.z0 + T / 2 }, MZ, rz);              // atrás
+      B({ w: T, h: Z, d: fondo - 2 * T, x: zr.x0 + T / 2, y: Z / 2, z: (zr.z0 + zr.z1) / 2 }, MZ, rz);      // izquierda
+      B({ w: T, h: Z, d: fondo - 2 * T, x: zr.x1 - T / 2, y: Z / 2, z: (zr.z0 + zr.z1) / 2 }, MZ, rz);      // derecha
     }
     if (ver('cuerpo')) {
       // costados: por dentro siempre del color del cuerpo; por fuera, como se eligió (general o de este mueble)

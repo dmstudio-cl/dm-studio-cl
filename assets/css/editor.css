@@ -46,7 +46,7 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
   background: radial-gradient(70% 70% at 50% 45%, #1b191b, var(--ink)); }
 .ed-escena { position: absolute; inset: 0; }
 .ed-plano { position: absolute; inset: 0; width: 100%; height: 100%; display: none; touch-action: none; }
-.ed-lienzo.frente .ed-plano, .ed-lienzo.planta .ed-plano { display: block; }
+.ed-lienzo.frente .ed-plano, .ed-lienzo.planta .ed-plano, .ed-lienzo.inferior .ed-plano { display: block; }
 .ed-lienzo.frente .ed-escena { cursor: default; }
 .ed-estado { position: absolute; left: 12px; bottom: 10px; margin: 0; font: 400 .72rem/1.4 var(--mono); color: var(--muted); letter-spacing: .04em; pointer-events: none; }
 
@@ -269,3 +269,12 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-fantasma-mat { position: fixed; z-index: 50; width: 42px; height: 42px; margin: -21px 0 0 -21px; border-radius: 50%; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
 .ed-material-pieza { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; font-size: .78rem; }
 .ed-material-pieza .ed-esfera { width: 28px; height: 28px; flex: none; }
+
+/* vista desde abajo: marco del zócalo */
+.ed-plano .inf-mueble { fill: none; stroke: rgba(236, 231, 221, .45); stroke-dasharray: 5 4; pointer-events: none; }
+.ed-plano .inf-lado { fill: rgba(236, 231, 221, .18); stroke: rgba(236, 231, 221, .8); stroke-width: 1; cursor: grab; }
+.ed-plano .inf-lado:hover { fill: rgba(236, 231, 221, .32); }
+.ed-plano .inf-lado.sel { stroke: var(--red-accent); fill: rgba(180, 50, 46, .3); }
+.ed-plano .inf-mover { fill: rgba(236, 231, 221, .03); cursor: move; }
+.ed-plano .inf-txt, .ed-plano .inf-vacio { fill: rgba(236, 231, 221, .65); font: 500 11px/1 var(--mono); pointer-events: none; }
+.ed-plano .inf-vacio { font-size: 13px; }

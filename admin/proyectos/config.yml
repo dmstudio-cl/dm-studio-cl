@@ -85,6 +85,9 @@ collections:
           - { label: Profundidad, name: profundidad, widget: number, value_type: float }
           - { label: Zócalo, name: zocalo, widget: number, value_type: float, default: 10 }
           - { label: Retiro del zócalo, name: zocalo_retiro, widget: number, value_type: float, default: 5, required: false }
+          - { label: Retiro del zócalo atrás, name: zocalo_atras, widget: number, value_type: float, required: false }
+          - { label: Retiro del zócalo izquierdo, name: zocalo_izq, widget: number, value_type: float, required: false }
+          - { label: Retiro del zócalo derecho, name: zocalo_der, widget: number, value_type: float, required: false }
           - { label: Altura desde el piso, name: elevacion, widget: number, value_type: float, default: 0, hint: "Para muebles aéreos" }
           - { label: "Posición X (a lo largo del muro)", name: x, widget: number, value_type: float, default: 0 }
           - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
