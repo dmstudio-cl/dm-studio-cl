@@ -15,6 +15,7 @@ const STYLE = `
 .c3-rig > * { left: 0; top: 0; transform-origin: 0 0; } /* cada cara se centra con translate(-50%,-50%) y gira sobre su centro */
 .c3-f { backface-visibility: hidden; -webkit-backface-visibility: hidden; background-repeat: repeat; box-shadow: inset 0 0 0 .08em rgba(255,236,214,.13); /* canto levemente iluminado, como el borde redondeado */ }
 .c3-f > i { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+.c3-f.c3-luz { mix-blend-mode: screen; pointer-events: none; backface-visibility: visible; } /* ilusión de luz: suma brillo y no se sombrea */
 .c3-floor { backface-visibility: hidden; border-radius: 50%; }
 .c3-g > * { left: 0; top: 0; transform-origin: 0 0; } /* grupos (p. ej. un tirador girado): sus caras se ubican igual que en el rig */
 `;
@@ -45,14 +46,16 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   // Cara rectangular: centro (cx,cy,cz) en cm de mundo, tamaño w×h, orientación por rotaciones CSS,
   // normal n en coordenadas CSS (y hacia abajo), fondo (textura) y recorte opcional (trapecio de las patas).
   // ref: etiqueta opcional (data-ref) para saber a qué pieza pertenece la cara al hacer clic.
-  function face(parent, { w, h, at, rot = '', n, bg, size, clip, ref }) {
+  function face(parent, { w, h, at, rot = '', n, bg, size, clip, ref, cara, emisiva }) {
     const f = document.createElement('div');
     f.className = 'c3-f';
     if (ref) f.dataset.ref = ref;
+    if (cara) f.dataset.cara = cara; // qué cara de la caja es (front, left…): sirve para extruir una cara
     f.style.width = w + 'em'; f.style.height = h + 'em';
     f.style.transform = `translate3d(${at[0]}em, ${at[1]}em, ${at[2]}em) ${rot} translate(-50%, -50%)`;
     if (bg) { f.style.background = bg; if (size) f.style.backgroundSize = size; }
     if (clip) f.style.clipPath = clip;
+    if (emisiva) { f.classList.add('c3-luz'); parent.append(f); return f; } // luz: sin capa de sombra
     const shade = document.createElement('i');
     f.append(shade);
     parent.append(f);
@@ -64,12 +67,12 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   // tex(caraNombre, ancho, alto) → { bg, size } para cada cara.
   // parent/nrot: uso interno de group() (contenedor girado y cómo rotar las normales).
   // caras: lista opcional de caras a dibujar (p. ej. ['front','top'] para un muro de casa de muñecas).
-  function box({ w, h, d, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n, caras = null }) {
+  function box({ w, h, d, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n, caras = null, emisiva = false }) {
     const cy = -y; // a coordenadas CSS
     const T = (k, fw, fh) => (typeof tex === 'function' ? tex(k, fw, fh) : tex) || {};
     const add = (k, fw, fh, at, rot, n) => {
       if (caras && !caras.includes(k)) return;
-      const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref });
+      const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref, cara: ref ? k : undefined, emisiva });
     };
     add('front', w, h, [x, cy, z + d / 2], '', [0, 0, 1]);
     add('back', w, h, [x, cy, z - d / 2], 'rotateY(180deg)', [0, 0, -1]);

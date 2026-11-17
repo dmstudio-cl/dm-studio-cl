@@ -3,6 +3,8 @@
 // principal, z hacia la habitación. En pantalla, z crece hacia abajo (el muro del fondo queda arriba).
 import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar } from './modelo.js';
 import { ARTEFACTOS } from './artefactos.js';
+import { OBJETOS } from './objetos.js';
+import { cubiertaDe, tablero } from './modelo.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -105,6 +107,33 @@ export function crearPlanta(ctx) {
       el('line', { x1: M.X(h[2][0]), y1: M.Y(h[2][1]), x2: M.X(h[3][0]), y2: M.Y(h[3][1]), class: 'frente-linea' }, plano);
       const [cx, cz] = centro(m);
       el('text', { x: M.X(cx), y: M.Y(cz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
+    }
+    // cubierta seleccionada: su contorno con los vuelos; cada borde se arrastra para extruirla (ej. barra de desayuno)
+    if (sel?.tipo === 'cubierta') {
+      const m = modelo.modulos.find((x) => x.id === sel.m);
+      if (m?.cubierta) {
+        const cb = cubiertaDe(m), aM = (lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
+        const P = (a, b) => aM(a, b);
+        el('polygon', { points: [P(cb.x0, cb.z0), P(cb.x1, cb.z0), P(cb.x1, cb.z1), P(cb.x0, cb.z1)].map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: 'cub-contorno' }, plano);
+        const bordes = { frente: [[cb.x0, cb.z1], [cb.x1, cb.z1]], atras: [[cb.x0, cb.z0], [cb.x1, cb.z0]], izq: [[cb.x0, cb.z0], [cb.x0, cb.z1]], der: [[cb.x1, cb.z0], [cb.x1, cb.z1]] };
+        for (const [lado, [a, b]] of Object.entries(bordes)) {
+          const [x1, z1] = P(...a), [x2, z2] = P(...b);
+          el('line', { x1: M.X(x1), y1: M.Y(z1), x2: M.X(x2), y2: M.Y(z2), class: `cub-borde${sel.cara === lado ? ' sel' : ''}`, 'data-tipo': 'cub-borde', 'data-m': m.id, 'data-lado': lado }, plano);
+          const v = cb.v[lado];
+          if (v > .05) el('text', { x: M.X((x1 + x2) / 2), y: M.Y((z1 + z2) / 2) - 8, 'text-anchor': 'middle', class: 'cub-txt' }, plano).textContent = `vuelo ${cm(v)}`;
+        }
+      }
+    }
+    // electrodomésticos sueltos: huella girada, seleccionables y arrastrables
+    for (const o of modelo.objetos || []) {
+      if (!OBJETOS[o.tipo]) continue;
+      const w = +o.ancho / 2, f = +o.fondo / 2, r = +o.rotacion || 0;
+      const pts = [[-w, -f], [w, -f], [w, f], [-w, f]].map(([a, b]) => { const [dx, dz] = girar(a, b, r); return [+o.x + dx, +o.z + dz]; });
+      const esSel = sel?.tipo === 'objeto' && sel.o === o.id;
+      el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `objeto${esSel ? ' sel' : ''}`, 'data-tipo': 'objeto', 'data-o': o.id }, plano);
+      const [fx, fz] = girar(0, f, r); // marca del frente
+      el('circle', { cx: M.X(+o.x + fx), cy: M.Y(+o.z + fz), r: 3, class: 'objeto-frente' }, plano);
+      el('text', { x: M.X(+o.x), y: M.Y(+o.z) + 4, 'text-anchor': 'middle', class: 'objeto-txt' }, plano).textContent = o.nombre || OBJETOS[o.tipo].nombre;
     }
     // encimeras y lavaplatos sobre las cubiertas (con cotas a los bordes del mueble si están seleccionados)
     for (const m of modelo.modulos) {
@@ -271,6 +300,17 @@ export function crearPlanta(ctx) {
     }
     if (d.tipo === 'muro') { ctx.setSel({ tipo: 'muro', i: +d.i }); ctx.render(); return; }
     if (d.tipo === 'vano') { ctx.setSel({ tipo: 'vano', i: +d.i, v: d.v }); ctx.render(); return; }
+    if (d.tipo === 'objeto') { // electrodoméstico suelto: seleccionar y arrastrar
+      const o = (modelo.objetos || []).find((x) => x.id === d.o); if (!o) return;
+      ctx.setSel({ tipo: 'objeto', o: o.id });
+      gesto = { tipo: 'objeto', o: o.id, p0: p, x0: +o.x, z0: +o.z, antes: JSON.stringify(modelo) };
+      ctx.render(); return;
+    }
+    if (d.tipo === 'cub-borde') { // extruir la cubierta por ese lado
+      ctx.setSel({ tipo: 'cubierta', m: d.m, cara: d.lado });
+      gesto = { tipo: 'cub-borde', m: d.m, lado: d.lado, antes: JSON.stringify(modelo) };
+      ctx.render(); return;
+    }
     if (d.tipo === 'artefacto') { // encimera o lavaplatos: seleccionar y arrastrar sobre la cubierta
       const m = modelo.modulos.find((x) => x.id === d.m), a = (m?.artefactos || []).find((x) => x.id === d.a); if (!a) return;
       ctx.setSel({ tipo: 'artefacto', m: m.id, a: a.id });
@@ -290,6 +330,23 @@ export function crearPlanta(ctx) {
       const M = mapa(), a = gesto.a;
       el('rect', { x: M.X(Math.min(a.x, p.x)), y: M.Y(Math.min(a.z, p.z)), width: Math.abs(p.x - a.x) * M.s, height: Math.abs(p.z - a.z) * M.s, class: 'marco' }, plano);
       return;
+    }
+    if (gesto.tipo === 'objeto') {
+      const o = (modelo.objetos || []).find((x) => x.id === gesto.o); if (!o) return;
+      o.x = snap(gesto.x0 + p.x - gesto.p0.x, .5); o.z = snap(gesto.z0 + p.z - gesto.p0.z, .5);
+      ctx.apoyar?.(o); // sigue sobre la cubierta o repisa si hay una debajo; si no, al piso
+      ctx.render({ panel: false }); return;
+    }
+    if (gesto.tipo === 'cub-borde') {
+      const m = modelo.modulos.find((x) => x.id === gesto.m); if (!m) return;
+      const [lx, lz] = girar(p.x - +m.x, p.z - +m.z, -(+m.rotacion || 0)); // punto en ejes del mueble
+      const W = +m.ancho, D = +m.profundidad + tablero(m), v = (n) => Math.max(0, Math.min(150, snap(n, .5)));
+      if (gesto.lado === 'frente') m.vuelo_frente = v(lz - D);
+      if (gesto.lado === 'atras') m.vuelo_atras = v(-lz);
+      if (gesto.lado === 'izq') m.vuelo_izq = v(-lx);
+      if (gesto.lado === 'der') m.vuelo_der = v(lx - W);
+      ctx.estado(`vuelo ${gesto.lado === 'izq' ? 'izquierdo' : gesto.lado === 'der' ? 'derecho' : gesto.lado === 'atras' ? 'de atrás' : 'del frente'}: ${cm(cubiertaDe(m).v[gesto.lado])} cm`);
+      ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'artefacto') {
       const m = modelo.modulos.find((x) => x.id === gesto.m), a = m?.artefactos?.find((x) => x.id === gesto.a); if (!a) return;

@@ -10,12 +10,15 @@
 //     quitar: ['piso', 'techo', 'fondo', 'izq', 'der'], // tableros del cuerpo que no lleva
 //     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro desde el frente
 //     zocalo_atras, zocalo_izq, zocalo_der,           // retiros del marco del zócalo hacia la pared y los costados
+//     vuelo_frente, vuelo_atras, vuelo_izq, vuelo_der, // cuánto sobresale la cubierta del cuerpo (barra de desayuno)
+//     luces: [{ id, en: 'modulo' | 'f|col|fila', lado: arriba|abajo|izq|der|atras, tono: calida|neutra|fria, intensidad }]
 //     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas, hojas }] }],   // hojas: puertas de la sección (puerta_doble)   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
 //   }]
 // }
 // Capas: zócalo → cuerpo (costados, piso, techo, fondo) → frentes (puertas, cajones…) → tiradores → cubierta.
 
+import { dibujarObjeto, OBJETOS } from './objetos.js';
 import { ARTEFACTOS, cubiertaCoccion, acabado, cubaDe, escurridorDe, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
 
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
@@ -100,6 +103,38 @@ export function celdas(m) {
     x0 += cw;
   });
   return out;
+}
+
+// ----- luces LED (ilusión en CSS: una tira que brilla y un halo con degradado que suma luz) -----
+export const TONOS_LUZ = { calida: ['Cálida (2700 K)', '255, 176, 96'], neutra: ['Neutra (4000 K)', '255, 232, 196'], fria: ['Fría (6500 K)', '196, 222, 255'] };
+export const LADOS_LUZ = { arriba: 'Arriba', abajo: 'Abajo', izq: 'Izquierda', der: 'Derecha', atras: 'Atrás' };
+function dibujarLuz(G, m, L, { T, W, H, D, Z, cs }) {
+  const rgb = (TONOS_LUZ[L.tono] || TONOS_LUZ.calida)[1], a = Math.max(.15, Math.min(1, L.intensidad == null ? .8 : +L.intensidad));
+  const c = (k) => `rgba(${rgb}, ${(k * a).toFixed(2)})`;
+  const halo = (dir) => (dir === 'radial' ? `radial-gradient(ellipse at 50% 50%, ${c(.75)}, ${c(.22)} 45%, rgba(${rgb}, 0) 72%)`
+    : `linear-gradient(${dir}, ${c(.85)}, ${c(.28)} 40%, rgba(${rgb}, 0) 88%)`);
+  const caja = (b, bg, caras) => G.box({ ...b, tex: { bg }, emisiva: true, ...(caras ? { caras } : {}) });
+  const tira = (b) => caja(b, `rgb(${rgb})`);
+  if (L.en === 'modulo') { // luz del mueble completo: bajo él (bajo mueble), sobre él, detrás (halo en el muro) o a los costados
+    if (L.lado === 'abajo') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: -.4, z: D - 5 }); caja({ w: W, h: 70, d: .01, x: W / 2, y: -35, z: .25 }, halo('to bottom'), ['front']); }
+    if (L.lado === 'arriba') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: H + .4, z: D - 5 }); caja({ w: W, h: 60, d: .01, x: W / 2, y: H + 30, z: .25 }, halo('to top'), ['front']); }
+    if (L.lado === 'atras') caja({ w: W + 50, h: H + 40, d: .01, x: W / 2, y: H / 2, z: -.4 }, halo('radial'), ['front']);
+    if (L.lado === 'izq') caja({ w: 50, h: H, d: .01, x: -25, y: H / 2, z: .25 }, halo('to left'), ['front']);
+    if (L.lado === 'der') caja({ w: 50, h: H, d: .01, x: W + 25, y: H / 2, z: .25 }, halo('to right'), ['front']);
+    return;
+  }
+  // luz dentro de una sección: tira en el lado elegido y el interior iluminado (fondo y la superficie de enfrente)
+  const [, col, fila] = String(L.en).split('|').map(Number), k = cs.find((x) => x.col === col && x.fila === fila); if (!k) return;
+  const xa = k.x0 + (k.x0 < .05 ? T : T / 2), xb = k.x1 - (k.x1 > W - .05 ? T : T / 2);
+  const ya = k.y0 + (k.y0 <= Z + .05 ? T : T / 2), yb = k.y1 - (k.y1 >= H - .05 ? T : T / 2);
+  const w = xb - xa, h = yb - ya, xm = (xa + xb) / 2, ym = (ya + yb) / 2, zf = D - 4;
+  const fondo = (dir) => caja({ w, h, d: .01, x: xm, y: ym, z: .75 }, halo(dir), ['front']);
+  const plano = (y, cara) => caja({ w, h: .01, d: D - 1.5, x: xm, y, z: (D - 1.5) / 2 + .6 }, halo('radial'), [cara]);
+  if (L.lado === 'arriba') { tira({ w: w - 1, h: .6, d: 1.2, x: xm, y: yb - .4, z: zf }); fondo('to bottom'); plano(ya + .06, 'top'); }
+  if (L.lado === 'abajo') { tira({ w: w - 1, h: .6, d: 1.2, x: xm, y: ya + .4, z: zf }); fondo('to top'); plano(yb - .06, 'bottom'); }
+  if (L.lado === 'izq') { tira({ w: .6, h: h - 1, d: 1.2, x: xa + .4, y: ym, z: zf }); fondo('to right'); }
+  if (L.lado === 'der') { tira({ w: .6, h: h - 1, d: 1.2, x: xb - .4, y: ym, z: zf }); fondo('to left'); }
+  if (L.lado === 'atras') { tira({ w: w - 2, h: .6, d: .6, x: xm, y: yb - 1.2, z: 1.2 }); fondo('radial'); plano(ya + .06, 'top'); }
 }
 
 // Marco del zócalo en coordenadas locales (x desde el costado izq., z desde la pared), con medidas válidas
@@ -207,7 +242,14 @@ export function espacioPortal(esp) {
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
 export const fondoTotal = (m) => +m.profundidad + (m.artefacto ? 0 : tablero(m)); // cuerpo + frentes
 // Cubierta de un módulo en coordenadas locales: ancho W y fondo Dc (desde la pared hasta el canto)
-export const cubiertaDe = (m) => ({ W: +m.ancho, Dc: +m.profundidad + OVER + tablero(m) });
+// Vuelos de la cubierta (cm que sobresale del cuerpo por cada lado). Frente: 2 cm por defecto.
+export const vuelosDe = (m) => ({ frente: m.vuelo_frente != null && m.vuelo_frente !== '' ? Math.max(0, +m.vuelo_frente) : OVER,
+  atras: Math.max(0, +m.vuelo_atras || 0), izq: Math.max(0, +m.vuelo_izq || 0), der: Math.max(0, +m.vuelo_der || 0) });
+// Cubierta en coordenadas locales: x0..x1 (desde el costado izq.), z0..z1 (desde la pared; z1 = canto del frente)
+export const cubiertaDe = (m) => {
+  const v = vuelosDe(m), W = +m.ancho, z1 = +m.profundidad + tablero(m) + v.frente;
+  return { W, Dc: z1, x0: -v.izq, x1: W + v.der, z0: -v.atras, z1, v };
+};
 // Artefactos sobre la cubierta, con medidas válidas y su rectángulo local (x0..x1, z0..z1; z crece hacia el frente)
 export function artefactosDe(m) {
   if (!m.cubierta || m.artefacto) return [];
@@ -320,6 +362,11 @@ export function limites(modelo, { conMuros = true } = {}) {
     for (const [x, z] of huella(m)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     y1 = Math.max(y1, +m.elevacion + +m.alto + (m.cubierta ? CT : 0));
   }
+  for (const o of modelo.objetos || []) { // electrodomésticos sueltos
+    const r = Math.max(+o.ancho || 0, +o.fondo || 0) / 2;
+    x0 = Math.min(x0, +o.x - r); x1 = Math.max(x1, +o.x + r); z0 = Math.min(z0, +o.z - r); z1 = Math.max(z1, +o.z + r);
+    y1 = Math.max(y1, (+o.elevacion || 0) + (+o.alto || 0));
+  }
   if (conMuros) for (const w of muros(modelo.espacio)) {
     for (const [x, z] of [w.a, w.b]) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
     y1 = Math.max(y1, w.alto);
@@ -412,6 +459,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
         }
       }
     }
+    if (ver('luces') && Array.isArray(m.luces)) { const cs = celdas(m); for (const L of m.luces) if (L) dibujarLuz(G, m, L, { T, W, H, D, Z, cs }); }
     if (ver('tiradores')) {
       const cs = celdas(m);
       (m.tiradores || []).forEach((t) => {
@@ -430,11 +478,15 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       const canto = CANTOS[mats.borde] || '';
       const MCub = propio('cubierta') || M.cubierta;
       const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${MCub.bg}` } : MCub);
-      B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, texCub, `${id}|cubierta`);
+      const cb = cubiertaDe(m), conCanto = (cara) => ['front', 'left', 'right', ...(cb.v.atras > 0 ? ['back'] : [])].includes(cara);
+      const texC = (cara) => (canto && conCanto(cara) ? { bg: `${canto}, ${MCub.bg}` } : MCub);
+      B({ w: cb.x1 - cb.x0 + .4, h: CT, d: cb.z1 - cb.z0, x: (cb.x0 + cb.x1) / 2, y: H + CT / 2, z: (cb.z0 + cb.z1) / 2 }, texC, `${id}|cubierta`);
       for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M);
     }
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
+  // electrodomésticos sueltos (refrigerador, microondas…)
+  for (const o of modelo.objetos || []) if (o && OBJETOS[o.tipo]) dibujarObjeto(st, o, `obj|${o.id}`, M.cocina);
   if (sel) {
     const pref = [].concat(sel);
     for (const f of st.rig.querySelectorAll('[data-ref]')) if (pref.some((p) => f.dataset.ref.startsWith(p))) f.classList.add('c3-sel');

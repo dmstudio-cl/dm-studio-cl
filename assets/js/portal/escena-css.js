@@ -36,6 +36,7 @@ export function createScene(el) {
   function modelo(s) {
     return {
       espacio: espacioPortal(proyecto.espacio),
+      objetos: proyecto.objetos || [],
       modulos: (proyecto.modulos || []).map((m, i) => ({
         ...m, id: m.id || `m${i}`,
         // materiales por pieza: los del estudio y encima los que eligió el cliente ("idMódulo|pieza")

@@ -1,8 +1,9 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal } from './modelo.js';
+import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
+import { OBJETOS } from './objetos.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
@@ -30,7 +31,7 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
@@ -99,6 +100,7 @@ function validarSel() {
   else if (sel?.tipo === 'vano') { if (!vanoSel()) sel = null; }
   else if (sel?.tipo === 'repisa') { const c = modulo(sel.m) && celdas(modulo(sel.m)).find((k) => k.col === sel.col && k.fila === sel.fila); if (!c || sel.i >= c.repisas) sel = c ? { tipo: 'frente', m: sel.m, col: sel.col, fila: sel.fila } : null; }
   else if (sel?.tipo === 'pieza') { if (!modulo(sel.m)) sel = null; }
+  else if (sel?.tipo === 'objeto') { if (!objeto(sel.o)) sel = null; }
   else if (sel?.tipo === 'artefacto') { if (!modulo(sel.m)?.artefactos?.some((a) => a.id === sel.a)) sel = sel.m && modulo(sel.m) ? { tipo: 'modulo', m: sel.m } : null; }
   else if (sel?.tipo === 'div') { const m = modulo(sel.m); if (!m || (sel.dir === 'v' ? sel.col >= m.columnas.length - 1 : !m.columnas[sel.col] || sel.fila >= m.columnas[sel.col].frentes.length - 1)) sel = m ? { tipo: 'modulo', m: m.id } : null; }
   else if (sel && !modulo(sel.m)) sel = null;
@@ -269,6 +271,28 @@ $('#materiales').addEventListener('pointerdown', (e) => {
   };
   window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
 });
+// ----- luces LED: en una sección (frente seleccionado) o en el mueble completo (módulo seleccionado)
+let tonoLuz = 'calida';
+const destinoLuz = () => (sel?.tipo === 'frente' ? `f|${sel.col}|${sel.fila}` : 'modulo');
+function bloqueLuces(m) {
+  const en = destinoLuz(), luces = (m.luces || []).filter((L) => L.en === en);
+  const lados = en === 'modulo' ? { abajo: 'Bajo el mueble', arriba: 'Sobre el mueble', atras: 'Detrás (halo en el muro)', izq: 'Costado izq.', der: 'Costado der.' } : LADOS_LUZ;
+  return `<div class="ed-luces"><p class="sub">Iluminación LED ${en === 'modulo' ? 'del mueble' : 'de esta sección'}</p>
+    <div class="ed-luz-tonos">${Object.entries(TONOS_LUZ).map(([k, [n, rgb]]) => `<button data-a="tono:${k}"${tonoLuz === k ? ' class="ed-primario"' : ''}><i style="background:rgb(${rgb})"></i>${n}</button>`).join('')}</div>
+    <div class="ed-botones">${Object.entries(lados).map(([k, n]) => `<button data-a="luz+:${k}">+ ${n}</button>`).join('')}</div>
+    ${luces.map((L) => `<div class="ed-luz"><i style="background:rgb(${(TONOS_LUZ[L.tono] || TONOS_LUZ.calida)[1]})"></i><span>${lados[L.lado] || L.lado}</span>
+      <select data-luz="${L.id}" data-lk="tono">${Object.entries(TONOS_LUZ).map(([k, [n]]) => `<option value="${k}"${L.tono === k ? ' selected' : ''}>${n}</option>`).join('')}</select>
+      <input type="range" min="15" max="100" value="${Math.round((L.intensidad ?? .8) * 100)}" data-luz="${L.id}" data-lk="intensidad" title="Intensidad">
+      <button data-a="luz-:${L.id}" title="Quitar">✕</button></div>`).join('')}
+    <p class="ed-ayuda">${en === 'modulo' ? 'Elige un frente (sección) para poner la luz dentro de ella.' : 'Se ve mejor con la sección abierta (sin puerta).'} Es una referencia visual.</p></div>`;
+}
+$('#props').addEventListener('input', (e) => { // intensidad y tono de una luz (sin rehacer todo el panel)
+  const id = e.target.dataset?.luz; if (!id || !sel?.m) return;
+  const m = modulo(sel.m), L = m?.luces?.find((x) => x.id === id); if (!L) return;
+  if (e.target.dataset.lk === 'intensidad') { L.intensidad = Math.round(+e.target.value) / 100; render({ panel: false }); guardar(); }
+  if (e.target.dataset.lk === 'tono') { cambiar(() => { L.tono = e.target.value; }); }
+});
+
 // Bloque del panel de una pieza: su material propio (o el general) y cómo quitarlo
 function bloqueMaterial() {
   const d = claveDeSel(); if (!d) return '';
@@ -309,6 +333,7 @@ function selRef() {
   if (sel.tipo === 'multi') return sel.ids.map((id) => `${id}|`);
   if (sel.tipo === 'vano') return `vano|${sel.i}|${sel.v}`;
   if (sel.tipo === 'artefacto') return `${sel.m}|a|${sel.a}`;
+  if (sel.tipo === 'objeto') return `obj|${sel.o}`;
   if (sel.tipo === 'pieza') return `${sel.m}|cuerpo|${sel.p}`;
   if (sel.tipo === 'repisa') return `${sel.m}|f|${sel.col}|${sel.fila}|rep|${sel.i}`;
   if (sel.tipo === 'div') return null;
@@ -404,6 +429,54 @@ function espacioLibre(w, E, ancho) {
   return w.largo - x >= ancho ? x : Math.max(0, (w.largo - ancho) / 2);
 }
 $('#artefactos').addEventListener('click', (e) => { const t = e.target.closest('[data-artefacto]')?.dataset.artefacto; if (t) agregarArtefacto(t); });
+
+// ----- electrodomésticos sueltos (refrigeradores, microondas…): modelo.objetos
+const objeto = (id) => (modelo.objetos || []).find((o) => o.id === id);
+// Superficies donde se puede apoyar algo en el punto (x, z): piso, cubiertas y secciones abiertas (su base y repisas)
+function apoyosEn(x, z) {
+  const out = [{ y: 0, nombre: 'Piso' }];
+  for (const m of modelo.modulos) {
+    if (m.artefacto) continue;
+    const [lx, lz] = girar(x - +m.x, z - +m.z, -(+m.rotacion || 0)), T = tablero(m), H = +m.alto, e = +m.elevacion || 0;
+    if (m.cubierta) { const c = cubiertaDe(m); if (lx >= c.x0 && lx <= c.x1 && lz >= c.z0 && lz <= c.z1) out.push({ y: e + H + CT, nombre: `Cubierta de ${m.nombre}` }); }
+    if (lx < 0 || lx > +m.ancho || lz < 0 || lz > +m.profundidad) continue;
+    if (!m.cubierta && m.tipo !== 'aereo' && !m.artefacto) out.push({ y: e + H, nombre: `Sobre ${m.nombre}` });
+    for (const c of celdas(m)) {
+      if (c.tipo !== 'abierto' || lx < c.x0 || lx > c.x1) continue;
+      const baseMueble = c.y0 <= Zde(m) + .05;
+      const piso = baseMueble ? (Array.isArray(m.quitar) && m.quitar.includes('piso') ? Zde(m) : Zde(m) + T) : c.y0 + T / 2;
+      out.push({ y: e + piso, nombre: `Sección abierta de ${m.nombre}` });
+      nivelesRepisa(c).forEach((y, i) => out.push({ y: e + y + T / 2, nombre: `Repisa ${i + 1} de ${m.nombre}` }));
+    }
+  }
+  return out.sort((a, b) => a.y - b.y);
+}
+// Al moverlo, queda sobre la superficie más alta que tenga debajo sin pasar por encima de donde estaba
+function apoyar(o) {
+  const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= (+o.elevacion || 0) + 1);
+  o.elevacion = r1(ap.length ? ap[ap.length - 1].y : 0);
+}
+function agregarObjeto(tipo) {
+  const def = OBJETOS[tipo]; if (!def) return;
+  const o = { id: uid('o'), tipo, nombre: def.nombre, ancho: def.ancho, alto: def.alto, fondo: def.fondo, x: 0, z: 0, elevacion: 0, rotacion: 0 };
+  const m = sel?.m && modulo(sel.m);
+  const mc = def.apoyo === 'mesa' ? (m?.cubierta ? m : modelo.modulos.find((x) => x.cubierta && !x.artefacto)) : null;
+  if (mc) { // sobre una cubierta: centrado, mirando hacia el frente del mueble
+    const c = cubiertaDe(mc), [dx, dz] = girar((c.x0 + c.x1) / 2, (c.z1 - def.fondo / 2 - 4), +mc.rotacion || 0);
+    o.x = r1(+mc.x + dx); o.z = r1(+mc.z + dz); o.rotacion = +mc.rotacion || 0; o.elevacion = r1(+mc.elevacion + +mc.alto + CT);
+  } else {
+    const i = muroParaVano(), w = i != null ? murosDe(modelo.espacio)[i] : null;
+    if (w && !w.oculto) { // en el primer espacio libre del muro, con la espalda contra él
+      const E = ejeMuro(w), s = espacioLibre(w, E, def.ancho) + def.ancho / 2;
+      o.x = r1(E.O[0] + s * E.u[0] + w.n[0] * (def.fondo / 2 + 1)); o.z = r1(E.O[1] + s * E.u[1] + w.n[1] * (def.fondo / 2 + 1)); o.rotacion = E.rot;
+    } else { const L = limites(modelo, { conMuros: false }); o.x = r1(L.x1 + def.ancho / 2 + 5); o.z = r1(def.fondo / 2); }
+  }
+  cambiar((d) => { d.objetos = [...(d.objetos || []), o]; });
+  sel = { tipo: 'objeto', o: o.id }; render();
+  aviso(`${def.nombre} agregado${mc ? ` sobre la cubierta de «${mc.nombre}»` : ''}. Muévelo en Planta o Frente; sus medidas se cambian en el panel.`);
+}
+$('#objetos').addEventListener('click', (e) => { const t = e.target.closest('[data-objeto]')?.dataset.objeto; if (t) agregarObjeto(t); });
+function cambiarObjeto(f) { const id = sel.o; cambiar((d) => { const o = (d.objetos || []).find((x) => x.id === id); if (o) f(o); }); }
 function cambiarArtefacto(f) {
   const s = { ...sel };
   cambiar((d) => { sel = s; const m = d.modulos.find((x) => x.id === s.m), a = m?.artefactos?.find((x) => x.id === s.a); if (a) f(a, m, cubiertaDe(m)); });
@@ -429,6 +502,13 @@ function moverFrente(m, dx) {
   const W = vista === 'frente' && muroActivo();
   if (W) { m.x = +m.x + dx * W.u[0]; m.z = +m.z + dx * W.u[1]; } else m.x = +m.x + dx;
 }
+// Electrodomésticos en la vista Frente, con su posición horizontal fx (centro) en coordenadas de la vista
+function objetosFrente() {
+  const W = muroActivo();
+  if (!W) return sel?.m && sel.tipo !== 'muro' && modulo(sel.m) ? [] : (modelo.objetos || []).map((o) => ({ ...o, fx: +o.x }));
+  return (modelo.objetos || []).map((o) => ({ ...o, fx: proyS(W, +o.x, +o.z), t: +o.x * W.n[0] + +o.z * W.n[1] - W.linea }))
+    .filter((o) => o.t > -5 && o.t < 120 && o.fx + o.ancho / 2 > -5 && o.fx - o.ancho / 2 < W.largo + 5);
+}
 function modulosFrente() {
   const W = muroActivo();
   if (W) return modelo.modulos.filter((m) => enMuro(m, W));
@@ -438,7 +518,7 @@ function modulosFrente() {
 // Vista «Abajo»: el mueble seleccionado visto desde el piso (sin girar), para ver y ajustar el marco del zócalo
 const moduloInferior = () => { const m = sel?.m && modulo(sel.m); return m && !m.artefacto ? m : null; };
 function modeloVista() {
-  if (vista === 'inferior') { const m = moduloInferior(); return { ...modelo, espacio: null, modulos: m ? [{ ...m, x: 0, z: 0, rotacion: 0, elevacion: 0 }] : [] }; }
+  if (vista === 'inferior') { const m = moduloInferior(); return { ...modelo, espacio: null, objetos: [], modulos: m ? [{ ...m, x: 0, z: 0, rotacion: 0, elevacion: 0 }] : [] }; }
   if (vista !== 'frente') return modelo;
   const W = muroActivo();
   return {
@@ -446,6 +526,7 @@ function modeloVista() {
     // el muro activo solo sirve para encuadrar (no se dibuja en 3D)
     espacio: W ? { alto: W.alto, puntos: [{ x: 0, z: 0 }, { x: W.largo, z: 0 }], muros: [{ alto: W.alto }] } : null,
     modulos: modulosFrente().map((m) => ({ ...m, x: xF(m), rotacion: 0, z: 0 })),
+    objetos: objetosFrente().map((o) => ({ ...o, x: o.fx, z: W ? o.t : +o.fondo / 2, rotacion: W ? (+o.rotacion || 0) - W.rot : 0 })),
   };
 }
 function opcionesMuroFrente() {
@@ -603,6 +684,11 @@ function dibujarPlano() {
     }
   }
 
+  for (const o of objetosFrente()) { // electrodomésticos (debajo de los muebles para no tapar sus frentes)
+    const sa = sel?.tipo === 'objeto' && sel.o === o.id, ox = o.fx - +o.ancho / 2;
+    el('rect', { x: M.X(ox), y: M.Y(+o.elevacion + +o.alto), width: +o.ancho * M.s, height: +o.alto * M.s, class: `objeto${sa ? ' sel' : ''}`, 'data-tipo': 'objeto', 'data-o': o.id }, plano);
+    if (sa) el('text', { x: M.X(o.fx), y: M.Y(+o.elevacion + +o.alto) - 8, 'text-anchor': 'middle', class: 'objeto-txt' }, plano).textContent = `${o.nombre} · ${cm(o.ancho)} × ${cm(o.alto)} · a ${cm(o.elevacion)} del piso`;
+  }
   for (const m of modulosFrente()) {
     const ox = xF(m), oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
     const esSel = sel?.m === m.id, enMulti = !!sel?.ids?.includes(m.id);
@@ -750,6 +836,12 @@ plano.addEventListener('pointerdown', (e) => {
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
   // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
   if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
+  if (t.dataset.tipo === 'objeto') {
+    const o = objeto(t.dataset.o); if (!o) return;
+    sel = { tipo: 'objeto', o: o.id };
+    gesto = { tipo: 'obj-f', o: o.id, p0: p, x0: +o.x, z0: +o.z, e0: +o.elevacion || 0, antes: JSON.stringify(modelo) };
+    render(); return;
+  }
   if (t.dataset.tipo === 'artefacto') { // encimera o lavaplatos: seleccionar y arrastrar a lo largo
     const a = modulo(t.dataset.m)?.artefactos?.find((x) => x.id === t.dataset.a); if (!a) return;
     sel = { tipo: 'artefacto', m: t.dataset.m, a: a.id };
@@ -819,6 +911,13 @@ plano.addEventListener('pointermove', (e) => {
   const p = { x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) };
   estadoEl.textContent = `${ayuda()}   ·   x ${cm(p.x)} · y ${cm(Math.max(0, p.y))} cm`;
   if (!gesto) return;
+  if (gesto.tipo === 'obj-f') {
+    const o = objeto(gesto.o); if (!o) return;
+    const W = muroActivo(), d = snap(p.x - gesto.p0.x, .5);
+    o.x = r1(gesto.x0 + d * (W ? W.u[0] : 1)); o.z = r1(gesto.z0 + d * (W ? W.u[1] : 0));
+    o.elevacion = Math.max(0, snap(gesto.e0 + p.y - gesto.p0.y, .5));
+    render({ panel: false }); return;
+  }
   if (gesto.tipo === 'artef-f') {
     const m = modulo(gesto.m), a = m?.artefactos?.find((x) => x.id === gesto.a); if (!a) return;
     a.desde = Math.min(Math.max(0, snap(gesto.desde + p.x - gesto.p0.x, .5)), +m.ancho - (+a.ancho || 0));
@@ -895,6 +994,12 @@ plano.addEventListener('pointerup', (e) => {
   }
   if (!gesto) return;
   const g = gesto; gesto = null;
+  if (g.tipo === 'obj-f') { // al soltar: se apoya en la superficie más alta que quede debajo (cubierta, repisa o piso)
+    const o = objeto(g.o);
+    if (o) { const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= +o.elevacion + 4); const a = ap[ap.length - 1]; o.elevacion = r1(a ? a.y : 0); aviso(`${o.nombre}: ${a ? a.nombre.toLowerCase() : 'piso'} (a ${cm(o.elevacion)} cm del piso).`); }
+    if (JSON.stringify(modelo) !== g.antes) { hist.push(g.antes); fut.length = 0; guardar(); }
+    render(); return;
+  }
   if (g.tipo === 'marco') {
     const M = mapa();
     if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.y - g.a.y) * M.s) < 4) { if (!g.suma) sel = null; render(); return; }
@@ -1042,6 +1147,7 @@ escena.addEventListener('pointerup', (e) => {
   // El motor captura el puntero al arrastrar: se busca la cara que está bajo el cursor.
   const f = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]');
   sel = f ? desdeRef(f.dataset.ref) : null;
+  if (sel?.tipo === 'cubierta') sel.cara = { front: 'frente', back: 'atras', left: 'izq', right: 'der' }[f.dataset.cara] || null; // la cara tocada se puede extruir
   render();
 });
 // ----- selección múltiple
@@ -1064,6 +1170,7 @@ function desdeRef(ref) {
   if (k === 'f' && e === 'rep') return { tipo: 'repisa', m, col: +a, fila: +b, i: +i };
   if (m === 'muro') return { tipo: 'muro', i: +k };
   if (m === 'vano') return { tipo: 'vano', i: +k, v: a };
+  if (m === 'obj') return { tipo: 'objeto', o: k };
   if (k === 'a') return { tipo: 'artefacto', m, a };
   if (k === 'f') return { tipo: 'frente', m, col: +a, fila: +b };
   if (k === 't') return { tipo: 'tirador', m, t: a };
@@ -1117,7 +1224,8 @@ function arbol() {
   const btn = (s, cls, html) => `<button class="${cls}" data-sel='${esc(JSON.stringify(s))}'${act(s)}>${html}</button>`;
   const W = murosDe(modelo.espacio);
   const hEsp = W.length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Espacio · ${W.length} muros</div>${W.map((w) => btn({ tipo: 'muro', i: w.i }, 'n1', `${esc(w.etiqueta || `Muro ${w.i + 1}`)} <small>${cm(w.largo)}</small>`) + vanosDe(w).map((v) => btn({ tipo: 'vano', i: w.i, v: v.id }, 'n3', `${VANOS[v.tipo].nombre} <small>${cm(v.ancho)}×${cm(v.alto)}</small>`)).join('')).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
-  $('#arbol').innerHTML = hEsp + modelo.modulos.map((m) => {
+  const hObj = (modelo.objetos || []).length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Electrodomésticos</div>${modelo.objetos.map((o) => btn({ tipo: 'objeto', o: o.id }, 'n1', `${esc(o.nombre)} <small>${cm(o.ancho)}×${cm(o.alto)}</small>`)).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
+  $('#arbol').innerHTML = hEsp + hObj + modelo.modulos.map((m) => {
     const Z = Zde(m);
     let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>${m.grupo ? `<span class="ed-tag">${esc(m.grupo_nombre || 'agrupado')}</span>` : ''}`);
     if (m.artefacto) return h;
@@ -1139,7 +1247,7 @@ $('#arbol').addEventListener('click', (e) => {
 });
 
 // ===================== panel de propiedades =====================
-const num = (k, label, v, { u = 'cm', step = .5, min = 0, cls = '' } = {}) =>
+const num = (k, label, v, { u = 'cm', step = .5, min = 0, cls = '' } = {}) => // cls 'resaltado' marca el campo de la cara elegida
   `<label class="ed-campo ${cls}">${label}<span class="u" data-u="${u}"><input type="number" data-k="${k}" value="${r1(+v || 0)}" step="${step}" min="${min}"></span></label>`;
 const opciones = (k, label, v, obj, cls = '') =>
   `<label class="ed-campo ${cls}">${label}<select data-k="${k}">${Object.entries(obj).map(([a, b]) => `<option value="${a}"${a === v ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></label>`;
@@ -1150,6 +1258,23 @@ function props() {
     P.innerHTML = `<div class="ed-vacio"><p>Selecciona una pieza en la vista o en las capas.</p>
       <p>Para crear: vista <b>Frente</b> → <b>Dibujar módulo</b> <kbd>M</kbd> y arrastra.<br>Para dividir: <kbd>D</kbd> columnas, <kbd>H</kbd> filas, y clic en un frente.<br>Medidas: arrastra los divisores o escríbelas aquí en cm.</p>
       <p><kbd>Supr</kbd> borra · <kbd>Ctrl Z</kbd> deshace · <kbd>R</kbd> gira un tirador 90° · flechas mueven 1 cm (Mayús: 10).</p></div>`;
+    return;
+  }
+  if (sel.tipo === 'objeto') {
+    const o = objeto(sel.o); if (!o) { sel = null; return props(); }
+    const ap = apoyosEn(+o.x, +o.z);
+    P.innerHTML = `<div class="ed-props"><p class="tit">${esc(o.nombre)}</p><p class="sub">Electrodoméstico · referencia, sin precio</p>
+      <div class="ed-campos">
+        <label class="ed-campo ancho2">Nombre<input type="text" data-k="o.nombre" value="${esc(o.nombre)}"></label>
+        <label class="ed-campo ancho2">Modelo<select data-k="o.tipo">${Object.entries(OBJETOS).map(([k, d]) => `<option value="${k}"${k === o.tipo ? ' selected' : ''}>${d.nombre}</option>`).join('')}</select></label>
+        ${num('o.ancho', 'Ancho', o.ancho)}${num('o.alto', 'Alto', o.alto)}${num('o.fondo', 'Fondo', o.fondo)}${num('o.elevacion', 'Altura del piso', o.elevacion)}
+        ${num('o.x', 'Posición X', o.x, { min: -9999 })}${num('o.z', 'Posición Z', o.z, { min: -9999 })}${num('o.rotacion', 'Giro', o.rotacion, { u: '°', step: 90, min: -360 })}
+        ${opciones('o.color', 'Color', o.color || '', { '': 'Como cocina y encimeras', acero: 'Acero inoxidable', negro: 'Negro', blanco: 'Blanco' }, 'ancho2')}
+      </div>
+      <p class="sub" style="margin-top:12px">Apoyar en</p>
+      <div class="ed-botones">${ap.map((a) => `<button data-a="apoyar:${a.y}"${Math.abs(a.y - +o.elevacion) < .5 ? ' class="ed-primario"' : ''}>${esc(a.nombre)} <small>${cm(a.y)}</small></button>`).join('')}</div>
+      <div class="ed-botones"><button data-a="obj-girar">⟳ 90°</button><button data-a="obj-duplicar">Duplicar</button><button data-a="obj-borrar" class="peligro">Eliminar</button></div>
+      <p class="ed-ayuda">Arrástralo en Planta (se queda sobre la cubierta o repisa que tenga debajo) o en Frente (también en altura: al soltarlo se apoya en la superficie de abajo).</p></div>`;
     return;
   }
   if (sel.tipo === 'artefacto') {
@@ -1313,13 +1438,19 @@ function props() {
       <div class="ed-botones"><button data-a="quitar-repisa" class="peligro">Quitar esta repisa (Supr)</button><button data-a="ver-seccion">Ver la sección</button></div>
       <p class="ed-ayuda">Las repisas se reparten parejo en el alto de la sección.</p>${bloqueMaterial()}`;
   } else if (sel.tipo === 'cubierta') {
-    h = `<p class="tit">Cubierta</p><p class="sub">${esc(m.nombre)} · ${cm(cubiertaDe(m).W)} × ${cm(cubiertaDe(m).Dc)} cm</p>
+    const cb = cubiertaDe(m), lados = { frente: 'Frente', atras: 'Atrás', izq: 'Izquierda', der: 'Derecha' };
+    h = `<p class="tit">Cubierta</p><p class="sub">${esc(m.nombre)} · ${cm(cb.x1 - cb.x0)} × ${cm(cb.z1 - cb.z0)} cm</p>
+      <p class="sub" style="margin-top:10px">Vuelos: cuánto sobresale del mueble${sel.cara ? ` · cara elegida: ${lados[sel.cara].toLowerCase()}` : ''}</p>
+      <div class="ed-campos">${Object.entries(lados).map(([k, n]) => num(`v.${k}`, n, cb.v[k], { cls: sel.cara === k ? 'resaltado' : '' })).join('')}</div>
+      <div class="ed-botones"><button data-a="barra-desayuno" class="ed-primario">Barra de desayuno (${sel.cara && sel.cara !== 'frente' ? lados[sel.cara].toLowerCase() : 'atrás'}: 60 cm)</button></div>
+      <p class="ed-ayuda">Toca una cara de la cubierta en 3D para elegir el lado, o arrastra sus bordes en Planta para extruirla.</p>
       <p class="sub" style="margin-top:10px">Agregar sobre la cubierta</p>
       <div class="ed-biblio ed-plantillas">${DE_CUBIERTA.map((k) => `<button type="button" data-a="art:${k}">${ARTEFACTOS[k].nombre}</button>`).join('')}</div>
       ${artefactosDe(m).map((a) => `<button class="ed-fila-art" data-a="ver-art:${a.id}">${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)} × ${cm(a.fondo)}</small></button>`).join('')}
       <div class="ed-botones"><button data-a="quitar-cubierta" class="peligro">Quitar cubierta</button></div>`;
   }
   if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo'].includes(sel.tipo)) h += bloqueMaterial();
+  if (['frente', 'cuerpo', 'modulo'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
   // Piezas quitadas del cuerpo (se pueden restaurar)
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
     h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Piezas quitadas: ${m.quitar.map((p) => (NOMBRE_PIEZA[p] || p).toLowerCase()).join(', ')}</p><div class="ed-botones"><button data-a="restaurar-piezas">Restaurar piezas</button></div></div>`;
@@ -1397,6 +1528,22 @@ $('#props').addEventListener('change', (e) => {
   const k = inp.dataset.k;
   const v = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? +inp.value : inp.value;
   const s = { ...sel };
+  if (s.tipo === 'objeto') {
+    cambiarObjeto((o) => {
+      const c = k.slice(2);
+      if (c === 'tipo' && OBJETOS[v]) { const d = OBJETOS[v]; Object.assign(o, { tipo: v, nombre: d.nombre, ancho: d.ancho, alto: d.alto, fondo: d.fondo }); return; }
+      if (c === 'nombre') { o.nombre = String(v).slice(0, 60); return; }
+      if (c === 'color') { if (v) o.color = v; else delete o.color; return; }
+      if (['ancho', 'alto', 'fondo'].includes(c) && v > 0) o[c] = v;
+      if (c === 'elevacion' && v >= 0) o.elevacion = v;
+      if (['x', 'z', 'rotacion'].includes(c)) o[c] = v;
+    });
+    return;
+  }
+  if (s.tipo === 'cubierta' && k.startsWith('v.')) {
+    cambiar(() => { modulo(s.m)[`vuelo_${k.slice(2)}`] = Math.max(0, Math.min(150, +v || 0)); });
+    return;
+  }
   if (s.tipo === 'artefacto') {
     cambiarArtefacto((a, m, { W, Dc }) => {
       const v0 = artefactosDe(m).find((x) => x.id === a.id);
@@ -1448,6 +1595,10 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (b.dataset.a.startsWith('art:')) { agregarArtefacto(b.dataset.a.slice(4)); return; }
+  if (b.dataset.a.startsWith('apoyar:')) { const y = +b.dataset.a.slice(7); cambiarObjeto((o) => { o.elevacion = y; }); return; }
+  if (b.dataset.a === 'obj-girar') { cambiarObjeto((o) => { o.rotacion = ((+o.rotacion || 0) + 90) % 360; }); return; }
+  if (b.dataset.a === 'obj-borrar') { borrarSel(); return; }
+  if (b.dataset.a === 'obj-duplicar') { const o = objeto(sel.o), c = { ...o, id: uid('o'), x: r1(+o.x + +o.ancho + 2) }; cambiar((d) => { d.objetos.push(c); }); sel = { tipo: 'objeto', o: c.id }; render(); return; }
   if (b.dataset.a.startsWith('ver-art:')) { sel = { tipo: 'artefacto', m: sel.m, a: b.dataset.a.slice(8) }; render(); return; }
   if (b.dataset.a === 'borrar-art') { borrarSel(); return; }
   if (b.dataset.a === 'centrar-art') { cambiarArtefacto((a, m, { W }) => { a.desde = r1((W - Math.min(+a.ancho, W)) / 2); }); return; }
@@ -1513,6 +1664,10 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
+  if (a.startsWith('tono:')) { tonoLuz = a.slice(5); props(); return; }
+  if (a.startsWith('luz+:')) { const L = { id: uid('l'), en: destinoLuz(), lado: a.slice(5), tono: tonoLuz, intensidad: .8 }; cambiar(() => { m.luces = [...(m.luces || []), L]; }); aviso('Luz agregada. Cambia el tono o la intensidad en el panel; Capas → Luces la oculta.'); return; }
+  if (a.startsWith('luz-:')) { const id = a.slice(5); cambiar(() => { m.luces = (m.luces || []).filter((L) => L.id !== id); }); return; }
+  if (a === 'barra-desayuno') { const lado = sel.cara && sel.cara !== 'frente' ? sel.cara : 'atras'; cambiar(() => { m[`vuelo_${lado}`] = 60; }); aviso('Cubierta con 60 cm de vuelo para sentarse. Ajusta la medida en el panel o arrastrando el borde en Planta.'); return; }
   if (a === 'ver-abajo') { setVista('inferior'); render(); return; }
   if (a === 'zocalo-centrar') { const z = marcoZocalo(m), v = r1((z.izq + z.der) / 2); cambiar(() => { m.zocalo_izq = v; m.zocalo_der = v; }); return; }
   if (a === 'restaurar-piezas') { cambiar(() => { delete m.quitar; }); return; }
@@ -1540,6 +1695,7 @@ $('#props').addEventListener('click', (e) => {
 
 function borrarSel() {
   if (!sel) return;
+  if (sel.tipo === 'objeto') { const id = sel.o; cambiar((d) => { d.objetos = (d.objetos || []).filter((o) => o.id !== id); }); sel = null; render(); return; }
   if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); return; }
   if (sel.tipo === 'artefacto') { const s = { ...sel }; cambiar((d) => { const m = d.modulos.find((x) => x.id === s.m); m.artefactos = (m.artefactos || []).filter((x) => x.id !== s.a); }); sel = { tipo: 'cubierta', m: s.m }; render(); return; }
@@ -1721,6 +1877,16 @@ window.addEventListener('keydown', (e) => {
       if (!def.puerta) r.antepecho = Math.min(Math.max(0, (+r.antepecho || 0) + dy), w.alto - (+r.alto || def.alto));
     });
   }
+  else if (e.key.startsWith('Arrow') && sel?.tipo === 'objeto') { // mover el electrodoméstico
+    e.preventDefault();
+    const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0;
+    const W = vista === 'frente' && muroActivo();
+    cambiarObjeto((o) => {
+      if (vista === 'planta') { o.x = +o.x + dx; o.z = +o.z - dy; }
+      else { o.x = +o.x + dx * (W ? W.u[0] : 1); o.z = +o.z + dx * (W ? W.u[1] : 0); o.elevacion = Math.max(0, +o.elevacion + dy); }
+    });
+  }
+  else if (k === 'r' && sel?.tipo === 'objeto') cambiarObjeto((o) => { o.rotacion = ((+o.rotacion || 0) + 90) % 360; });
   else if (e.key.startsWith('Arrow') && sel?.tipo === 'artefacto') { // mover sobre la cubierta: ←→ a lo largo, ↑↓ hacia la pared o el canto
     e.preventDefault();
     const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0;
@@ -1812,6 +1978,7 @@ const planta = crearPlanta({
   escala: () => ({ s: st.scale, c: st.center, Wp: lienzo.clientWidth, Hp: lienzo.clientHeight }),
   fondo: (svg, M) => referencias.pintar(svg, M, 'planta'),
   seleccionarVarios: (ids, sumar) => seleccionarVarios(ids, sumar),
+  apoyar: (o) => apoyar(o),
   alternar: (id) => alternar(id),
   estado: (t) => { estadoEl.textContent = `${ayuda()}   ·   ${t}`; },
   plano, lienzo,
