@@ -1,7 +1,8 @@
 // Vista Planta del editor: dibujar los muros del espacio, etiquetarlos y ubicar los muebles
 // (mover, girar) con cotas de distancia a los muros. Coordenadas en cm: x a lo largo del muro
 // principal, z hacia la habitación. En pantalla, z crece hacia abajo (el muro del fondo queda arriba).
-import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS } from './modelo.js';
+import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar } from './modelo.js';
+import { ARTEFACTOS } from './artefactos.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -104,6 +105,25 @@ export function crearPlanta(ctx) {
       el('line', { x1: M.X(h[2][0]), y1: M.Y(h[2][1]), x2: M.X(h[3][0]), y2: M.Y(h[3][1]), class: 'frente-linea' }, plano);
       const [cx, cz] = centro(m);
       el('text', { x: M.X(cx), y: M.Y(cz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
+    }
+    // encimeras y lavaplatos sobre las cubiertas (con cotas a los bordes del mueble si están seleccionados)
+    for (const m of modelo.modulos) {
+      const aMundo = (lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
+      for (const a of artefactosDe(m)) {
+        const esSel = sel?.tipo === 'artefacto' && sel.m === m.id && sel.a === a.id;
+        const pts = [aMundo(a.x0, a.z0), aMundo(a.x1, a.z0), aMundo(a.x1, a.z1), aMundo(a.x0, a.z1)];
+        el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `artefacto${esSel ? ' sel' : ''}${ARTEFACTOS[a.tipo]?.cubas ? ' lava' : ''}`, 'data-tipo': 'artefacto', 'data-m': m.id, 'data-a': a.id }, plano);
+        if (!esSel) continue;
+        const g = el('g', { class: 'cota' }, plano), W = +m.ancho, zc = (a.z0 + a.z1) / 2, xc = (a.x0 + a.x1) / 2, Dc = a.z1 + a.frente;
+        const lin = (p, q, t) => {
+          const [x1, z1] = aMundo(...p), [x2, z2] = aMundo(...q);
+          if (Math.hypot(x2 - x1, z2 - z1) < .05) return;
+          el('line', { x1: M.X(x1), y1: M.Y(z1), x2: M.X(x2), y2: M.Y(z2) }, g);
+          el('text', { x: M.X((x1 + x2) / 2), y: M.Y((z1 + z2) / 2) - 5, 'text-anchor': 'middle' }, g).textContent = t;
+        };
+        lin([0, zc], [a.x0, zc], cm(a.x0)); lin([a.x1, zc], [W, zc], cm(W - a.x1));
+        lin([xc, 0], [xc, a.z0], cm(a.z0)); lin([xc, a.z1], [xc, Dc], cm(a.frente));
+      }
     }
     // distancias del mueble seleccionado a los muros (editables)
     const ms = sel && modelo.modulos.find((m) => m.id === sel.m);
@@ -249,6 +269,12 @@ export function crearPlanta(ctx) {
     }
     if (d.tipo === 'muro') { ctx.setSel({ tipo: 'muro', i: +d.i }); ctx.render(); return; }
     if (d.tipo === 'vano') { ctx.setSel({ tipo: 'vano', i: +d.i, v: d.v }); ctx.render(); return; }
+    if (d.tipo === 'artefacto') { // encimera o lavaplatos: seleccionar y arrastrar sobre la cubierta
+      const m = modelo.modulos.find((x) => x.id === d.m), a = (m?.artefactos || []).find((x) => x.id === d.a); if (!a) return;
+      ctx.setSel({ tipo: 'artefacto', m: m.id, a: a.id });
+      gesto = { tipo: 'artefacto', m: m.id, a: a.id, p0: p, desde: +a.desde || 0, frente: +a.frente || 0, antes: JSON.stringify(modelo) };
+      ctx.render(); return;
+    }
     if (d.tipo === 'vertice') { gesto = { tipo: 'vertice', i: +d.i, antes: JSON.stringify(modelo) }; return; }
   }
   function move(e) {
@@ -262,6 +288,13 @@ export function crearPlanta(ctx) {
       const M = mapa(), a = gesto.a;
       el('rect', { x: M.X(Math.min(a.x, p.x)), y: M.Y(Math.min(a.z, p.z)), width: Math.abs(p.x - a.x) * M.s, height: Math.abs(p.z - a.z) * M.s, class: 'marco' }, plano);
       return;
+    }
+    if (gesto.tipo === 'artefacto') {
+      const m = modelo.modulos.find((x) => x.id === gesto.m), a = m?.artefactos?.find((x) => x.id === gesto.a); if (!a) return;
+      const [lx, lz] = girar(p.x - gesto.p0.x, p.z - gesto.p0.z, -(+m.rotacion || 0)); // movimiento en ejes del mueble
+      const v = artefactosDe({ ...m, artefactos: [{ ...a, desde: snap(gesto.desde + lx, .5), frente: snap(gesto.frente - lz, .5) }] })[0];
+      a.desde = v.desde; a.frente = v.frente;
+      ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'mover') {
       const m = modelo.modulos.find((x) => x.id === gesto.m);

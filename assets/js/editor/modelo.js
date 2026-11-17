@@ -13,6 +13,8 @@
 // }
 // Capas: zócalo → cuerpo (costados, piso, techo, fondo) → frentes (puertas, cajones…) → tiradores → cubierta.
 
+import { ARTEFACTOS, cubiertaCoccion, ACERO, CUBA, ESCURRIDOR, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
+
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
 export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
 export const MAX_HOJA = 45; // ancho máximo de una hoja de puerta (cm): más ancha daña las bisagras
@@ -182,7 +184,18 @@ export function espacioPortal(esp) {
 // ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
 // Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
-export const fondoTotal = (m) => +m.profundidad + tablero(m); // cuerpo + frentes
+export const fondoTotal = (m) => +m.profundidad + (m.artefacto ? 0 : tablero(m)); // cuerpo + frentes
+// Cubierta de un módulo en coordenadas locales: ancho W y fondo Dc (desde la pared hasta el canto)
+export const cubiertaDe = (m) => ({ W: +m.ancho, Dc: +m.profundidad + OVER + tablero(m) });
+// Artefactos sobre la cubierta, con medidas válidas y su rectángulo local (x0..x1, z0..z1; z crece hacia el frente)
+export function artefactosDe(m) {
+  if (!m.cubierta || m.artefacto) return [];
+  const { W, Dc } = cubiertaDe(m);
+  return (m.artefactos || []).filter(Boolean).map((a) => {
+    const v = ajustarArtefacto(a, W, Dc);
+    return { ...v, x0: v.desde, x1: v.desde + v.ancho, z1: Dc - v.frente, z0: Dc - v.frente - v.fondo };
+  });
+}
 
 // Esquinas del mueble en planta (atrás-izq, atrás-der, frente-der, frente-izq), en coordenadas del espacio.
 export function huella(m) {
@@ -324,6 +337,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const T = tablero(m); // 1,5 cm (melamina 15 mm) o 1,8 cm
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
+    if (m.artefacto) { dibujarCocinaPiso(G, m); return; } // cocina de piso: no lleva cuerpo de melamina
 
     if (ver('zocalo') && Z > 0) {
       const r = +m.zocalo_retiro || 0;
@@ -377,6 +391,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       const canto = CANTOS[mats.borde] || '';
       const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${M.cubierta.bg}` } : M.cubierta);
       B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, texCub, `${id}|cubierta`);
+      for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`);
     }
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
@@ -384,6 +399,42 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const pref = [].concat(sel);
     for (const f of st.rig.querySelectorAll('[data-ref]')) if (pref.some((p) => f.dataset.ref.startsWith(p))) f.classList.add('c3-sel');
   }
+}
+
+// Encimera o lavaplatos sobre la cubierta (y = altura de la cara superior de la cubierta)
+function dibujarArtefacto(G, a, y, ref) {
+  const def = ARTEFACTOS[a.tipo] || ARTEFACTOS.encimera_gas, cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
+  const caras = ['top', 'front', 'left', 'right', 'back'];
+  if (!def.cubas) { // encimera: vidrio o acero negro casi a ras
+    G.box({ w: a.ancho, h: .5, d: a.fondo, x: cx, y: y + .25, z: cz, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, a.ancho) : '#151516' }), ref, caras });
+    return;
+  }
+  G.box({ w: a.ancho, h: .3, d: a.fondo, x: cx, y: y + .15, z: cz, tex: { bg: ACERO }, ref, caras }); // reborde de acero
+  const fz = a.fondo - 10; // cubas y escurridor: dejan 4 cm atrás (llave) y 6 adelante
+  for (const p of partesLavaplatos(a, def)) {
+    G.box({ w: p.x1 - p.x0, h: .1, d: fz, x: a.x0 + (p.x0 + p.x1) / 2, y: y + .35, z: a.z0 + 4 + fz / 2, tex: { bg: p.tipo === 'cuba' ? CUBA : ESCURRIDOR }, ref, caras: ['top'] });
+  }
+  // llave (grifería) detrás de la primera cuba
+  const cuba = partesLavaplatos(a, def).find((p) => p.tipo === 'cuba');
+  const kx = a.x0 + (cuba.x0 + cuba.x1) / 2;
+  G.box({ w: 3, h: 22, d: 3, x: kx, y: y + 11, z: a.z0 + 2.2, tex: { bg: ACERO }, ref });
+  G.box({ w: 2.4, h: 2.4, d: 17, x: kx, y: y + 21, z: a.z0 + 10, tex: { bg: ACERO }, ref });
+}
+// Cocina de piso: cuerpo de acero, cubierta con quemadores, panel de perillas y puerta de horno
+function dibujarCocinaPiso(G, m) {
+  const def = ARTEFACTOS[m.artefacto] || ARTEFACTOS.cocina4, W = +m.ancho, H = +m.alto, D = +m.profundidad, ref = `${m.id}|cuerpo`;
+  const acero = { bg: 'linear-gradient(180deg, #d4d7d9, #aeb2b5)' };
+  G.box({ w: W, h: H - 1, d: D, x: W / 2, y: (H - 1) / 2, z: D / 2, tex: acero, ref, caras: ['left', 'right', 'back', 'front'] });
+  G.box({ w: W, h: 1, d: D, x: W / 2, y: H - .5, z: D / 2, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, W) : '#1b1b1c' }), ref });
+  // panel de perillas
+  const n = def.platos + 1;
+  const perillas = Array.from({ length: n }, (_, i) => `radial-gradient(circle at ${((i + .5) / n * 100).toFixed(1)}% 50%, #1c1c1d 0 1.5em, #555 1.6em 1.8em, transparent 1.9em)`).join(', ');
+  G.box({ w: W - 1, h: 9, d: .6, x: W / 2, y: H - 6.5, z: D + .3, tex: { bg: `${perillas}, linear-gradient(180deg, #c8ccce, #9ea3a6)` }, ref, caras: ['front'] });
+  // puerta del horno con vidrio y manilla
+  const hp = Math.min(55, H - 25);
+  G.box({ w: W - 3, h: hp, d: 1, x: W / 2, y: 12 + hp / 2, z: D + .5, tex: { bg: 'linear-gradient(180deg, #a9adb0 0 12%, #1d2023 12% 88%, #a9adb0 88%)' }, ref, caras: ['front', 'top', 'left', 'right'] });
+  G.box({ w: W - 14, h: 1.6, d: 2.5, x: W / 2, y: 12 + hp - 4, z: D + 2.4, tex: { bg: '#cfd2d4' }, ref });
+  G.box({ w: W - 3, h: 9, d: .6, x: W / 2, y: 5.5, z: D + .3, tex: { bg: 'linear-gradient(180deg, #3a3b3d, #252627)' }, ref, caras: ['front'] }); // cajón inferior
 }
 
 // Ventana o puerta en el grupo del muro: marco y vidrio u hoja(s).

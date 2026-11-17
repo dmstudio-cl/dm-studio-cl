@@ -10,6 +10,7 @@ const fmt = (v) => `${Math.round(v * 10) / 10}`.replace('.', ',');
 
 export function unirModulos(mods) {
   if (mods.length < 2) return { error: 'Selecciona al menos dos módulos.' };
+  if (mods.some((m) => m.artefacto)) return { error: 'Una cocina de piso no se une con muebles.' };
   const r = n(mods[0].rotacion);
   if (mods.some((m) => Math.abs(((n(m.rotacion) - r) % 360 + 360) % 360) > .5)) return { error: 'Los módulos no miran hacia el mismo lado (tienen distinto giro).' };
   const aereo = (m) => m.tipo === 'aereo';
@@ -38,7 +39,7 @@ export function unirModulos(mods) {
 
   // Mueble nuevo: el primero (en el orden de la pared) da el origen y los datos generales
   const base = datos[0].m;
-  const columnas = [], tiradores = [];
+  const columnas = [], tiradores = [], artefactos = [];
   let ancho = 0, desfase = 0;
   for (const { m } of datos) {
     const cols = JSON.parse(JSON.stringify(m.columnas || []));
@@ -46,6 +47,7 @@ export function unirModulos(mods) {
     cols.forEach((c) => { c.ancho = Math.round(n(c.ancho) * n(m.ancho) / suma * 10) / 10; }); // columnas = ancho del módulo
     columnas.push(...cols);
     for (const t of m.tiradores || []) tiradores.push({ ...t, id: uid('t'), col: n(t.col) + desfase });
+    for (const a of m.artefactos || []) artefactos.push({ ...a, id: uid('a'), desde: n(a.desde) + ancho }); // encimeras y lavaplatos
     desfase += cols.length;
     ancho += n(m.ancho);
   }
@@ -57,7 +59,7 @@ export function unirModulos(mods) {
     ancho: Math.round(ancho * 10) / 10,
     profundidad: Math.max(...fondos),
     cubierta: datos.some((d) => d.m.cubierta),
-    columnas, tiradores,
+    columnas, tiradores, artefactos,
   };
   delete unido.plantilla; // deja de pertenecer a una cocina de referencia
   return { modulo: unido, aviso: fondos.length > 1 ? `Tenían distinto fondo (${fondos.map(fmt).join(' / ')} cm): quedó con ${fmt(unido.profundidad)}.` : '' };

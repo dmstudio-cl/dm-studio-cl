@@ -91,6 +91,21 @@ collections:
           - { label: Giro en planta (grados), name: rotacion, widget: number, value_type: float, default: 0, hint: "Lo ajusta el editor. 90 = el frente mira hacia +X." }
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
           - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
+          - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
+          - label: Encimeras y lavaplatos (los ubica el editor)
+            name: artefactos
+            widget: list
+            required: false
+            collapsed: true
+            summary: "{{fields.tipo}} {{fields.ancho}}×{{fields.fondo}}"
+            fields:
+              - { label: ID, name: id, widget: string, required: false }
+              - { label: Modelo, name: tipo, widget: select, options: [encimera_gas, encimera_electrica, encimera_2, lavaplatos_1, lavaplatos_2] }
+              - { label: Al costado izquierdo (cm), name: desde, widget: number, value_type: float }
+              - { label: Al canto de la cubierta (cm), name: frente, widget: number, value_type: float }
+              - { label: Ancho (cm), name: ancho, widget: number, value_type: float }
+              - { label: Fondo (cm), name: fondo, widget: number, value_type: float }
+              - { label: Escurridor, name: lado, widget: select, options: [derecha, izquierda], required: false }
           - label: Columnas (de izquierda a derecha)
             name: columnas
             widget: list

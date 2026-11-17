@@ -230,3 +230,11 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-repisas > span { margin-right: 2px; }
 .ed-repisas > b { min-width: 18px; text-align: center; font-family: var(--mono); }
 .ed-repisas > button[data-a^="rep"] { width: 28px; padding: 6px 0; }
+
+/* artefactos de cocina */
+.ed-plano .artefacto { fill: rgba(20, 20, 22, .55); stroke: rgba(236, 231, 221, .75); stroke-width: 1.2; cursor: move; }
+.ed-plano .artefacto.lava { fill: rgba(170, 176, 181, .35); }
+.ed-plano .artefacto.sel { stroke: var(--red-accent); stroke-width: 2; }
+.ed-plano .divisor.sel { stroke: var(--red-accent); stroke-width: 4; }
+.ed-fila-art { display: block; width: 100%; margin-top: 6px; text-align: left; }
+.ed-fila-art small { color: var(--muted); font-family: var(--mono); }
