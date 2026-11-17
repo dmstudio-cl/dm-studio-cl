@@ -26,7 +26,7 @@ function puntos(n) {
   return [[28, 30], [72, 30], [28, 72], [72, 72]];
 }
 // Fondo CSS de la cara superior: quemadores (gas) o zonas de calor (eléctrica)
-export function cubiertaCoccion(def, ancho) {
+export function cubiertaCoccion(def, ancho, acabado = 'acero') {
   const r = Math.min(9, ancho / (def.platos === 6 ? 7 : 5)); // radio de cada plato en cm
   const capas = puntos(def.platos).map(([x, y], i) => {
     const k = i % 3 === 1 ? .8 : 1; // un plato más chico para que se vea natural
@@ -34,12 +34,20 @@ export function cubiertaCoccion(def, ancho) {
       ? `radial-gradient(circle at ${x}% ${y}%, #3a3a3c 0 ${r * .28 * k}em, #8c8d8f ${r * .28 * k}em ${r * .4 * k}em, #1a1a1b ${r * .4 * k}em ${r * .75 * k}em, #4a4b4d ${r * .75 * k}em ${r * .82 * k}em, transparent ${r * .83 * k}em)`
       : `radial-gradient(circle at ${x}% ${y}%, transparent 0 ${r * .78 * k}em, rgba(214, 96, 70, .55) ${r * .78 * k}em ${r * .84 * k}em, transparent ${r * .85 * k}em)`;
   });
-  const base = def.gas ? 'linear-gradient(160deg, #2a2a2c, #19191a)' : 'linear-gradient(160deg, #262628, #0e0e10 70%, #1d1d20)';
+  const base = !def.gas ? (acabado === 'blanco' ? 'linear-gradient(160deg, #f2f0ec, #d9d6d0)' : 'linear-gradient(160deg, #262628, #0e0e10 70%, #1d1d20)')
+    : acabado === 'acero' ? 'linear-gradient(160deg, #d3d6d8, #a5aaad)' : acabado === 'blanco' ? 'linear-gradient(160deg, #f0eee9, #d6d3cd)' : 'linear-gradient(160deg, #2a2a2c, #19191a)';
   return `${capas.join(', ')}, ${base}`;
 }
-export const ACERO = 'linear-gradient(135deg, #e1e4e6, #a3a8ac 55%, #c9cdd0)';
-export const CUBA = 'radial-gradient(circle at 50% 62%, #2f3234 0 1.6em, #6f7478 1.7em 2em, transparent 2.1em), linear-gradient(170deg, #6f7478, #a9aeb2)';
-export const ESCURRIDOR = 'repeating-linear-gradient(90deg, #cfd3d6 0 1.2em, #a7acb0 1.2em 1.6em)';
+// Acabados de lavaplatos y cocinas: acero inoxidable, negro o blanco (granito / esmaltado)
+export const ACABADOS = {
+  acero: { base: 'linear-gradient(135deg, #e1e4e6, #a3a8ac 55%, #c9cdd0)', cuba: ['#6f7478', '#a9aeb2'], esc: ['#cfd3d6', '#a7acb0'], cuerpo: 'linear-gradient(180deg, #d4d7d9, #aeb2b5)' },
+  negro: { base: 'linear-gradient(135deg, #3b3c3e, #1f2021)', cuba: ['#18191a', '#303133'], esc: ['#333436', '#232425'], cuerpo: 'linear-gradient(180deg, #2f3032, #1b1c1d)' },
+  blanco: { base: 'linear-gradient(135deg, #f4f2ee, #d8d5cf)', cuba: ['#c9c6c0', '#e4e1db'], esc: ['#ebe8e3', '#d2cfc9'], cuerpo: 'linear-gradient(180deg, #f1efeb, #d7d4ce)' },
+};
+export const acabado = (k) => ACABADOS[k] || ACABADOS.acero;
+export const ACERO = ACABADOS.acero.base;
+export const cubaDe = (k) => { const [a, b] = acabado(k).cuba; return `radial-gradient(circle at 50% 62%, #2f3234 0 1.6em, ${a} 1.7em 2em, transparent 2.1em), linear-gradient(170deg, ${a}, ${b})`; };
+export const escurridorDe = (k) => { const [a, b] = acabado(k).esc; return `repeating-linear-gradient(90deg, ${a} 0 1.2em, ${b} 1.2em 1.6em)`; };
 
 // Cubas y escurridor del lavaplatos, en cm desde su borde izquierdo: [{ x0, x1, tipo: 'cuba'|'escurridor' }]
 export function partesLavaplatos(a, def) {

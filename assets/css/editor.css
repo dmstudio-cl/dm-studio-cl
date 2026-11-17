@@ -238,3 +238,15 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-plano .divisor.sel { stroke: var(--red-accent); stroke-width: 4; }
 .ed-fila-art { display: block; width: 100%; margin-top: 6px; text-align: left; }
 .ed-fila-art small { color: var(--muted); font-family: var(--mono); }
+
+/* panel izquierdo plegable */
+.ed-izq .ed-sec { border-top: 1px solid var(--line); padding: 10px 0 4px; }
+.ed-izq .ed-sec:first-child { border-top: 0; padding-top: 0; }
+.ed-izq .ed-sec > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; font: 500 .7rem/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); padding: 6px 0 10px; }
+.ed-izq .ed-sec > summary::-webkit-details-marker { display: none; }
+.ed-izq .ed-sec > summary::after { content: '+'; font-size: .95rem; color: var(--bone); }
+.ed-izq .ed-sec[open] > summary::after { content: '−'; }
+.ed-izq .ed-sec > summary:hover { color: var(--bone); }
+.ed-izq #colores { margin-top: 8px; }
+.ed-izq select { width: 100%; }
+.ed-tag { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(180, 50, 46, .25); font: 500 .62rem/1.2 var(--mono); color: #e8c9a8; }

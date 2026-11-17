@@ -12,7 +12,7 @@ export function unirModulos(mods) {
   if (mods.length < 2) return { error: 'Selecciona al menos dos módulos.' };
   if (mods.some((m) => m.artefacto)) return { error: 'Una cocina de piso no se une con muebles.' };
   const r = n(mods[0].rotacion);
-  if (mods.some((m) => Math.abs(((n(m.rotacion) - r) % 360 + 360) % 360) > .5)) return { error: 'Los módulos no miran hacia el mismo lado (tienen distinto giro).' };
+  if (mods.some((m) => Math.abs(((n(m.rotacion) - r) % 360 + 360) % 360) > .5)) return { error: 'Los módulos no miran hacia el mismo lado (por ejemplo, un mueble en L). Usa «Agrupar como un mueble»: quedan juntos sin cambiar su forma.', giro: true };
   const aereo = (m) => m.tipo === 'aereo';
   if (mods.some((m) => aereo(m) !== aereo(mods[0]))) return { error: 'No se pueden unir módulos aéreos con basales.' };
 

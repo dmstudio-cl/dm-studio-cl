@@ -74,6 +74,7 @@ export function aModelo(raw, uid) {
     nombre: raw.titulo || 'Proyecto',
     frente: raw.opciones?.melamina_inicial || '',
     espacio: raw.espacio ? JSON.parse(JSON.stringify(raw.espacio)) : null,
+    colores: raw.colores ? { ...raw.colores } : {},
     modulos: (raw.modulos || []).map((m) => ({
       ...m, id: m.id || uid(), tiradores: (m.tiradores || []).map((t) => ({ ...t, id: t.id || uid('t') })),
       zocalo_retiro: m.zocalo_retiro ?? 5, x: +m.x || 0, elevacion: +m.elevacion || 0, z: +m.z || 0, rotacion: +m.rotacion || 0,
@@ -239,6 +240,7 @@ export function iniciarProyectos(ed) {
       const modelo = ed.modelo();
       const v = (+raw.version || 1) + 1;
       raw.modulos = modelo.modulos;
+      raw.colores = modelo.colores || {};
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };

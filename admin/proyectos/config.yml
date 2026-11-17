@@ -92,6 +92,9 @@ collections:
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
           - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
           - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
+          - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
+          - { label: Mueble agrupado (lo usa el editor), name: grupo, widget: string, required: false }
+          - { label: Nombre del mueble agrupado, name: grupo_nombre, widget: string, required: false }
           - label: Encimeras y lavaplatos (los ubica el editor)
             name: artefactos
             widget: list
@@ -157,6 +160,20 @@ collections:
           - { label: Nombre, name: nombre, widget: string }
           - { label: Link, name: url, widget: string }
           - { label: Medida (cm), name: medida, widget: string, required: false }
+
+      - label: Colores y materiales (los elige el editor)
+        name: colores
+        widget: object
+        required: false
+        collapsed: true
+        fields:
+          - { label: Zócalo, name: zocalo, widget: select, options: [grafito, negro, aluminio, blanco, frente], required: false }
+          - { label: Interior y cuerpo, name: cuerpo, widget: select, options: [blanco, gris, negro], required: false }
+          - { label: Costados visibles, name: costados, widget: select, options: [cuerpo, frente], required: false }
+          - { label: Marcos de ventanas, name: marco, widget: select, options: [blanco, negro, aluminio, madera], required: false }
+          - { label: Puertas de muro, name: hoja, widget: select, options: [madera, blanca, gris, negra], required: false }
+          - { label: Lavaplatos, name: lavaplatos, widget: select, options: [acero, negro, blanco], required: false }
+          - { label: Cocina y encimeras, name: cocina, widget: select, options: [acero, negro, blanco], required: false }
 
       - label: Espacio (opcional)
         name: espacio

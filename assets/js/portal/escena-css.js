@@ -3,6 +3,7 @@
 // por lo que el cliente ve exactamente lo que el estudio diseñó: muros, muebles y tiradores.
 import { createStage } from '../css3d/engine.js';
 import { dibujar, limites, tiradoresCliente, espacioPortal } from '../editor/modelo.js';
+import { matsColores } from '../editor/colores.js';
 
 const VISTAS = { 'tres-cuartos': [-24, -32], frente: [-6, 0], planta: [-88, 0] };
 
@@ -22,7 +23,7 @@ export function createScene(el) {
   function mats(s) {
     const m = s.melamina;
     const frente = m ? (m.imagen && m.tipo !== 'unicolor' ? `url('${m.imagen}') center / 60em 60em, ${m.hex}` : m.hex) : '#cfc6b8';
-    return { frente, cuerpo: '#e9e6df', zocalo: '#3a3836', cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto' };
+    return { ...matsColores(proyecto?.colores, frente), cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto' };
   }
   function modelo(s) {
     return {

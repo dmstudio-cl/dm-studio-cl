@@ -3,6 +3,8 @@
 import { createStage } from '../css3d/engine.js';
 import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
+import { PALETA, colorDe, matsColores } from './colores.js';
+import { huella, girar } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
@@ -145,7 +147,32 @@ const MEL = window.MELAMINAS || [];
 function mats() {
   const f = MEL.find((x) => x.id === modelo.frente);
   const frente = f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 60em 60em, ${f.hex}` : f.hex) : '#cfc6b8';
-  return { frente, cuerpo: '#e9e6df', zocalo: '#3a3836', cubierta: '#cfc9bc' };
+  return { ...matsColores(modelo.colores, frente), cubierta: '#cfc9bc' };
+}
+// Panel «Colores y materiales»: una lista corta por parte del mueble y del espacio
+function pintarColores() {
+  const c = modelo.colores || {};
+  $('#colores').innerHTML = Object.entries(PALETA).map(([k, p]) => `<label class="ed-campo ancho2">${p.titulo}
+    <select data-color="${k}">${Object.entries(p.opciones).map(([v, [n]]) => `<option value="${v}"${colorDe(c, k) === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`).join('');
+}
+$('#colores').addEventListener('change', (e) => {
+  const k = e.target.dataset.color; if (!k) return;
+  cambiar((d) => { d.colores = { ...(d.colores || {}), [k]: e.target.value }; });
+  pintarColores();
+});
+// ----- muebles agrupados (ej. en L): siguen siendo módulos separados pero se mueven y giran juntos
+const grupoDe = (m) => (m?.grupo ? modelo.modulos.filter((x) => x.grupo === m.grupo) : m ? [m] : []);
+function girarGrupo(m, grados) {
+  const mods = grupoDe(m);
+  if (mods.length < 2) return planta.rotar(m, grados);
+  const cs = mods.map((x) => { const h = huella(x); return [(h[0][0] + h[2][0]) / 2, (h[0][1] + h[2][1]) / 2]; });
+  const C = [cs.reduce((a, c) => a + c[0], 0) / cs.length, cs.reduce((a, c) => a + c[1], 0) / cs.length];
+  mods.forEach((x, i) => {
+    const [dx, dz] = girar(cs[i][0] - C[0], cs[i][1] - C[1], grados); // nuevo centro, girado alrededor del centro del grupo
+    planta.rotar(x, grados);
+    const h = huella(x), cx = (h[0][0] + h[2][0]) / 2, cz = (h[0][1] + h[2][1]) / 2;
+    x.x = r1(+x.x + C[0] + dx - cx); x.z = r1(+x.z + C[1] + dz - cz);
+  });
 }
 
 // ===================== dibujo =====================
@@ -605,7 +632,9 @@ plano.addEventListener('pointermove', (e) => {
         for (const c of [o.b, o.a - w]) if (Math.abs(s - c) < mejor) { mejor = Math.abs(s - c); s = c; }
       }
     }
+    const x0 = +m.x, z0 = +m.z;
     moverFrente(m, s - xF(m));
+    for (const o of grupoDe(m)) if (o !== m) { o.x = r1(+o.x + +m.x - x0); o.z = r1(+o.z + +m.z - z0); } // mueble agrupado: va completo
     render({ panel: false }); return;
   }
   if (gesto.tipo === 'vano') {
@@ -876,7 +905,7 @@ function arbol() {
   const hEsp = W.length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Espacio · ${W.length} muros</div>${W.map((w) => btn({ tipo: 'muro', i: w.i }, 'n1', `${esc(w.etiqueta || `Muro ${w.i + 1}`)} <small>${cm(w.largo)}</small>`) + vanosDe(w).map((v) => btn({ tipo: 'vano', i: w.i, v: v.id }, 'n3', `${VANOS[v.tipo].nombre} <small>${cm(v.ancho)}×${cm(v.alto)}</small>`)).join('')).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
   $('#arbol').innerHTML = hEsp + modelo.modulos.map((m) => {
     const Z = Zde(m);
-    let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>`);
+    let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>${m.grupo ? `<span class="ed-tag">${esc(m.grupo_nombre || 'agrupado')}</span>` : ''}`);
     if (m.artefacto) return h;
     if (Z > 0) h += btn({ tipo: 'zocalo', m: m.id }, 'n1', `Zócalo <small>${cm(Z)}</small>`);
     h += btn({ tipo: 'cuerpo', m: m.id }, 'n1', 'Cuerpo');
@@ -951,8 +980,8 @@ function props() {
     const mods = sel.ids.map(modulo).filter(Boolean);
     P.innerHTML = `<div class="ed-props"><p class="tit">${mods.length} módulos</p><p class="sub">Selección múltiple</p>
       <ul class="ed-sel-lista">${mods.map((m) => `<li>${esc(m.nombre)} <small>${cm(m.ancho)} × ${cm(m.alto)}</small></li>`).join('')}</ul>
-      <div class="ed-botones"><button data-a="unir" class="ed-primario">Unir en un mueble</button><button data-a="borrar-multi" class="peligro">Eliminar ${mods.length}</button></div>
-      <p class="ed-ayuda" id="unir-aviso">Une módulos que estén uno junto al otro en la misma pared, con el mismo alto y zócalo. Quedan con un solo cuerpo y una sola cubierta. Mayús + clic agrega o quita; las flechas los mueven juntos.</p></div>`;
+      <div class="ed-botones"><button data-a="unir" class="ed-primario">Unir en un mueble</button><button data-a="agrupar">Agrupar como un mueble (en L)</button><button data-a="borrar-multi" class="peligro">Eliminar ${mods.length}</button></div>
+      <p class="ed-ayuda" id="unir-aviso"><b>Unir</b>: módulos uno junto al otro en la misma pared, con el mismo alto y zócalo; quedan con un solo cuerpo y una sola cubierta.<br><b>Agrupar</b>: para muebles en L o que no miran hacia el mismo lado; cada parte conserva su forma, pero se mueven y giran juntas como un solo mueble.</p></div>`;
     return;
   }
   if (sel.tipo === 'muro') {
@@ -997,7 +1026,11 @@ function props() {
       <label class="ed-check"><input type="checkbox" data-pk="cocina"${pl.p.cocina ? ' checked' : ''}> Hueco para cocina (76 cm)</label>` : ''}
       <div class="ed-botones"><button data-a="desagrupar">Desagrupar (editar libre)</button><button data-a="borrar-cocina" class="peligro">Eliminar esta cocina</button></div>
       </div>` : '';
-    h = `${bloquePl}<p class="tit">${esc(m.nombre)}</p><p class="sub">${sel.tipo === 'cuerpo' ? 'Cuerpo' : 'Módulo'}</p>
+    const g = grupoDe(m);
+    const bloqueG = m.grupo ? `<div class="ed-plantilla"><p class="sub">Parte de un mueble agrupado · ${g.length} piezas</p>
+      <label class="ed-campo ancho2">Nombre del mueble<input type="text" data-k="grupo_nombre" value="${esc(m.grupo_nombre || 'Mueble en L')}"></label>
+      <div class="ed-botones"><button data-a="sel-grupo">Seleccionar el mueble completo</button><button data-a="desagrupar-mueble">Separar las piezas</button></div></div>` : '';
+    h = `${bloquePl}${bloqueG}<p class="tit">${esc(m.nombre)}</p><p class="sub">${sel.tipo === 'cuerpo' ? 'Cuerpo' : 'Módulo'}</p>
       <div class="ed-campos">
         <label class="ed-campo ancho2">Nombre<input type="text" data-k="nombre" value="${esc(m.nombre)}"></label>
         ${opciones('tipo', 'Tipo', m.tipo, { base: 'Base', aereo: 'Aéreo', torre: 'Torre', isla: 'Isla' }, 'ancho2')}
@@ -1006,6 +1039,7 @@ function props() {
         ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
         ${num('elevacion', 'Altura del piso', m.elevacion)}${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
         ${opciones('tablero', 'Tablero', String(+m.tablero || 15), { 15: 'Melamina 15 mm', 18: 'Melamina 18 mm' }, 'ancho2')}
+        ${opciones('costados', 'Costados visibles', m.costados || '', { '': `Como el general (${PALETA.costados.opciones[colorDe(modelo.colores, 'costados')][0].toLowerCase()})`, frente: 'Igual a la melamina', cuerpo: 'Como el cuerpo' }, 'ancho2')}
       </div>
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
@@ -1104,6 +1138,10 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if (k === 'artefacto') {
     const d = ARTEFACTOS[v]; if (!d) return;
     m.artefacto = v; m.nombre = d.nombre; m.ancho = d.ancho; m.alto = d.alto; m.profundidad = d.fondo;
+  } else if (k === 'grupo_nombre') {
+    for (const x of modelo.modulos) if (x.grupo && x.grupo === m.grupo) x.grupo_nombre = String(v).slice(0, 60);
+  } else if (k === 'costados') {
+    if (v) m.costados = v; else delete m.costados;
   } else if (k === 'tablero') {
     m.tablero = +v === 18 ? 18 : 15;
   } else if (k === 'tipo') {
@@ -1189,9 +1227,18 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
+  if (b.dataset.a === 'agrupar') {
+    const ids = sel.ids, gid = uid('g'), nombre = 'Mueble en L';
+    cambiar((d) => d.modulos.forEach((m) => { if (ids.includes(m.id)) { m.grupo = gid; m.grupo_nombre = nombre; } }));
+    sel = { tipo: 'modulo', m: ids[0] }; render();
+    aviso(`${ids.length} módulos agrupados como «${nombre}». Al moverlos o girarlos van juntos; cada parte se edita por separado.`);
+    return;
+  }
+  if (b.dataset.a === 'sel-grupo') { seleccionarVarios(grupoDe(modulo(sel.m)).map((x) => x.id)); return; }
+  if (b.dataset.a === 'desagrupar-mueble') { const g = modulo(sel.m).grupo; cambiar((d) => d.modulos.forEach((m) => { if (m.grupo === g) { delete m.grupo; delete m.grupo_nombre; } })); return; }
   if (b.dataset.a === 'unir') {
     const ids = sel.ids, r = unirModulos(ids.map(modulo));
-    if (r.error) { $('#unir-aviso').textContent = r.error; $('#unir-aviso').classList.add('ed-error'); aviso(r.error); return; }
+    if (r.error) { $('#unir-aviso').innerHTML = esc(r.error) + (r.giro ? ' <button data-a="agrupar" class="ed-primario">Agrupar ahora</button>' : ''); $('#unir-aviso').classList.add('ed-error'); aviso(r.error); return; }
     cambiar((d) => {
       const i = Math.min(...ids.map((id) => d.modulos.findIndex((m) => m.id === id)));
       d.modulos = d.modulos.filter((m) => !ids.includes(m.id));
@@ -1213,7 +1260,7 @@ $('#props').addEventListener('click', (e) => {
   }
   if (b.dataset.a === 'girar-' || b.dataset.a === 'girar+') {
     const mm = modulo(sel.m);
-    cambiar(() => planta.rotar(mm, b.dataset.a === 'girar-' ? 90 : -90));
+    cambiar(() => girarGrupo(mm, b.dataset.a === 'girar-' ? 90 : -90));
     return;
   }
   const m = modulo(sel.m), a = b.dataset.a;
@@ -1321,9 +1368,15 @@ $$('[data-herr]').forEach((b) => b.addEventListener('click', () => setHerr(b.dat
 $('#capas').addEventListener('change', (e) => { const c = e.target.dataset.capa; if (c) { capas[c] = e.target.checked; render(); } });
 $('#nombre').addEventListener('change', (e) => cambiar(() => { modelo.nombre = e.target.value.trim() || 'Sin nombre'; }));
 
+// Secciones del panel izquierdo: plegables, recuerda cuáles quedaron abiertas (solo en este navegador)
+for (const d of document.querySelectorAll('.ed-sec')) {
+  try { const v = localStorage.getItem(`dm-editor-sec:${d.dataset.sec}`); if (v) d.open = v === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem(`dm-editor-sec:${d.dataset.sec}`, d.open ? '1' : '0'); } catch (e) {} });
+}
 const selMel = $('#melamina');
 selMel.innerHTML = MEL.map((x) => `<option value="${esc(x.id)}">${esc(x.nombre)} · ${esc(x.linea || '')}</option>`).join('');
 selMel.value = modelo.frente || '';
+pintarColores();
 selMel.addEventListener('change', () => cambiar(() => { modelo.frente = selMel.value; }));
 
 $('.ed-acciones').addEventListener('click', (e) => {
@@ -1347,7 +1400,7 @@ $('#archivo').addEventListener('change', async (e) => {
     const d = JSON.parse(await f.text());
     if (!Array.isArray(d.modulos)) throw new Error('El archivo no tiene "modulos".');
     d.modulos.forEach((m) => { m.id ||= uid(); m.tiradores ||= []; m.tiradores.forEach((t) => { t.id ||= uid('t'); }); });
-    cambiar(() => { modelo = d; }); modelo = d; modelo.modulos.forEach(normalizar); sel = null; selMel.value = modelo.frente || ''; guardar(); render(); encuadrar(true);
+    cambiar(() => { modelo = d; }); modelo = d; modelo.modulos.forEach(normalizar); sel = null; selMel.value = modelo.frente || ''; pintarColores(); guardar(); render(); encuadrar(true);
   } catch (err) { alert('No se pudo abrir: ' + err.message); }
   e.target.value = '';
 });
@@ -1393,7 +1446,7 @@ window.addEventListener('keydown', (e) => {
     cambiarArtefacto((a, m, { W, Dc }) => { a.desde = Math.min(Math.max(0, (+a.desde || 0) + dx), W - +a.ancho); a.frente = Math.min(Math.max(0, (+a.frente || 0) + dy), Dc - +a.fondo); });
   }
   else if (['vano', 'artefacto', 'div'].includes(sel?.tipo) && (k === 'r' || e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown')) { /* no aplica */ }
-  else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') { const m = modulo(sel.m); cambiar(() => planta.rotar(m, 90)); }
+  else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') { const m = modulo(sel.m); cambiar(() => girarGrupo(m, 90)); }
   else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel?.tipo === 'multi') { // subir / bajar varios
     e.preventDefault();
     const paso = (e.shiftKey ? 10 : 1) * (e.key === 'PageUp' ? 1 : -1), ids = sel.ids;
@@ -1502,7 +1555,7 @@ iniciarProyectos({
     }
     if (!modelo.frente) modelo.frente = MEL[0]?.id || '';
     modelo.modulos.forEach(normalizar);
-    selMel.value = modelo.frente || '';
+    selMel.value = modelo.frente || ''; pintarColores();
     guardar(); render();
     if (!conservarVista) { zoom = 1; encuadrar(true); dibujarPlano(); }
     if (raw && modelo.modulos.length === 0) { setVista('frente'); setHerr('dibujar'); aviso('Proyecto vacío: dibuja el primer módulo arrastrando.'); }

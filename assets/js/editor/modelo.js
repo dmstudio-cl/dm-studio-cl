@@ -13,7 +13,7 @@
 // }
 // Capas: zócalo → cuerpo (costados, piso, techo, fondo) → frentes (puertas, cajones…) → tiradores → cubierta.
 
-import { ARTEFACTOS, cubiertaCoccion, ACERO, CUBA, ESCURRIDOR, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
+import { ARTEFACTOS, cubiertaCoccion, acabado, cubaDe, escurridorDe, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
 
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
 export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
@@ -330,9 +330,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     cubierta: { bg: mats.cubierta || '#cfc9bc' },
     muro: { bg: mats.muro || '#57534e' },     // muros claros sobre el fondo oscuro, para que el espacio se lea
     cantoMuro: { bg: '#b9b2a7' },
-    marco: { bg: '#d8d5cf' },
+    marco: { bg: mats.marco || '#d8d5cf' },
     vidrio: { bg: 'linear-gradient(135deg, rgba(196, 220, 232, .42), rgba(120, 150, 170, .18) 60%, rgba(196, 220, 232, .3))' },
-    hoja: { bg: '#b49a78' },
+    hoja: { bg: mats.hoja || '#b49a78' },
+    costado: { bg: mats.costado || mats.cuerpo || '#e9e6df' }, // costados visibles (cuerpo o igual a la melamina)
+    lavaplatos: mats.lavaplatos || 'acero', cocina: mats.cocina || 'acero',
     manilla: { bg: '#2a2725' },
     piso: mats.piso || '#2a2826',
   };
@@ -345,7 +347,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const T = tablero(m); // 1,5 cm (melamina 15 mm) o 1,8 cm
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
-    if (m.artefacto) { dibujarCocinaPiso(G, m); return; } // cocina de piso: no lleva cuerpo de melamina
+    if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
 
     if (ver('zocalo') && Z > 0) {
       const r = +m.zocalo_retiro || 0;
@@ -353,8 +355,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     }
     if (ver('cuerpo')) {
       const ref = `${id}|cuerpo`;
-      B({ w: T, h: H - Z, d: D, x: T / 2, y: Z + (H - Z) / 2, z: D / 2 }, M.cuerpo, ref);     // costado izq. (sobre el zócalo)
-      B({ w: T, h: H - Z, d: D, x: W - T / 2, y: Z + (H - Z) / 2, z: D / 2 }, M.cuerpo, ref); // costado der.
+      // costados: por dentro siempre del color del cuerpo; por fuera, como se eligió (general o de este mueble)
+      const MC = m.costados === 'frente' ? M.frente : m.costados === 'cuerpo' ? M.cuerpo : M.costado;
+      const lado = (cara) => (c) => (c === cara || c === 'front' || c === 'top' || c === 'bottom' ? MC : M.cuerpo);
+      B({ w: T, h: H - Z, d: D, x: T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('left'), ref);     // costado izq. (sobre el zócalo)
+      B({ w: T, h: H - Z, d: D, x: W - T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('right'), ref); // costado der.
       B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, M.cuerpo, ref); // piso
       B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, M.cuerpo, ref); // techo
       B({ w: W - 2 * T, h: H - Z - 2 * T, d: .6, x: W / 2, y: Z + (H - Z) / 2, z: .3 }, M.cuerpo, ref); // fondo
@@ -399,7 +404,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       const canto = CANTOS[mats.borde] || '';
       const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${M.cubierta.bg}` } : M.cubierta);
       B({ w: W + .4, h: CT, d: D + OVER + T, x: W / 2, y: H + CT / 2, z: (D + OVER + T) / 2 }, texCub, `${id}|cubierta`);
-      for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`);
+      for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M);
     }
   });
   // Marca de selección: las caras de la pieza seleccionada se resaltan
@@ -410,30 +415,32 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
 }
 
 // Encimera o lavaplatos sobre la cubierta (y = altura de la cara superior de la cubierta)
-function dibujarArtefacto(G, a, y, ref) {
+function dibujarArtefacto(G, a, y, ref, M) {
   const def = ARTEFACTOS[a.tipo] || ARTEFACTOS.encimera_gas, cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
   const caras = ['top', 'front', 'left', 'right', 'back'];
   if (!def.cubas) { // encimera: vidrio o acero negro casi a ras
-    G.box({ w: a.ancho, h: .5, d: a.fondo, x: cx, y: y + .25, z: cz, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, a.ancho) : '#151516' }), ref, caras });
+    G.box({ w: a.ancho, h: .5, d: a.fondo, x: cx, y: y + .25, z: cz, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, a.ancho, M.cocina) : '#151516' }), ref, caras });
     return;
   }
-  G.box({ w: a.ancho, h: .3, d: a.fondo, x: cx, y: y + .15, z: cz, tex: { bg: ACERO }, ref, caras }); // reborde de acero
+  const ac = acabado(M.lavaplatos);
+  G.box({ w: a.ancho, h: .3, d: a.fondo, x: cx, y: y + .15, z: cz, tex: { bg: ac.base }, ref, caras }); // reborde
   const fz = a.fondo - 10; // cubas y escurridor: dejan 4 cm atrás (llave) y 6 adelante
   for (const p of partesLavaplatos(a, def)) {
-    G.box({ w: p.x1 - p.x0, h: .1, d: fz, x: a.x0 + (p.x0 + p.x1) / 2, y: y + .35, z: a.z0 + 4 + fz / 2, tex: { bg: p.tipo === 'cuba' ? CUBA : ESCURRIDOR }, ref, caras: ['top'] });
+    G.box({ w: p.x1 - p.x0, h: .1, d: fz, x: a.x0 + (p.x0 + p.x1) / 2, y: y + .35, z: a.z0 + 4 + fz / 2, tex: { bg: p.tipo === 'cuba' ? cubaDe(M.lavaplatos) : escurridorDe(M.lavaplatos) }, ref, caras: ['top'] });
   }
   // llave (grifería) detrás de la primera cuba
   const cuba = partesLavaplatos(a, def).find((p) => p.tipo === 'cuba');
   const kx = a.x0 + (cuba.x0 + cuba.x1) / 2;
-  G.box({ w: 3, h: 22, d: 3, x: kx, y: y + 11, z: a.z0 + 2.2, tex: { bg: ACERO }, ref });
-  G.box({ w: 2.4, h: 2.4, d: 17, x: kx, y: y + 21, z: a.z0 + 10, tex: { bg: ACERO }, ref });
+  const llave = { bg: acabado('acero').base }; // la grifería se ve cromada
+  G.box({ w: 3, h: 22, d: 3, x: kx, y: y + 11, z: a.z0 + 2.2, tex: llave, ref });
+  G.box({ w: 2.4, h: 2.4, d: 17, x: kx, y: y + 21, z: a.z0 + 10, tex: llave, ref });
 }
 // Cocina de piso: cuerpo de acero, cubierta con quemadores, panel de perillas y puerta de horno
-function dibujarCocinaPiso(G, m) {
+function dibujarCocinaPiso(G, m, color = 'acero') {
   const def = ARTEFACTOS[m.artefacto] || ARTEFACTOS.cocina4, W = +m.ancho, H = +m.alto, D = +m.profundidad, ref = `${m.id}|cuerpo`;
-  const acero = { bg: 'linear-gradient(180deg, #d4d7d9, #aeb2b5)' };
+  const acero = { bg: acabado(color).cuerpo };
   G.box({ w: W, h: H - 1, d: D, x: W / 2, y: (H - 1) / 2, z: D / 2, tex: acero, ref, caras: ['left', 'right', 'back', 'front'] });
-  G.box({ w: W, h: 1, d: D, x: W / 2, y: H - .5, z: D / 2, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, W) : '#1b1b1c' }), ref });
+  G.box({ w: W, h: 1, d: D, x: W / 2, y: H - .5, z: D / 2, tex: (c) => ({ bg: c === 'top' ? cubiertaCoccion(def, W, color) : '#1b1b1c' }), ref });
   // panel de perillas
   const n = def.platos + 1;
   const perillas = Array.from({ length: n }, (_, i) => `radial-gradient(circle at ${((i + .5) / n * 100).toFixed(1)}% 50%, #1c1c1d 0 1.5em, #555 1.6em 1.8em, transparent 1.9em)`).join(', ');

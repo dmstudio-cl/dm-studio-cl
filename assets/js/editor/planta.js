@@ -264,7 +264,9 @@ export function crearPlanta(ctx) {
       const m = modelo.modulos.find((x) => x.id === d.m);
       const s = ctx.sel();
       if (s?.m !== m.id || s.tipo === 'muro') ctx.setSel({ tipo: 'modulo', m: m.id });
-      gesto = { tipo: 'mover', m: m.id, p0: p, x0: +m.x, z0: +m.z, antes: JSON.stringify(modelo) };
+      // si es parte de un mueble agrupado (ej. en L), se mueve el mueble completo
+      const otros = m.grupo ? modelo.modulos.filter((x) => x.grupo === m.grupo && x.id !== m.id).map((x) => ({ id: x.id, x0: +x.x, z0: +x.z })) : [];
+      gesto = { tipo: 'mover', m: m.id, p0: p, x0: +m.x, z0: +m.z, otros, antes: JSON.stringify(modelo) };
       ctx.render(); return;
     }
     if (d.tipo === 'muro') { ctx.setSel({ tipo: 'muro', i: +d.i }); ctx.render(); return; }
@@ -300,6 +302,7 @@ export function crearPlanta(ctx) {
       const m = modelo.modulos.find((x) => x.id === gesto.m);
       m.x = snap(gesto.x0 + p.x - gesto.p0.x); m.z = snap(gesto.z0 + p.z - gesto.p0.z);
       if (!e.altKey) iman(m, modelo.espacio); // Alt: sin imán
+      for (const o of gesto.otros || []) { const x = modelo.modulos.find((k) => k.id === o.id); if (x) { x.x = r1(o.x0 + +m.x - gesto.x0); x.z = r1(o.z0 + +m.z - gesto.z0); } }
       ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'vertice') {
