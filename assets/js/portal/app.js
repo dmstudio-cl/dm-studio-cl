@@ -1,6 +1,6 @@
 // Aplicación del portal de clientes (después de entrar con la clave, en modo demo o como estudio).
 import { clp } from '../cart.js';
-import { createScene } from './scene.js';
+import { createScene } from './escena-css.js'; // CSS 3D: sin WebGL ni Three.js
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

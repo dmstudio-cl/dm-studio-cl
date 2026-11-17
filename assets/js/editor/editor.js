@@ -845,7 +845,7 @@ lienzo.addEventListener('wheel', (e) => {
 
 // Teclado
 window.addEventListener('keydown', (e) => {
-  if (e.target.closest('input, select, textarea')) return;
+  if (e.target.closest?.('input, select, textarea')) return;
   if (vista === 'planta' && planta.teclado(e)) { e.preventDefault(); return; }
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? rehacer() : deshacer(); return; }

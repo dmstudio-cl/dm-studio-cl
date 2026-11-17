@@ -3,7 +3,7 @@
 > Documento vivo de decisiones acordadas con el dueño (Daniel). Si algo aquí contradice una idea nueva, preguntar antes de cambiarlo.
 > Estado (2026-11-16): está construida la base del sitio público (home, portafolio, catálogo, ficha, carrito, a medida, dos paneles de Decap y visor Three.js).
 > Fase 2 lista en código:
-> - Portal `/proyectos/` con generador paramétrico (`assets/js/three/mueble.js`), terminaciones, pines, chat y aprobación. Demo pública en `/proyectos/#demo`; vista del estudio en `/proyectos/#estudio`.
+> - Portal `/proyectos/` en **CSS 3D** (`assets/js/portal/escena-css.js` + `assets/js/editor/modelo.js`), terminaciones, pines, chat y aprobación. Demo pública en `/proyectos/#demo`; vista del estudio en `/proyectos/#estudio`.
 > - Catálogo Masisa: 62 colores en `_data/melaminas.yml`.
 > - API del Worker en `C:\DesarrolloWeb\dmstudio-worker`, con pruebas.
 > - Repo privado `dmstudio-cl/proyectos-clientes` y base D1 `dmstudio-portal` (binding `DB`) creados.
@@ -20,7 +20,7 @@ Estudio de diseño y fabricación de mobiliario (madera y melamina) en Chile.
 
 ## Stack (inamovible)
 - Jekyll + GitHub Pages, Vanilla JS / ES Modules, sin paso de build obligatorio.
-- **3D en CSS** (decisión del 2026-11-17): el dueño eligió trabajar solo con CSS 3D por rendimiento en equipos sin aceleración gráfica. Motor propio en `assets/js/css3d/engine.js` (1 em = 1 cm, luz por cara, sin WebGL). La portada ya lo usa; el portal y la ficha de producto siguen en **Three.js** (import map, versión fija) hasta migrarlos.
+- **3D en CSS** (decisión del 2026-11-17): el dueño eligió trabajar solo con CSS 3D por rendimiento en equipos sin aceleración gráfica. Motor propio en `assets/js/css3d/engine.js` (1 em = 1 cm, luz por cara, sin WebGL). Portada, editor de modelos y portal del cliente (cotizador) usan CSS 3D con el mismo código de dibujo. Solo la ficha de producto mantiene **Three.js** (import map, versión fija) para mostrar modelos `.glb` subidos al catálogo.
 - **Anime.js** (import map, versión fija en `_config.yml`) para animaciones: cargador de la portada y giro con scroll.
 - **Decap CMS** en `/admin` con backend `github` y OAuth mediante el **Cloudflare Worker propio** del dueño.
 - **Web3Forms** (plan gratuito, envío desde el navegador) — una access key exclusiva para este sitio **[PENDIENTE: key y correo destino]**.
@@ -104,7 +104,7 @@ anticipo      = 50% × precio_final
 - Avisos (costo $0): **correo automático** desde el Gmail del estudio vía Apps Script (`dmstudio-worker/apps-script/correo.gs`; secretos del Worker `MAIL_URL` y `MAIL_SECRET`). **WhatsApp con un toque** (`wa.me` con el mensaje escrito); la API oficial de Meta se descartó por costo por mensaje y verificación.
 - Decap privado «plano»: la clave se genera sola (widget `clave`) y los módulos se dibujan en el editor.
 - **Espacio** (vista Planta del editor, `assets/js/editor/planta.js`): `espacio.puntos` = cara interior de los muros (x, z en cm), `espacio.muros[i]` = {etiqueta, espesor, alto} del tramo i, `espacio.cerrado`. Los muebles se ubican con x, z, `rotacion` (grados, como `rotation.y` de Three.js, giro sobre la esquina trasera izquierda) y `elevacion`. Las **etiquetas de muros son internas**: el Worker no las envía al cliente. Cliente y editor dibujan los muros como «casa de muñecas» (solo la cara interior, los que dan a la cámara desaparecen).
-- Pendiente: que el portal del cliente dibuje con CSS 3D y respete los tiradores ubicados a mano (hoy los ubica solo).
+- El portal del cliente dibuja con el mismo `modelo.js` del editor: respeta los tiradores ubicados a mano (con la forma y color que elige el cliente) o los ubica automáticamente. Pines: el punto 3D se obtiene invirtiendo la transformación CSS de la cara bajo el cursor (mismas coordenadas que antes con Three.js).
 
 ## Three.js — buenas prácticas acordadas
 - 1 unidad = 1 cm. Muebles generados por código desde JSON (módulos → piezas), o `.glb` para proyectos no paramétricos.

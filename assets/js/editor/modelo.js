@@ -89,6 +89,68 @@ export function celdas(m) {
   return out;
 }
 
+// ----- tiradores para el portal del cliente -----
+// El cliente elige un tirador del catálogo de precios: { forma: barra|boton|perfil|sin, color, largo (cm) }.
+// Si el estudio ubicó tiradores a mano en el editor, se respetan sus posiciones y se cambia el modelo;
+// si no, se ubican automáticamente con las mismas reglas que tenía three/mueble.js.
+const BARRAS = [['barra-96', 9.6], ['barra-128', 12.8], ['barra-192', 19.2], ['barra-320', 32]];
+const barraPara = (largo = 16) => BARRAS.reduce((a, b) => (Math.abs(b[1] - largo) < Math.abs(a[1] - largo) ? b : a))[0];
+
+export function tiradoresCliente(m, sel) {
+  const forma = sel?.forma || 'barra';
+  if (forma === 'sin') return [];
+  const color = sel?.color || COLORES_TIRADOR.negro;
+  const cs = celdas(m);
+  const celda = (t) => cs.find((k) => k.col === t.col && k.fila === t.fila);
+  const modeloDe = (f, c, rot) => {
+    if (f === 'boton') return { modelo: 'boton' };
+    if (f === 'perfil') return { modelo: 'perfil', largo: (Math.abs(rot % 180) === 90 ? c.h : c.w) * .96 };
+    return { modelo: barraPara(+sel?.largo || 16) };
+  };
+  // Tiradores ubicados a mano en el editor
+  if (m.tiradores?.length) {
+    return m.tiradores.filter(celda).map((t) => ({ ...t, ...(sel ? { ...modeloDe(forma, celda(t), +t.rot || 0), color } : {}) }));
+  }
+  // Ubicación automática
+  const out = [];
+  const largoBarra = TIRADORES[barraPara(+sel?.largo || 16)].largo;
+  for (const c of cs) {
+    const f = m.columnas[c.col].frentes[c.fila], tipo = f.tipo || 'puerta';
+    if (!['puerta', 'puerta_doble', 'cajon'].includes(tipo)) continue;
+    const id = `auto-${c.col}-${c.fila}`;
+    const base = { col: c.col, fila: c.fila, color };
+    const horizontal = tipo === 'cajon' || f.bisagra === 'arriba' || f.bisagra === 'abajo';
+    if (horizontal) {
+      // cajón y puertas abatibles: tirador horizontal junto al canto que se abre
+      const abajo = f.bisagra === 'arriba';
+      const off = forma === 'perfil' ? c.h / 2 - .7 : c.h / 2 - Math.min(forma === 'boton' ? 6 : 5, c.h / 3);
+      out.push({ id, ...base, ...modeloDe(forma, c, 0), dx: 0, dy: abajo ? -off : off, rot: 0 });
+      continue;
+    }
+    const aereo = m.tipo === 'aereo';
+    const altoT = forma === 'boton' ? 0 : forma === 'perfil' ? 0 : largoBarra;
+    const dy = forma === 'perfil' ? 0 : Math.max(0, c.h / 2 - altoT / 2 - (forma === 'boton' ? 6 : 4)) * (aereo ? -1 : 1);
+    const margen = forma === 'perfil' ? .6 : forma === 'boton' ? 4 : 3.5;
+    if (tipo === 'puerta_doble') {
+      for (const s of [-1, 1]) out.push({ id: `${id}-${s}`, ...base, ...modeloDe(forma, c, 90), dx: s * (GAP / 2 + margen), dy, rot: forma === 'boton' ? 0 : 90 });
+    } else {
+      const lado = (f.bisagra || 'izquierda') === 'izquierda' ? 1 : -1; // se abre por el lado contrario a la bisagra
+      out.push({ id, ...base, ...modeloDe(forma, c, 90), dx: lado * (c.w / 2 - margen), dy, rot: forma === 'boton' ? 0 : 90 });
+    }
+  }
+  return out;
+}
+
+// Espacio de proyectos antiguos (solo largo × ancho): se dibujan el muro del fondo y el izquierdo,
+// como lo hacía el visor Three.js.
+export function espacioPortal(esp) {
+  if (!esp) return null;
+  if (esp.puntos?.length >= 2) return esp;
+  const L = +esp.largo, A = +esp.ancho;
+  if (!L && !A) return null;
+  return { alto: +esp.alto || 240, cerrado: false, puntos: [{ x: 0, z: A || 260 }, { x: 0, z: 0 }, { x: L || 360, z: 0 }], muros: [{ espesor: 15 }, { espesor: 15 }] };
+}
+
 // ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
 // Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
@@ -231,7 +293,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
         if (!c || !def) return;
         const g = G.group({ x: c.x + (+t.dx || 0), y: c.y + (+t.dy || 0), z: D + T, rz: +t.rot || 0 });
         const color = { bg: COLORES_TIRADOR[t.color] || t.color || COLORES_TIRADOR.negro };
-        for (const p of def.piezas) g.box({ ...p, tex: color, ref: `${id}|t|${t.id}` });
+        // el perfil se estira al largo indicado (p. ej. el ancho del cajón)
+        const piezas = t.modelo === 'perfil' && +t.largo ? def.piezas.map((p) => ({ ...p, w: +t.largo })) : def.piezas;
+        for (const p of piezas) g.box({ ...p, tex: color, ref: `${id}|t|${t.id}` });
       });
     }
     if (ver('cubierta') && m.cubierta) {

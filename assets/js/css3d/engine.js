@@ -141,9 +141,11 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
       if (f.o !== o) { f.shade.style.opacity = o; f.o = o; }
     }
   }
+  const alAplicar = []; // avisos cuando cambia la vista (p. ej. para reubicar pines en pantalla)
   function apply() {
     rig.style.transform = `rotateX(${angX()}deg) rotateY(${angY()}deg) translate3d(${-center[0]}em, ${center[1]}em, ${-center[2]}em)`;
     shadeAll();
+    for (const fn of alAplicar) fn();
   }
   function loop() {
     frame = 0;
@@ -208,6 +210,16 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     get scale() { return parseFloat(rig.style.fontSize) || 1; },
     get center() { return center; },
     get angles() { return [angX(), angY()]; },
+    onApply(fn) { alAplicar.push(fn); },
+    // Matriz de proyección del espacio del rig (px CSS, y hacia abajo) a la pantalla, relativa al
+    // centro del escenario. Incluye la perspectiva del escenario (salvo en vista ortogonal).
+    proyeccion() {
+      let M = new DOMMatrix(getComputedStyle(rig).transform === 'none' ? undefined : getComputedStyle(rig).transform);
+      const P = parseFloat(el.style.perspective);
+      if (!ortho && P > 0) { const per = new DOMMatrix(); per.m34 = -1 / P; M = per.multiply(M); }
+      return M;
+    },
+    get el() { return el; },
     get faceCount() { return faces.length; },
     // Centro del mueble (cm, y hacia arriba) y tamaño de referencia para encuadrar.
     frame(c, size, f = fill) {
