@@ -11,9 +11,12 @@ export const PALETA = {
   costados: { titulo: 'Costados visibles', def: 'cuerpo', opciones: {
     cuerpo: ['Como el cuerpo', null], frente: ['Igual a la melamina', null] } },
   marco: { titulo: 'Marcos de ventanas', def: 'blanco', opciones: {
-    blanco: ['Blanco', '#e3e1dc'], negro: ['Negro', '#262526'], aluminio: ['Aluminio', '#b4b7b9'], madera: ['Madera', '#9b7650'] } },
+    blanco: ['Blanco', '#e3e1dc'], negro: ['Negro', '#262526'], aluminio: ['Aluminio', '#b4b7b9'], madera: ['Madera', '#9b7650'],
+    grafito: ['Grafito', '#4a4a4c'], bronce: ['Bronce', '#7a5a3a'], champagne: ['Champagne', '#c9b48e'] } },
   hoja: { titulo: 'Puertas de muro', def: 'madera', opciones: {
-    madera: ['Madera clara', '#b49a78'], blanca: ['Blanca', '#e7e4de'], gris: ['Gris', '#8d8a85'], negra: ['Negra', '#2b2a29'] } },
+    madera: ['Madera clara', '#b49a78'], roble: ['Roble', '#a57c4f'], nogal: ['Nogal', '#6e4b33'], wengue: ['Wengué', '#3e2d24'],
+    blanca: ['Blanca', '#e7e4de'], hueso: ['Hueso', '#d9d2c3'], gris: ['Gris', '#8d8a85'], grafito: ['Grafito', '#4a4a4c'], negra: ['Negra', '#2b2a29'],
+    verde: ['Verde salvia', '#8a9a83'], azul: ['Azul petróleo', '#2f4a57'], terracota: ['Terracota', '#a65a3e'] } },
   lavaplatos: { titulo: 'Lavaplatos', def: 'acero', opciones: {
     acero: ['Acero inoxidable', '#b9bdc0'], negro: ['Negro (granito)', '#2b2b2d'], blanco: ['Blanco (granito)', '#e6e3dd'] } },
   cocina: { titulo: 'Cocina y encimeras', def: 'acero', opciones: {

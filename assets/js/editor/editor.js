@@ -187,10 +187,12 @@ function esfera(mid) {
 // Clave de la pieza de un ref ("id|f|0|1", "id|cuerpo|piso"…) o de la selección actual
 const claveDeRef = (ref) => {
   const [mid, ...r] = ref.split('|'); const k = r.join('|');
+  if (mid === 'vano') return { vano: { i: +r[0], v: r[1] } }; // puerta o ventana del muro
   if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k)) return null;
   return { m: mid, k };
 };
 function claveDeSel() {
+  if (sel?.tipo === 'vano') return { vano: { i: sel.i, v: sel.v } };
   if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
   const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
     zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes' }[sel.tipo];
@@ -206,7 +208,16 @@ function nombreClave(k) {
   if (p[0] === 'f') return p[3] === 'rep' ? `la repisa ${+p[4] + 1} (c${+p[1] + 1}·f${+p[2] + 1})` : p[3] === 'div' ? 'las divisiones de la sección' : `el frente c${+p[1] + 1}·f${+p[2] + 1}`;
   return k;
 }
+// Registro guardado de una ventana o puerta (para leer o cambiar su material)
+const vanoRaw = (d, { i, v }) => d.espacio?.muros?.[i]?.vanos?.find((x) => x.id === v);
 function aplicarMaterial(dest, mid) {
+  if (dest.vano) {
+    const r = vanoRaw(modelo, dest.vano); if (!r) return;
+    cambiar((d) => { vanoRaw(d, dest.vano).material = mid; });
+    aviso(`${nombreMaterial(mid)} aplicado en ${(VANOS[r.tipo]?.puerta ? 'la puerta' : 'el marco de la ventana')}. Ctrl+Z deshace.`);
+    if (!$('#tab-mat').hidden) pintarMateriales();
+    return;
+  }
   const m = modulo(dest.m); if (!m) return;
   cambiar(() => { m.materiales = { ...(m.materiales || {}), [dest.k]: mid }; });
   aviso(`${nombreMaterial(mid)} aplicado en ${nombreClave(dest.k)} de «${m.nombre}». Ctrl+Z deshace.`);
@@ -215,6 +226,7 @@ function aplicarMaterial(dest, mid) {
 function pintarMateriales() {
   const usados = new Map();
   for (const m of modelo.modulos) for (const mid of Object.values(m.materiales || {})) usados.set(mid, (usados.get(mid) || 0) + 1);
+  for (const w of modelo.espacio?.muros || []) for (const v of w?.vanos || []) if (v.material) usados.set(v.material, (usados.get(v.material) || 0) + 1);
   const q = ($('#mat-buscar')?.value || '').toLowerCase();
   const tarjeta = (mid, nombre, linea = '') => `<div class="ed-mat" data-mat="${esc(mid)}" title="Arrastra sobre una pieza, o haz clic para aplicarlo a la pieza seleccionada"><i class="ed-esfera" style="${esfera(mid)}"></i><span>${esc(nombre)}${linea ? `<br><small>${esc(linea)}</small>` : ''}</span></div>`;
   const lineas = [...new Set(MEL.map((x) => x.linea || 'Melaminas'))];
@@ -241,7 +253,13 @@ $('#materiales').addEventListener('input', (e) => {
 });
 $('#materiales').addEventListener('click', (e) => {
   const q = e.target.closest('[data-quitar-mat]')?.dataset.quitarMat;
-  if (q) { cambiar(() => modelo.modulos.forEach((m) => { for (const [k, v] of Object.entries(m.materiales || {})) if (v === q) delete m.materiales[k]; })); pintarMateriales(); }
+  if (q) {
+    cambiar(() => {
+      modelo.modulos.forEach((m) => { for (const [k, v] of Object.entries(m.materiales || {})) if (v === q) delete m.materiales[k]; });
+      for (const w of modelo.espacio?.muros || []) for (const v of w?.vanos || []) if (v.material === q) delete v.material;
+    });
+    pintarMateriales();
+  }
 });
 // Arrastrar una esfera: al soltar sobre una pieza se le aplica; un clic la aplica a la pieza seleccionada
 $('#materiales').addEventListener('pointerdown', (e) => {
@@ -254,6 +272,8 @@ $('#materiales').addEventListener('pointerdown', (e) => {
     const celda = bajo?.closest?.('[data-tipo="celda"]'), zoc = bajo?.closest?.('[data-tipo="zocalo"]'), cara = bajo?.closest?.('[data-ref]');
     if (celda) return { m: celda.dataset.m, k: `f|${celda.dataset.col}|${celda.dataset.fila}` };
     if (zoc) return { m: zoc.dataset.m, k: 'zocalo' };
+    const vano = bajo?.closest?.('[data-tipo="vano"]'); // en Frente o en Planta
+    if (vano?.dataset.v) return { vano: { i: +vano.dataset.i, v: vano.dataset.v } };
     if (cara && lienzo.contains(cara)) return claveDeRef(cara.dataset.ref);
     return null;
   };
@@ -262,7 +282,7 @@ $('#materiales').addEventListener('pointerdown', (e) => {
     if (!fantasma) return;
     fantasma.style.left = ev.clientX + 'px'; fantasma.style.top = ev.clientY + 'px';
     const d = destino(ev);
-    estadoEl.textContent = d ? `Soltar en ${nombreClave(d.k)} de «${modulo(d.m).nombre}»` : 'Suelta el material sobre una pieza del mueble';
+    estadoEl.textContent = d?.vano ? 'Soltar en esta puerta o ventana' : d ? `Soltar en ${nombreClave(d.k)} de «${modulo(d.m).nombre}»` : 'Suelta el material sobre una pieza del mueble, una puerta o una ventana';
   };
   const soltar = (ev) => {
     window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
@@ -327,9 +347,9 @@ $('#props').addEventListener('input', (e) => { // intensidad y tono de una luz (
 // Bloque del panel de una pieza: su material propio (o el general) y cómo quitarlo
 function bloqueMaterial() {
   const d = claveDeSel(); if (!d) return '';
-  const mid = modulo(d.m).materiales?.[d.k];
+  const mid = d.vano ? vanoRaw(modelo, d.vano)?.material : modulo(d.m).materiales?.[d.k];
   return `<div class="ed-material-pieza"><i class="ed-esfera" style="${esfera(mid || modelo.frente || 'color:#cfc6b8')}"></i>
-    <span style="flex:1">${mid ? `<b>${esc(nombreMaterial(mid))}</b><br><small>material propio</small>` : '<small>Material general</small>'}</span>
+    <span style="flex:1">${mid ? `<b>${esc(nombreMaterial(mid))}</b><br><small>material propio</small>` : `<small>${d.vano ? 'Color general (Colores y materiales)' : 'Material general'}</small>`}</span>
     ${mid ? '<button data-a="quitar-material">Quitar</button>' : ''}<button data-a="ver-materiales">Cambiar…</button></div>`;
 }
 // Panel «Colores y materiales»: una lista corta por parte del mueble y del espacio
@@ -1419,7 +1439,8 @@ function props() {
         ${num('v.desde', 'Desde el extremo izq.', v.desde, { min: 0 })}${num('v.hasta', 'Hasta el extremo der.', Math.round((w.largo - v.desde - v.ancho) * 10) / 10, { min: 0 })}
       </div>
       <div class="ed-botones"><button data-a="centrar-vano">Centrar en el muro</button><button data-a="borrar-vano" class="peligro">Eliminar</button></div>
-      <p class="ed-ayuda">Medidas en cm. Arrástrala en la vista Frente del muro; las flechas la mueven (Mayús: 10 cm).</p></div>`;
+      ${def.hojas ? `<p class="sub" style="margin-top:12px">${def.puerta ? 'Color de la puerta' : 'Color del marco'}</p>${bloqueMaterial()}` : ''}
+      <p class="ed-ayuda">Medidas en cm. Arrástrala en la vista Frente del muro; las flechas la mueven (Mayús: 10 cm). Para cambiarle el color, arrastra un material de la pestaña «Materiales» sobre ella.</p></div>`;
     return;
   }
   if (sel.tipo === 'multi') {
@@ -1715,6 +1736,8 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'borrar-art') { borrarSel(); return; }
   if (b.dataset.a === 'centrar-art') { cambiarArtefacto((a, m, { W }) => { a.desde = r1((W - Math.min(+a.ancho, W)) / 2); }); return; }
   if (b.dataset.a === 'borrar-div') { borrarSel(); return; }
+  if (b.dataset.a === 'quitar-material' && sel.tipo === 'vano') { const v = { i: sel.i, v: sel.v }; cambiar((d) => { delete vanoRaw(d, v).material; }); return; }
+  if (b.dataset.a === 'ver-materiales' && sel.tipo === 'vano') { $('.ed-tabs [data-tab="mat"]').click(); return; }
   if (b.dataset.a === 'borrar-vano' || b.dataset.a === 'centrar-vano') {
     const s = { ...sel };
     if (b.dataset.a === 'borrar-vano') { cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); }

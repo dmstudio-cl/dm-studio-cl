@@ -213,8 +213,8 @@ collections:
           - { label: Zócalo, name: zocalo, widget: select, options: [grafito, negro, aluminio, blanco, frente], required: false }
           - { label: Interior y cuerpo, name: cuerpo, widget: select, options: [blanco, gris, negro], required: false }
           - { label: Costados visibles, name: costados, widget: select, options: [cuerpo, frente], required: false }
-          - { label: Marcos de ventanas, name: marco, widget: select, options: [blanco, negro, aluminio, madera], required: false }
-          - { label: Puertas de muro, name: hoja, widget: select, options: [madera, blanca, gris, negra], required: false }
+          - { label: Marcos de ventanas, name: marco, widget: select, options: [blanco, negro, aluminio, madera, grafito, bronce, champagne], required: false }
+          - { label: Puertas de muro, name: hoja, widget: select, options: [madera, roble, nogal, wengue, blanca, hueso, gris, grafito, negra, verde, azul, terracota], required: false }
           - { label: Lavaplatos, name: lavaplatos, widget: select, options: [acero, negro, blanco], required: false }
           - { label: Cocina y encimeras, name: cocina, widget: select, options: [acero, negro, blanco], required: false }
 
@@ -261,6 +261,7 @@ collections:
                   - { label: Ancho (cm), name: ancho, widget: number, value_type: float }
                   - { label: Alto (cm), name: alto, widget: number, value_type: float }
                   - { label: Antepecho (cm), name: antepecho, widget: number, value_type: float, default: 0 }
+                  - { label: Material propio (lo asigna el editor), name: material, widget: string, required: false }
           - { label: Fotos del cliente, name: fotos, widget: list, required: false, field: { label: Foto, name: foto, widget: image } }
 
       - label: Costos internos (NUNCA se muestran al cliente)

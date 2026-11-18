@@ -336,7 +336,7 @@ export function vanosDe(w) {
     const alto = Math.min(Math.max(10, +v.alto || def.alto), w.alto);
     const antepecho = def.puerta ? 0 : Math.min(Math.max(0, +v.antepecho || 0), w.alto - alto);
     const desde = Math.min(Math.max(0, +v.desde || 0), w.largo - ancho);
-    return { id: v.id || '', tipo: VANOS[v.tipo] ? v.tipo : 'vano', ancho, alto, antepecho, desde };
+    return { id: v.id || '', tipo: VANOS[v.tipo] ? v.tipo : 'vano', ancho, alto, antepecho, desde, ...(v.material ? { material: v.material } : {}) };
   });
 }
 
@@ -411,6 +411,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     lavaplatos: mats.lavaplatos || 'acero', cocina: mats.cocina || 'acero',
     manilla: { bg: '#2a2725' },
     piso: mats.piso || '#2a2826',
+    material: mats.material, // resolver de materiales por pieza (lo usan también las ventanas y puertas)
   };
   if (ver('muros')) dibujarEspacio(st, modelo.espacio, M);
 
@@ -555,14 +556,16 @@ function dibujarVano(g, v, m, xl, k, M) {
   // Solo caras que miran hacia adentro: así el vano desaparece junto con su muro (casa de muñecas).
   if (!def.hojas) return; // vano libre
   const zf = -e / 2; // plano del marco: al centro del muro
-  const barra = (w, h, x, y) => g.box({ w, h, d: 1, x, y, z: zf + .5, tex: M.marco, ref, caras: ['front'] });
+  // material propio (arrastrado desde la biblioteca): la hoja de la puerta o el marco de la ventana
+  const propio = v.material && M.material?.(v.material), MMarco = !def.puerta && propio ? { bg: propio } : M.marco, MHoja = def.puerta && propio ? { bg: propio } : M.hoja;
+  const barra = (w, h, x, y) => g.box({ w, h, d: 1, x, y, z: zf + .5, tex: MMarco, ref, caras: ['front'] });
   const F = 4; // ancho del perfil del marco (cm)
   if (def.puerta) {
     const n = def.hojas, hw = (v.ancho - 2 * F) / n;
     barra(F, v.alto, xl(v.desde + F / 2), cy); barra(F, v.alto, xl(v.desde + v.ancho - F / 2), cy); barra(v.ancho, F, cx, y1 - F / 2);
     for (let i = 0; i < n; i++) {
       const d0 = v.desde + F + i * hw, dc = d0 + hw / 2;
-      g.box({ w: hw - .4, h: v.alto - F - .3, d: 1, x: xl(dc), y: (v.alto - F) / 2, z: zf + 1, tex: M.hoja, ref, caras: ['front'] });
+      g.box({ w: hw - .4, h: v.alto - F - .3, d: 1, x: xl(dc), y: (v.alto - F) / 2, z: zf + 1, tex: MHoja, ref, caras: ['front'] });
       // manilla: en una hoja, al lado derecho; en dos hojas, hacia el centro
       const dm = n === 1 ? d0 + hw - 7 : i === 0 ? d0 + hw - 6 : d0 + 6;
       g.box({ w: 2.5, h: 12, d: 2, x: xl(dm), y: 100, z: zf + 2.6, tex: M.manilla, ref, caras: ['front'] });
