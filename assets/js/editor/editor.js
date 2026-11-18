@@ -9,7 +9,7 @@ import { huella, girar } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
-import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla } from './plantillas.js';
+import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo } from './proyecto.js';
 
@@ -1462,15 +1462,18 @@ function props() {
   }
   if (sel.tipo === 'modulo' || sel.tipo === 'cuerpo') {
     const pl = leerPlantilla(m);
-    const bloquePl = pl ? `<div class="ed-plantilla"><p class="sub">${esc(PLANTILLAS[pl.t]?.nombre || 'Cocina de referencia')} · se ajusta sola</p>
+    const defP = PLANTILLAS[pl?.t] || {}, esIsla = pl?.t?.startsWith('isla');
+    const bloquePl = pl ? `<div class="ed-plantilla"><p class="sub">${esc(defP.nombre || 'Cocina de referencia')} · se ajusta sola</p>
       <div class="ed-campos">
-        ${[...PLANTILLAS[pl.t].medidas, 'fondo', 'alto', 'zocalo', ...(pl.p.aereos ? ['altoAereo', 'sepAereo', 'fondoAereo'] : []), 'x', 'z']
-          .map((k) => `<label class="ed-campo">${ETIQUETAS[k]}<span class="u" data-u="cm"><input type="number" step="0.5" data-pk="${k}" value="${pl.p[k]}"></span></label>`).join('')}
+        ${[...defP.medidas, 'fondo', 'alto', 'zocalo', ...(pl.p.aereos ? ['altoAereo', 'sepAereo', 'fondoAereo'] : []), ...((defP.extra || []).includes('lamparas') ? ['lamparas'] : []), 'x', 'z']
+          .map((k) => `<label class="ed-campo">${(esIsla && { largoA: 'Largo de la isla', fondo: 'Fondo (lado cocina)', alto: 'Alto (sin cubierta)' }[k]) || ETIQUETAS[k]}<span class="u" data-u="${k === 'lamparas' ? 'un.' : 'cm'}"><input type="number" step="${k === 'lamparas' ? 1 : .5}" min="0" data-pk="${k}" value="${pl.p[k] ?? 0}"></span></label>`).join('')}
+        ${(defP.extra || []).filter((k) => SELECTS[k]).map((k) => `<label class="ed-campo ancho2">${ETIQUETAS[k]}<select data-pk="${k}">${Object.entries(SELECTS[k]).map(([v, n]) => `<option value="${v}"${pl.p[k] === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`).join('')}
       </div>
-      ${pl.t !== 'isla' ? `<label class="ed-check"><input type="checkbox" data-pk="aereos"${pl.p.aereos ? ' checked' : ''}> Muebles aéreos</label>
+      ${(defP.opciones || []).map((k) => `<label class="ed-check"><input type="checkbox" data-pk="${k}"${pl.p[k] ? ' checked' : ''}> ${ETIQUETAS[k]}</label>`).join('')}
+      ${!esIsla ? `<label class="ed-check"><input type="checkbox" data-pk="aereos"${pl.p.aereos ? ' checked' : ''}> Muebles aéreos</label>
       <label class="ed-check"><input type="checkbox" data-pk="lavaplatos"${pl.p.lavaplatos ? ' checked' : ''}> Lavaplatos (80 cm)</label>
       <label class="ed-check"><input type="checkbox" data-pk="cocina"${pl.p.cocina ? ' checked' : ''}> Hueco para cocina (76 cm)</label>` : ''}
-      <div class="ed-botones"><button data-a="desagrupar">Desagrupar (editar libre)</button><button data-a="borrar-cocina" class="peligro">Eliminar esta cocina</button></div>
+      <div class="ed-botones"><button data-a="desagrupar">Desagrupar (editar libre)</button><button data-a="borrar-cocina" class="peligro">Eliminar ${esIsla ? 'esta isla' : 'esta cocina'}</button></div>
       </div>` : '';
     const g = grupoDe(m);
     const bloqueG = m.grupo ? `<div class="ed-plantilla"><p class="sub">Parte de un mueble agrupado · ${g.length} piezas</p>
@@ -1625,8 +1628,8 @@ $('#props').addEventListener('change', (e) => {
   const pk = e.target.dataset?.pk;
   if (pk && sel) {
     const pl = leerPlantilla(modulo(sel.m)); if (!pl) return;
-    const v = e.target.type === 'checkbox' ? e.target.checked : parseFloat(e.target.value);
-    if (e.target.type !== 'checkbox' && !(isFinite(v) && (v > 0 || pk === 'x' || pk === 'z'))) return;
+    const v = e.target.type === 'checkbox' ? e.target.checked : e.target.tagName === 'SELECT' ? e.target.value : parseFloat(e.target.value);
+    if (e.target.type === 'number' && !(isFinite(v) && (v > 0 || (CERO_OK.includes(pk) && v >= 0)))) return;
     const p = { ...pl.p, [pk]: v };
     regenerarPlantilla(pl.g, pl.t, p);
     return;
@@ -1698,8 +1701,8 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'desagrupar' || b.dataset.a === 'borrar-cocina') {
     const pl = leerPlantilla(modulo(sel.m)); if (!pl) return;
     const del = (m) => leerPlantilla(m)?.g === pl.g;
-    if (b.dataset.a === 'borrar-cocina') { cambiar((d) => { d.modulos = d.modulos.filter((m) => !del(m)); }); sel = null; render(); }
-    else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); });
+    if (b.dataset.a === 'borrar-cocina') { cambiar((d) => { d.modulos = d.modulos.filter((m) => !del(m)); d.objetos = (d.objetos || []).filter((o) => !del(o)); }); sel = null; render(); }
+    else cambiar((d) => { d.modulos.forEach((m) => { if (del(m)) delete m.plantilla; }); (d.objetos || []).forEach((o) => { if (del(o)) delete o.plantilla; }); });
     return;
   }
   if (b.dataset.a.startsWith('art:')) { agregarArtefacto(b.dataset.a.slice(4)); return; }
@@ -2067,13 +2070,14 @@ function regenerarPlantilla(gid, tipo, p) {
   cambiar((d) => {
     d.modulos = d.modulos.filter((m) => leerPlantilla(m)?.g !== gid);
     d.modulos.splice(Math.max(0, idx), 0, ...nuevos);
+    d.objetos = [...(d.objetos || []).filter((o) => leerPlantilla(o)?.g !== gid), ...(nuevos.objetos || [])]; // lámparas de la isla
   });
   sel = { tipo: 'modulo', m: nuevos[0].id }; render();
 }
 $('#plantillas').addEventListener('click', (e) => {
   const t = e.target.closest('[data-plantilla]')?.dataset.plantilla; if (!t) return;
   const nuevos = generar(t, parametrosIniciales(t, modelo.espacio));
-  cambiar((d) => { d.modulos.push(...nuevos); });
+  cambiar((d) => { d.modulos.push(...nuevos); if (nuevos.objetos?.length) d.objetos = [...(d.objetos || []), ...nuevos.objetos]; });
   sel = { tipo: 'modulo', m: nuevos[0].id };
   if (vista === 'frente') setVista('planta');
   render(); encuadrar(true);
