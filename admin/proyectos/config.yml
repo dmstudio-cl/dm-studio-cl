@@ -100,7 +100,8 @@ collections:
             summary: "{{fields.en}} · {{fields.lado}} · {{fields.tono}}"
             fields:
               - { label: ID, name: id, widget: string, required: false }
-              - { label: Dónde (modulo o f|columna|fila), name: en, widget: string }
+              - { label: Dónde (modulo, cubierta o f|columna|fila), name: en, widget: string }
+              - { label: Espacio entre repisas (desde abajo), name: esp, widget: number, value_type: int, required: false }
               - { label: Lado, name: lado, widget: select, options: [arriba, abajo, izq, der, atras] }
               - { label: Tono, name: tono, widget: select, options: [calida, neutra, fria] }
               - { label: Intensidad (0 a 1), name: intensidad, widget: number, value_type: float, required: false }

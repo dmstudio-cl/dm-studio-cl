@@ -31,7 +31,7 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
@@ -271,20 +271,45 @@ $('#materiales').addEventListener('pointerdown', (e) => {
   };
   window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
 });
-// ----- luces LED: en una sección (frente seleccionado) o en el mueble completo (módulo seleccionado)
+// ----- luces LED: se agregan según lo que está seleccionado (como en las apps de diseño: clic en la pieza → «+ Luz»)
+//  · repisa  → luz bajo esa repisa (ilumina el espacio de abajo)
+//  · sección → una luz en cada espacio entre repisas
+//  · cubierta → bajo el vuelo (ej. lado de las sillas de una isla)
+//  · mueble  → bajo el mueble, sobre él, detrás (halo) o a los costados
 let tonoLuz = 'calida';
-const destinoLuz = () => (sel?.tipo === 'frente' ? `f|${sel.col}|${sel.fila}` : 'modulo');
+const LADOS_MUEBLE = { abajo: 'Bajo el mueble', arriba: 'Sobre el mueble', atras: 'Detrás (halo en el muro)', izq: 'Costado izq.', der: 'Costado der.' };
+const LADOS_CUB = { atras: 'atrás', frente: 'frente', izq: 'izquierda', der: 'derecha' };
+function lucesDeSel(m) {
+  const sec = (sel.tipo === 'frente' || sel.tipo === 'repisa') ? `f|${sel.col}|${sel.fila}` : null;
+  if (sel.tipo === 'repisa') return (m.luces || []).filter((L) => L.en === sec && +L.esp === sel.i);
+  if (sec) return (m.luces || []).filter((L) => L.en === sec);
+  if (sel.tipo === 'cubierta') return (m.luces || []).filter((L) => L.en === 'cubierta');
+  return (m.luces || []).filter((L) => L.en === 'modulo');
+}
+const nombreLuz = (L, m) => {
+  if (L.en === 'modulo') return LADOS_MUEBLE[L.lado] || L.lado;
+  if (L.en === 'cubierta') return `Bajo la cubierta (${LADOS_CUB[L.lado] || L.lado})`;
+  const [, c, f] = L.en.split('|').map(Number), k = celdas(m).find((x) => x.col === c && x.fila === f), n = k?.repisas || 0;
+  const e = L.esp == null ? n : +L.esp;
+  return n ? (e === n ? 'Espacio de arriba' : `Bajo la repisa ${e + 1}`) : 'En la sección';
+};
+function ladoVuelo(m) { const v = cubiertaDe(m).v; return sel.cara && sel.cara in v ? sel.cara : ['atras', 'izq', 'der', 'frente'].reduce((a, b) => (v[b] > v[a] ? b : a), 'atras'); }
 function bloqueLuces(m) {
-  const en = destinoLuz(), luces = (m.luces || []).filter((L) => L.en === en);
-  const lados = en === 'modulo' ? { abajo: 'Bajo el mueble', arriba: 'Sobre el mueble', atras: 'Detrás (halo en el muro)', izq: 'Costado izq.', der: 'Costado der.' } : LADOS_LUZ;
-  return `<div class="ed-luces"><p class="sub">Iluminación LED ${en === 'modulo' ? 'del mueble' : 'de esta sección'}</p>
-    <div class="ed-luz-tonos">${Object.entries(TONOS_LUZ).map(([k, [n, rgb]]) => `<button data-a="tono:${k}"${tonoLuz === k ? ' class="ed-primario"' : ''}><i style="background:rgb(${rgb})"></i>${n}</button>`).join('')}</div>
-    <div class="ed-botones">${Object.entries(lados).map(([k, n]) => `<button data-a="luz+:${k}">+ ${n}</button>`).join('')}</div>
-    ${luces.map((L) => `<div class="ed-luz"><i style="background:rgb(${(TONOS_LUZ[L.tono] || TONOS_LUZ.calida)[1]})"></i><span>${lados[L.lado] || L.lado}</span>
-      <select data-luz="${L.id}" data-lk="tono">${Object.entries(TONOS_LUZ).map(([k, [n]]) => `<option value="${k}"${L.tono === k ? ' selected' : ''}>${n}</option>`).join('')}</select>
+  const k = (sel.tipo === 'frente' || sel.tipo === 'repisa') ? celdas(m).find((x) => x.col === sel.col && x.fila === sel.fila) : null;
+  let acciones = '';
+  if (sel.tipo === 'repisa') acciones = `<button data-a="luz+rep" class="ed-primario">+ Luz bajo esta repisa</button>`;
+  else if (sel.tipo === 'frente') acciones = `<button data-a="luz+esp" class="ed-primario">+ Una luz en cada espacio (${(k?.repisas || 0) + 1})</button>${k?.tipo !== 'abierto' ? '' : ''}`;
+  else if (sel.tipo === 'cubierta') acciones = `<button data-a="luz+cub" class="ed-primario">+ Luz bajo la cubierta (${LADOS_CUB[ladoVuelo(m)]})</button>`;
+  else acciones = Object.entries(LADOS_MUEBLE).map(([l, n]) => `<button data-a="luz+:${l}">+ ${n}</button>`).join('');
+  const luces = lucesDeSel(m);
+  return `<div class="ed-luces"><p class="sub">Iluminación LED</p>
+    <div class="ed-luz-tonos">${Object.entries(TONOS_LUZ).map(([t, [n, rgb]]) => `<button data-a="tono:${t}"${tonoLuz === t ? ' class="ed-primario"' : ''}><i style="background:rgb(${rgb})"></i>${n}</button>`).join('')}</div>
+    <div class="ed-botones">${acciones}${luces.length > 1 ? '<button data-a="luces-quitar" class="peligro">Quitar estas luces</button>' : ''}</div>
+    ${luces.map((L) => `<div class="ed-luz"><i style="background:rgb(${(TONOS_LUZ[L.tono] || TONOS_LUZ.calida)[1]})"></i><span>${esc(nombreLuz(L, m))}</span>
+      <select data-luz="${L.id}" data-lk="tono">${Object.entries(TONOS_LUZ).map(([t, [n]]) => `<option value="${t}"${L.tono === t ? ' selected' : ''}>${n}</option>`).join('')}</select>
       <input type="range" min="15" max="100" value="${Math.round((L.intensidad ?? .8) * 100)}" data-luz="${L.id}" data-lk="intensidad" title="Intensidad">
       <button data-a="luz-:${L.id}" title="Quitar">✕</button></div>`).join('')}
-    <p class="ed-ayuda">${en === 'modulo' ? 'Elige un frente (sección) para poner la luz dentro de ella.' : 'Se ve mejor con la sección abierta (sin puerta).'} Es una referencia visual.</p></div>`;
+    <p class="ed-ayuda">${sel.tipo === 'modulo' || sel.tipo === 'cuerpo' ? 'Para luces en repisas, haz clic en una repisa o en la sección; para el lado de las sillas, en la cubierta.' : 'Capas → «Noche» oscurece la escena para ver cómo iluminan.'}</p></div>`;
 }
 $('#props').addEventListener('input', (e) => { // intensidad y tono de una luz (sin rehacer todo el panel)
   const id = e.target.dataset?.luz; if (!id || !sel?.m) return;
@@ -548,6 +573,7 @@ function render({ panel = true } = {}) {
   dibujarPlano();
   if (panel) { arbol(); props(); }
   opcionesMuroFrente();
+  ponerManija();
   $('#nombre').value = modelo.nombre || '';
 }
 
@@ -1141,6 +1167,72 @@ function ubicarTirador(m, ci, fi, modeloT, punto = null) {
 
 // ===================== 3D: clic para seleccionar =====================
 let toque = null;
+// ----- extruir una cara de la cubierta en 3D: al tocar la cara, la vista gira para que esa dirección quede
+// de lado a lado en la pantalla; luego se arrastra la manija (o la misma cara) y la placa completa crece o se achica.
+const NORMAL_CUB = { frente: [0, 1], atras: [0, -1], izq: [-1, 0], der: [1, 0] };
+function caraCubierta(m, lado) {
+  const cb = cubiertaDe(m), r = +m.rotacion || 0, y = +m.elevacion + +m.alto + CT / 2;
+  const [lx, lz] = { frente: [(cb.x0 + cb.x1) / 2, cb.z1], atras: [(cb.x0 + cb.x1) / 2, cb.z0], izq: [cb.x0, (cb.z0 + cb.z1) / 2], der: [cb.x1, (cb.z0 + cb.z1) / 2] }[lado];
+  const [dx, dz] = girar(lx, lz, r), [nx, nz] = girar(...NORMAL_CUB[lado], r);
+  return { c: [+m.x + dx, y, +m.z + dz], n: [nx, 0, nz] };
+}
+function aPantalla([x, y, z]) { // punto del mundo (cm) → px de pantalla
+  const s = st.scale, P = st.proyeccion(), q = P.transformPoint(new DOMPoint(x * s, -y * s, z * s, 1)), r = escena.getBoundingClientRect();
+  return [r.left + r.width / 2 + q.x / q.w, r.top + r.height / 2 + q.y / q.w];
+}
+function orientarHacia(n) { // gira la cámara para que la normal n apunte hacia la derecha de la pantalla
+  const [rx0, ry0] = st.angles; let mejor = ry0, puntaje = -2;
+  for (let ry = 0; ry < 360; ry += 5) {
+    st.set(-16, ry);
+    const a = aPantalla([0, 0, 0]), b = aPantalla([n[0] * 100, 0, n[2] * 100]), dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    const p = dx / L - Math.abs(dy) / L * .5;
+    if (p > puntaje) { puntaje = p; mejor = ry; }
+  }
+  st.set(rx0, ry0); st.view(-16, mejor);
+}
+const manija = document.createElement('div');
+manija.className = 'ed-extruir'; manija.hidden = true; manija.innerHTML = '<span>⇆</span><b></b>';
+manija.title = 'Arrastra para extruir la cubierta (hacia afuera crece, hacia adentro se achica)';
+lienzo.append(manija);
+function ponerManija() {
+  const m = sel?.tipo === 'cubierta' && sel.cara && vista === '3d' && modulo(sel.m);
+  if (!m || !m.cubierta) { manija.hidden = true; return; }
+  const { c } = caraCubierta(m, sel.cara), [px, py] = aPantalla(c), r = lienzo.getBoundingClientRect();
+  manija.hidden = false; manija.style.left = `${px - r.left}px`; manija.style.top = `${py - r.top}px`;
+  manija.querySelector('b').textContent = `${cm(cubiertaDe(m).v[sel.cara])} cm`;
+}
+st.onApply(ponerManija);
+let extr = null;
+function empezarExtruir(e) {
+  const m = modulo(sel.m), lado = sel.cara, { c, n } = caraCubierta(m, lado);
+  const a = aPantalla(c), b = aPantalla([c[0] + n[0] * 10, c[1], c[2] + n[2] * 10]);
+  extr = { m: m.id, lado, x0: e.clientX, y0: e.clientY, v0: cubiertaDe(m).v[lado], vx: (b[0] - a[0]) / 10, vy: (b[1] - a[1]) / 10, antes: JSON.stringify(modelo) };
+  e.stopPropagation(); e.preventDefault();
+  window.addEventListener('pointermove', moverExtruir); window.addEventListener('pointerup', soltarExtruir);
+}
+function moverExtruir(e) {
+  if (!extr) return;
+  const m = modulo(extr.m), q = extr.vx * extr.vx + extr.vy * extr.vy || 1;
+  const d = ((e.clientX - extr.x0) * extr.vx + (e.clientY - extr.y0) * extr.vy) / q; // cm a lo largo de la normal
+  m[`vuelo_${extr.lado}`] = Math.max(0, Math.min(150, snap(extr.v0 + d, .5)));
+  estadoEl.textContent = `Vuelo ${LADOS_CUB[extr.lado]}: ${cm(cubiertaDe(m).v[extr.lado])} cm   ·   suelta para terminar`;
+  render({ panel: false });
+}
+function soltarExtruir() {
+  window.removeEventListener('pointermove', moverExtruir); window.removeEventListener('pointerup', soltarExtruir);
+  const g = extr; extr = null; if (!g) return;
+  if (JSON.stringify(modelo) !== g.antes) { hist.push(g.antes); fut.length = 0; guardar(); }
+  toque = null; render();
+  const m = modulo(g.m); if (m) aviso(`Vuelo ${LADOS_CUB[g.lado]}: ${cm(cubiertaDe(m).v[g.lado])} cm. Ctrl+Z deshace.`);
+}
+manija.addEventListener('pointerdown', (e) => { if (e.button === 0) empezarExtruir(e); });
+// arrastrar la misma cara elegida también extruye (sin girar la vista)
+escena.addEventListener('pointerdown', (e) => {
+  if (e.button > 0 || sel?.tipo !== 'cubierta' || !sel.cara || vista !== '3d') return;
+  const f = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]');
+  const lado = { front: 'frente', back: 'atras', left: 'izq', right: 'der' }[f?.dataset.cara];
+  if (f?.dataset.ref === `${sel.m}|cubierta` && lado === sel.cara) empezarExtruir(e);
+}, { capture: true });
 escena.addEventListener('pointerdown', (e) => { toque = { x: e.clientX, y: e.clientY }; });
 escena.addEventListener('pointerup', (e) => {
   if (!toque || Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > 5) return;
@@ -1149,6 +1241,7 @@ escena.addEventListener('pointerup', (e) => {
   sel = f ? desdeRef(f.dataset.ref) : null;
   if (sel?.tipo === 'cubierta') sel.cara = { front: 'frente', back: 'atras', left: 'izq', right: 'der' }[f.dataset.cara] || null; // la cara tocada se puede extruir
   render();
+  if (sel?.tipo === 'cubierta' && sel.cara) { orientarHacia(caraCubierta(modulo(sel.m), sel.cara).n); aviso(`Cara ${LADOS_CUB[sel.cara]} de la cubierta: arrastra la manija ⇆ (o la cara) para extruirla.`); }
 });
 // ----- selección múltiple
 const idsSel = () => (sel?.tipo === 'multi' ? sel.ids : sel?.m && sel.tipo !== 'muro' ? [sel.m] : []);
@@ -1443,14 +1536,14 @@ function props() {
       <p class="sub" style="margin-top:10px">Vuelos: cuánto sobresale del mueble${sel.cara ? ` · cara elegida: ${lados[sel.cara].toLowerCase()}` : ''}</p>
       <div class="ed-campos">${Object.entries(lados).map(([k, n]) => num(`v.${k}`, n, cb.v[k], { cls: sel.cara === k ? 'resaltado' : '' })).join('')}</div>
       <div class="ed-botones"><button data-a="barra-desayuno" class="ed-primario">Barra de desayuno (${sel.cara && sel.cara !== 'frente' ? lados[sel.cara].toLowerCase() : 'atrás'}: 60 cm)</button></div>
-      <p class="ed-ayuda">Toca una cara de la cubierta en 3D para elegir el lado, o arrastra sus bordes en Planta para extruirla.</p>
+      <p class="ed-ayuda">Toca el canto de la cubierta en 3D: la vista gira hacia ese lado y aparece la manija ⇆ para extruirla. En Planta también puedes arrastrar sus bordes.</p>
       <p class="sub" style="margin-top:10px">Agregar sobre la cubierta</p>
       <div class="ed-biblio ed-plantillas">${DE_CUBIERTA.map((k) => `<button type="button" data-a="art:${k}">${ARTEFACTOS[k].nombre}</button>`).join('')}</div>
       ${artefactosDe(m).map((a) => `<button class="ed-fila-art" data-a="ver-art:${a.id}">${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)} × ${cm(a.fondo)}</small></button>`).join('')}
       <div class="ed-botones"><button data-a="quitar-cubierta" class="peligro">Quitar cubierta</button></div>`;
   }
   if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo'].includes(sel.tipo)) h += bloqueMaterial();
-  if (['frente', 'cuerpo', 'modulo'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
+  if (['frente', 'cuerpo', 'modulo', 'repisa', 'cubierta'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
   // Piezas quitadas del cuerpo (se pueden restaurar)
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
     h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Piezas quitadas: ${m.quitar.map((p) => (NOMBRE_PIEZA[p] || p).toLowerCase()).join(', ')}</p><div class="ed-botones"><button data-a="restaurar-piezas">Restaurar piezas</button></div></div>`;
@@ -1665,7 +1758,20 @@ $('#props').addEventListener('click', (e) => {
   }
   if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
   if (a.startsWith('tono:')) { tonoLuz = a.slice(5); props(); return; }
-  if (a.startsWith('luz+:')) { const L = { id: uid('l'), en: destinoLuz(), lado: a.slice(5), tono: tonoLuz, intensidad: .8 }; cambiar(() => { m.luces = [...(m.luces || []), L]; }); aviso('Luz agregada. Cambia el tono o la intensidad en el panel; Capas → Luces la oculta.'); return; }
+  const nuevaLuz = (o) => ({ id: uid('l'), tono: tonoLuz, intensidad: .8, lado: 'arriba', ...o });
+  if (a.startsWith('luz+:')) { cambiar(() => { m.luces = [...(m.luces || []), nuevaLuz({ en: 'modulo', lado: a.slice(5) })]; }); return; }
+  if (a === 'luz+rep') { // bajo esta repisa: ilumina el espacio que queda debajo
+    const en = `f|${sel.col}|${sel.fila}`, i = sel.i;
+    if ((m.luces || []).some((L) => L.en === en && +L.esp === i)) { aviso('Esta repisa ya tiene luz.'); return; }
+    cambiar(() => { m.luces = [...(m.luces || []), nuevaLuz({ en, esp: i })]; }); return;
+  }
+  if (a === 'luz+esp') { // una luz en cada espacio de la sección (bajo cada repisa y bajo el techo de la sección)
+    const en = `f|${sel.col}|${sel.fila}`, n = celdas(m).find((x) => x.col === sel.col && x.fila === sel.fila)?.repisas || 0;
+    cambiar(() => { m.luces = [...(m.luces || []).filter((L) => L.en !== en), ...Array.from({ length: n + 1 }, (_, e) => nuevaLuz({ en, esp: e }))]; });
+    aviso(`${n + 1} luces: una en cada espacio de la sección.`); return;
+  }
+  if (a === 'luz+cub') { const lado = ladoVuelo(m); cambiar(() => { m.luces = [...(m.luces || []).filter((L) => !(L.en === 'cubierta' && L.lado === lado)), nuevaLuz({ en: 'cubierta', lado })]; }); return; }
+  if (a === 'luces-quitar') { const ids = lucesDeSel(m).map((L) => L.id); cambiar(() => { m.luces = (m.luces || []).filter((L) => !ids.includes(L.id)); }); return; }
   if (a.startsWith('luz-:')) { const id = a.slice(5); cambiar(() => { m.luces = (m.luces || []).filter((L) => L.id !== id); }); return; }
   if (a === 'barra-desayuno') { const lado = sel.cara && sel.cara !== 'frente' ? sel.cara : 'atras'; cambiar(() => { m[`vuelo_${lado}`] = 60; }); aviso('Cubierta con 60 cm de vuelo para sentarse. Ajusta la medida en el panel o arrastrando el borde en Planta.'); return; }
   if (a === 'ver-abajo') { setVista('inferior'); render(); return; }
@@ -1775,7 +1881,12 @@ function aviso(t) { estadoEl.textContent = t; }
 
 $$('[data-vista]').forEach((b) => b.addEventListener('click', () => setVista(b.dataset.vista)));
 $$('[data-herr]').forEach((b) => b.addEventListener('click', () => setHerr(b.dataset.herr)));
-$('#capas').addEventListener('change', (e) => { const c = e.target.dataset.capa; if (c) { capas[c] = e.target.checked; render(); } });
+$('#capas').addEventListener('change', (e) => {
+  const c = e.target.dataset.capa; if (!c) return;
+  capas[c] = e.target.checked;
+  if (c === 'noche') { st.noche(capas.noche ? .62 : 0); return; } // solo cambia la sombra de las caras
+  render();
+});
 $('#nombre').addEventListener('change', (e) => cambiar(() => { modelo.nombre = e.target.value.trim() || 'Sin nombre'; }));
 
 // Secciones del panel izquierdo: plegables, recuerda cuáles quedaron abiertas (solo en este navegador)

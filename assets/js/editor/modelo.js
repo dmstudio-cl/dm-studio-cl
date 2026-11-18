@@ -110,12 +110,12 @@ export const TONOS_LUZ = { calida: ['Cálida (2700 K)', '255, 176, 96'], neutra:
 export const LADOS_LUZ = { arriba: 'Arriba', abajo: 'Abajo', izq: 'Izquierda', der: 'Derecha', atras: 'Atrás' };
 function dibujarLuz(G, m, L, { T, W, H, D, Z, cs }) {
   const rgb = (TONOS_LUZ[L.tono] || TONOS_LUZ.calida)[1], a = Math.max(.15, Math.min(1, L.intensidad == null ? .8 : +L.intensidad));
-  const c = (k) => `rgba(${rgb}, ${(k * a).toFixed(2)})`;
-  const halo = (dir) => (dir === 'radial' ? `radial-gradient(ellipse at 50% 50%, ${c(.75)}, ${c(.22)} 45%, rgba(${rgb}, 0) 72%)`
-    : `linear-gradient(${dir}, ${c(.85)}, ${c(.28)} 40%, rgba(${rgb}, 0) 88%)`);
+  const c = (k) => `rgba(${rgb}, ${Math.min(1, k * a).toFixed(2)})`;
+  const halo = (dir) => (dir === 'radial' ? `radial-gradient(ellipse at 50% 50%, ${c(.7)}, ${c(.22)} 45%, rgba(${rgb}, 0) 72%)`
+    : `linear-gradient(${dir}, ${c(.8)}, ${c(.3)} 35%, rgba(${rgb}, 0) 90%)`);
   const caja = (b, bg, caras) => G.box({ ...b, tex: { bg }, emisiva: true, ...(caras ? { caras } : {}) });
-  const tira = (b) => caja(b, `rgb(${rgb})`);
-  if (L.en === 'modulo') { // luz del mueble completo: bajo él (bajo mueble), sobre él, detrás (halo en el muro) o a los costados
+  const tira = (b) => caja(b, `linear-gradient(rgb(255, 255, 255), rgb(${rgb}))`);
+  if (L.en === 'modulo') { // luz del mueble completo
     if (L.lado === 'abajo') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: -.4, z: D - 5 }); caja({ w: W, h: 70, d: .01, x: W / 2, y: -35, z: .25 }, halo('to bottom'), ['front']); }
     if (L.lado === 'arriba') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: H + .4, z: D - 5 }); caja({ w: W, h: 60, d: .01, x: W / 2, y: H + 30, z: .25 }, halo('to top'), ['front']); }
     if (L.lado === 'atras') caja({ w: W + 50, h: H + 40, d: .01, x: W / 2, y: H / 2, z: -.4 }, halo('radial'), ['front']);
@@ -123,18 +123,31 @@ function dibujarLuz(G, m, L, { T, W, H, D, Z, cs }) {
     if (L.lado === 'der') caja({ w: 50, h: H, d: .01, x: W + 25, y: H / 2, z: .25 }, halo('to right'), ['front']);
     return;
   }
-  // luz dentro de una sección: tira en el lado elegido y el interior iluminado (fondo y la superficie de enfrente)
+  if (L.en === 'cubierta') { // bajo el vuelo de la cubierta (ej. el lado de las sillas de una isla): ilumina el costado del mueble
+    const cb = cubiertaDe(m), yt = H - .4, alto = H - Z, g = halo('to bottom');
+    if (L.lado === 'atras') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: yt, z: -1.5 }); caja({ w: W, h: alto, d: .01, x: W / 2, y: Z + alto / 2, z: -.15 }, g, ['back']); }
+    if (L.lado === 'frente') { tira({ w: W - 4, h: .6, d: 1.2, x: W / 2, y: yt, z: cb.z1 - 2 }); caja({ w: W, h: alto, d: .01, x: W / 2, y: Z + alto / 2, z: D + T + .2 }, g, ['front']); }
+    if (L.lado === 'izq') { tira({ w: 1.2, h: .6, d: D - 4, x: -1.5, y: yt, z: D / 2 }); caja({ w: .01, h: alto, d: D, x: -.15, y: Z + alto / 2, z: D / 2 }, g, ['left']); }
+    if (L.lado === 'der') { tira({ w: 1.2, h: .6, d: D - 4, x: W + 1.5, y: yt, z: D / 2 }); caja({ w: .01, h: alto, d: D, x: W + .15, y: Z + alto / 2, z: D / 2 }, g, ['right']); }
+    return;
+  }
+  // Dentro de una sección: una luz por espacio (el hueco entre dos repisas), montada arriba de ese espacio
+  // ("bajo la repisa"). esp = índice del espacio desde abajo (0 = sobre la base); sin esp = el espacio de arriba.
   const [, col, fila] = String(L.en).split('|').map(Number), k = cs.find((x) => x.col === col && x.fila === fila); if (!k) return;
   const xa = k.x0 + (k.x0 < .05 ? T : T / 2), xb = k.x1 - (k.x1 > W - .05 ? T : T / 2);
   const ya = k.y0 + (k.y0 <= Z + .05 ? T : T / 2), yb = k.y1 - (k.y1 >= H - .05 ? T : T / 2);
-  const w = xb - xa, h = yb - ya, xm = (xa + xb) / 2, ym = (ya + yb) / 2, zf = D - 4;
+  const reps = nivelesRepisa(k), bordes = [ya, ...reps.flatMap((y) => [y - T / 2, y + T / 2]), yb]; // [piso, techo] de cada espacio
+  const n = reps.length, e = Math.max(0, Math.min(n, L.esp == null ? n : +L.esp));
+  const y0 = bordes[2 * e], y1 = bordes[2 * e + 1], w = xb - xa, h = y1 - y0, xm = (xa + xb) / 2, ym = (y0 + y1) / 2;
+  if (h < 1) return;
+  const lado = L.lado || 'arriba', zf = D - 4;
   const fondo = (dir) => caja({ w, h, d: .01, x: xm, y: ym, z: .75 }, halo(dir), ['front']);
-  const plano = (y, cara) => caja({ w, h: .01, d: D - 1.5, x: xm, y, z: (D - 1.5) / 2 + .6 }, halo('radial'), [cara]);
-  if (L.lado === 'arriba') { tira({ w: w - 1, h: .6, d: 1.2, x: xm, y: yb - .4, z: zf }); fondo('to bottom'); plano(ya + .06, 'top'); }
-  if (L.lado === 'abajo') { tira({ w: w - 1, h: .6, d: 1.2, x: xm, y: ya + .4, z: zf }); fondo('to top'); plano(yb - .06, 'bottom'); }
-  if (L.lado === 'izq') { tira({ w: .6, h: h - 1, d: 1.2, x: xa + .4, y: ym, z: zf }); fondo('to right'); }
-  if (L.lado === 'der') { tira({ w: .6, h: h - 1, d: 1.2, x: xb - .4, y: ym, z: zf }); fondo('to left'); }
-  if (L.lado === 'atras') { tira({ w: w - 2, h: .6, d: .6, x: xm, y: yb - 1.2, z: 1.2 }); fondo('radial'); plano(ya + .06, 'top'); }
+  const piso = (y, cara) => caja({ w, h: .01, d: D - 1.5, x: xm, y, z: (D - 1.5) / 2 + .6 }, halo('radial'), [cara]);
+  if (lado === 'arriba') { tira({ w: w - 1, h: .5, d: 1.2, x: xm, y: y1 - .35, z: zf }); fondo('to bottom'); piso(y0 + .06, 'top'); }
+  if (lado === 'abajo') { tira({ w: w - 1, h: .5, d: 1.2, x: xm, y: y0 + .35, z: zf }); fondo('to top'); piso(y1 - .06, 'bottom'); }
+  if (lado === 'izq') { tira({ w: .5, h: h - 1, d: 1.2, x: xa + .35, y: ym, z: zf }); fondo('to right'); }
+  if (lado === 'der') { tira({ w: .5, h: h - 1, d: 1.2, x: xb - .35, y: ym, z: zf }); fondo('to left'); }
+  if (lado === 'atras') { tira({ w: w - 2, h: .5, d: .6, x: xm, y: y1 - 1, z: 1.2 }); fondo('radial'); piso(y0 + .06, 'top'); }
 }
 
 // Marco del zócalo en coordenadas locales (x desde el costado izq., z desde la pared), con medidas válidas

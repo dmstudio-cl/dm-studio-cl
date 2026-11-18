@@ -15,7 +15,7 @@ const STYLE = `
 .c3-rig > * { left: 0; top: 0; transform-origin: 0 0; } /* cada cara se centra con translate(-50%,-50%) y gira sobre su centro */
 .c3-f { backface-visibility: hidden; -webkit-backface-visibility: hidden; background-repeat: repeat; box-shadow: inset 0 0 0 .08em rgba(255,236,214,.13); /* canto levemente iluminado, como el borde redondeado */ }
 .c3-f > i { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-.c3-f.c3-luz { mix-blend-mode: screen; pointer-events: none; backface-visibility: visible; } /* ilusión de luz: suma brillo y no se sombrea */
+.c3-f.c3-luz { pointer-events: none; backface-visibility: visible; } /* ilusión de luz: degradado translúcido sin sombra (mix-blend-mode aplanaría el 3D) */
 .c3-floor { backface-visibility: hidden; border-radius: 50%; }
 .c3-g > * { left: 0; top: 0; transform-origin: 0 0; } /* grupos (p. ej. un tirador girado): sus caras se ubican igual que en el rig */
 `;
@@ -133,13 +133,14 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   const angX = () => Math.max(minRx, Math.min(maxRx, curX + extX));
   const angY = () => curY + extY;
 
+  let noche = 0;
   function shadeAll() {
     const ax = rad(angX()), ay = rad(angY());
     for (const f of faces) {
       const n = rotX(rotY(f.n, ay), ax);
       if (n[2] < -0.02) continue; // de espaldas: el navegador no la dibuja
       const lambert = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]); // L apunta hacia la luz
-      const b = Math.min(1, ambient + diffuse * lambert);
+      const b = Math.min(1, ambient + diffuse * lambert) * (1 - noche); // noche: oscurece todo menos las luces
       const o = (1 - b).toFixed(3);
       if (f.o !== o) { f.shade.style.opacity = o; f.o = o; }
     }
@@ -238,6 +239,8 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     spin(on) { spinning = !!on && !matchMedia('(prefers-reduced-motion: reduce)').matches; if (spinning) request(); },
     // Fija el ángulo sin animación (útil para capturas y mediciones).
     set(x, y) { curX = tgtX = x; curY = tgtY = y; spinning = false; apply(); },
+    // Oscurece la escena (0 = día, ~0,6 = noche) para que se luzcan las caras emisivas (luces).
+    noche(k = 0) { noche = Math.max(0, Math.min(.85, +k || 0)); for (const f of faces) f.o = null; shadeAll(); },
     reset() { tgtX = rx0; tgtY = ry0; request(); },
   };
 }
