@@ -50,6 +50,7 @@ export async function startApp(api) {
   // ----- escena
   const scene = createScene($('#pcanvas'));
   scene.setProject(proyecto, resolved(), catalogo);
+  document.querySelector('[data-tool="solo"]')?.setAttribute('aria-pressed', String(scene.soloMuebles));
   $('#ploading').remove();
 
   // ----- listas de opciones
@@ -248,6 +249,7 @@ export async function startApp(api) {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.view) scene.view(b.dataset.view);
     if (b.dataset.tool === 'room') b.setAttribute('aria-pressed', String(scene.toggleRoom()));
+    if (b.dataset.tool === 'solo') { const on = scene.toggleSolo(); b.setAttribute('aria-pressed', String(on)); status(on ? 'Solo muebles: se ocultan electrodomésticos, encimeras y lavaplatos (son solo referencias).' : 'Se muestran también los electrodomésticos de referencia.'); }
     if (b.dataset.tool === 'pin') setPinMode(!pinMode);
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { setPinMode(false); closePinPop(); } });

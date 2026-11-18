@@ -89,6 +89,7 @@ collections:
           - { label: Retiro del zócalo izquierdo, name: zocalo_izq, widget: number, value_type: float, required: false }
           - { label: Retiro del zócalo derecho, name: zocalo_der, widget: number, value_type: float, required: false }
           - { label: Vuelo de la cubierta al frente, name: vuelo_frente, widget: number, value_type: float, required: false }
+          - { label: Costados alargados hacia atrás, name: costados_atras, widget: number, value_type: float, required: false }
           - { label: Vuelo de la cubierta atrás, name: vuelo_atras, widget: number, value_type: float, required: false }
           - { label: Vuelo de la cubierta a la izquierda, name: vuelo_izq, widget: number, value_type: float, required: false }
           - { label: Vuelo de la cubierta a la derecha, name: vuelo_der, widget: number, value_type: float, required: false }

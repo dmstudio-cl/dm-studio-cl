@@ -11,12 +11,12 @@ export const PLANTILLAS = {
   U: { nombre: 'Cocina en U', medidas: ['largoA', 'largoB', 'largoC'] },
   isla: { nombre: 'Isla', medidas: ['largoA'] },
   // Islas completas (inspiradas en la referencia del cliente): todo se ajusta desde el panel
-  isla_barra: { nombre: 'Isla con barra', medidas: ['largoA', 'vueloSillas', 'vueloCocina', 'vueloExtremos'], opciones: ['listones', 'luz'], extra: ['lamparas'] },
-  isla_trabajo: { nombre: 'Isla de trabajo (doble cara)', medidas: ['largoA', 'fondoAtras', 'vueloSillas'], opciones: ['luz'], extra: ['artefacto', 'lamparas'] },
-  isla_mesa: { nombre: 'Isla con mesa', medidas: ['largoA', 'largoMesa', 'vueloSillas'], opciones: ['listones', 'luz'], extra: ['lamparas'] },
+  isla_barra: { nombre: 'Isla con barra', medidas: ['largoA', 'huecoSillas', 'vueloSillas', 'vueloCocina', 'vueloExtremos'], opciones: ['listones', 'luz'] },
+  isla_trabajo: { nombre: 'Isla de trabajo (doble cara)', medidas: ['largoA', 'fondoAtras', 'vueloSillas'], opciones: ['luz'], extra: ['artefacto'] },
+  isla_mesa: { nombre: 'Isla con mesa', medidas: ['largoA', 'largoMesa', 'vueloSillas'], opciones: ['listones', 'luz'] },
 };
 // Campos de las islas que aceptan 0 y opciones de lista
-export const CERO_OK = ['x', 'z', 'vueloSillas', 'vueloCocina', 'vueloExtremos', 'lamparas'];
+export const CERO_OK = ['x', 'z', 'vueloSillas', 'vueloCocina', 'vueloExtremos', 'huecoSillas'];
 export const SELECTS = { artefacto: { ninguno: 'Sin artefacto', lavaplatos_1: 'Lavaplatos 1 cuba', lavaplatos_2: 'Lavaplatos 2 cubas', encimera_gas: 'Encimera a gas', encimera_electrica: 'Encimera eléctrica' } };
 export const ETIQUETAS = {
   largoA: 'Largo pared principal', largoB: 'Largo lado izquierdo', largoC: 'Largo lado derecho',
@@ -24,7 +24,7 @@ export const ETIQUETAS = {
   altoAereo: 'Alto aéreos', sepAereo: 'Separación cubierta–aéreos', fondoAereo: 'Fondo aéreos',
   x: 'Posición X', z: 'Posición Z',
   vueloSillas: 'Vuelo lado sillas', vueloCocina: 'Vuelo lado cocina', vueloExtremos: 'Vuelo en los extremos',
-  fondoAtras: 'Fondo del lado de atrás', largoMesa: 'Largo de la mesa', lamparas: 'Lámparas colgantes',
+  fondoAtras: 'Fondo del lado de atrás', largoMesa: 'Largo de la mesa', huecoSillas: 'Hueco para sillas (listones hacia adentro)',
   listones: 'Listones de madera en el lado de las sillas', luz: 'Luz LED bajo la cubierta', artefacto: 'Sobre la cubierta',
 };
 export function parametrosIniciales(tipo, espacio) {
@@ -39,9 +39,9 @@ export function parametrosIniciales(tipo, espacio) {
   const techo = +espacio?.alto || 240;
   // Islas: centradas en el espacio, a ~95 cm de los muebles del muro del fondo
   const isla = (L, extra) => ({ ...base, aereos: false, lavaplatos: false, cocina: false, alto: 90, zocalo: 10, techo, largoA: L,
-    x: x0 + Math.max(0, (ancho - L) / 2), z: z0 + 60 + 95, luz: true, lamparas: 2, ...extra });
-  if (tipo === 'isla_barra') return isla(180, { fondo: 60, vueloSillas: 30, vueloCocina: 2, vueloExtremos: 0, listones: true });
-  if (tipo === 'isla_trabajo') return isla(200, { fondo: 58, fondoAtras: 35, vueloSillas: 25, artefacto: 'encimera_electrica', lamparas: 3 });
+    x: x0 + Math.max(0, (ancho - L) / 2), z: z0 + 60 + 95, luz: true, ...extra });
+  if (tipo === 'isla_barra') return isla(180, { fondo: 60, huecoSillas: 35, vueloSillas: 2, vueloCocina: 2, vueloExtremos: 0, listones: true });
+  if (tipo === 'isla_trabajo') return isla(200, { fondo: 58, fondoAtras: 35, vueloSillas: 25, artefacto: 'encimera_electrica' });
   if (tipo === 'isla_mesa') return isla(120, { fondo: 60, largoMesa: 90, vueloSillas: 25, listones: true });
   return { ...base, largoA: Math.round(ancho) || 300, largoB: Math.min(240, Math.round(fondoEsp) || 200), largoC: Math.min(240, Math.round(fondoEsp) || 200) };
 }
@@ -163,8 +163,10 @@ function generarIsla(tipo, p, meta) {
   const luz = (lado) => (p.luz ? [{ id: uid('l'), en: 'cubierta', lado, tono: 'calida', intensidad: .85 }] : []);
   const z0 = p.z + D + T; // atrás del cuerpo de cocina (lado de las sillas)
   if (tipo === 'isla_barra') {
-    out.push(modulo({ nombre: 'Isla con barra', ancho: p.largoA, x: p.x + p.largoA, z: z0, rotacion: 180, columnas: cols(p.largoA),
-      vuelo_atras: p.vueloSillas, vuelo_frente: p.vueloCocina, vuelo_izq: p.vueloExtremos, vuelo_der: p.vueloExtremos,
+    // los costados se alargan hasta la línea de la cubierta y los listones quedan huecoSillas cm hacia adentro
+    const hueco = Math.max(0, +p.huecoSillas || 0);
+    out.push(modulo({ nombre: 'Isla con barra', ancho: p.largoA, x: p.x + p.largoA, z: z0, rotacion: 180, columnas: cols(p.largoA), costados_atras: hueco,
+      vuelo_atras: hueco + p.vueloSillas, vuelo_frente: p.vueloCocina, vuelo_izq: p.vueloExtremos, vuelo_der: p.vueloExtremos,
       ...(p.listones ? { materiales: { 'cuerpo|fondo': madera } } : {}), luces: luz('atras') }));
   }
   if (tipo === 'isla_trabajo') { // dos cuerpos espalda con espalda: cocina adelante y almacenaje bajo atrás, una sola cubierta
@@ -186,8 +188,8 @@ function generarIsla(tipo, p, meta) {
     out.push(modulo({ nombre: 'Pata de la mesa', ancho: 2 * T + .1, x: p.x + p.largoA + M, z: z0 + p.vueloSillas, rotacion: 180, zocalo: 0, cubierta: false,
       profundidad: D + p.vueloSillas + 2, grupo: g, grupo_nombre: 'Isla con mesa', columnas: [{ ancho: 2 * T + .1, frentes: [{ tipo: 'panel', alto: p.alto }] }] }));
   }
-  // lámparas colgantes sobre la cubierta (centradas, separadas parejo)
-  const n = Math.max(0, Math.min(4, Math.round(+p.lamparas || 0)));
+  // lámparas colgantes: el cotizador es solo de muebles, las islas ya no las traen (se agregan aparte si se quieren)
+  const n = 0;
   const largo = p.largoA + (tipo === 'isla_mesa' ? Math.max(40, p.largoMesa) : 0);
   const zc = p.z + (D + T + (tipo === 'isla_trabajo' ? Math.max(20, p.fondoAtras) + T : 0)) / 2 + (tipo === 'isla_trabajo' ? 0 : p.vueloSillas / 2);
   const elev = p.alto + 3.8 + 75;

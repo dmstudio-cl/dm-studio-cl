@@ -15,6 +15,7 @@ export function createScene(el) {
   el.prepend(host);
   const st = createStage(host, { rx: VISTAS['tres-cuartos'][0], ry: VISTAS['tres-cuartos'][1], minRx: -89, maxRx: -2 });
 
+  let soloMuebles = (() => { try { return localStorage.getItem('dm-portal-solo') === '1'; } catch { return false; } })();
   let proyecto = null, sel = {}, roomVisible = true, zoom = 1, modeloActual = null, catalogo = [], piezaSel = null;
   // Fondo CSS de un material por pieza: melamina del catálogo (id) o color ('color:#rrggbb')
   const fondoMaterial = (mid) => {
@@ -37,9 +38,10 @@ export function createScene(el) {
   function modelo(s) {
     return {
       espacio: espacioPortal(proyecto.espacio),
-      objetos: proyecto.objetos || [],
-      modulos: (proyecto.modulos || []).map((m, i) => ({
+      objetos: soloMuebles ? [] : proyecto.objetos || [], // «Solo muebles»: sin electrodomésticos ni referencias
+      modulos: (proyecto.modulos || []).filter((m) => !(soloMuebles && m.artefacto)).map((m, i) => ({
         ...m, id: m.id || `m${i}`,
+        ...(soloMuebles ? { artefactos: [] } : {}), // sin encimeras ni lavaplatos de referencia
         // materiales por pieza: los del estudio y encima los que eligió el cliente ("idMódulo|pieza")
         materiales: { ...leerJSON(m.materiales), ...Object.fromEntries(Object.entries(s.materiales || {}).filter(([k]) => k.startsWith(`${m.id || `m${i}`}|`)).map(([k, v]) => [k.slice(k.indexOf('|') + 1), v])) },
         x: +m.x || 0, z: +m.z || 0, elevacion: +m.elevacion || 0, rotacion: +m.rotacion || 0,
@@ -126,6 +128,8 @@ export function createScene(el) {
     update(s) { sel = s || {}; build(); },
     view(nombre = 'tres-cuartos') { zoom = 1; encuadrar(); st.view(...(VISTAS[nombre] || VISTAS['tres-cuartos'])); },
     toggleRoom() { roomVisible = !roomVisible; build(); encuadrar(); return roomVisible; },
+    toggleSolo() { soloMuebles = !soloMuebles; try { localStorage.setItem('dm-portal-solo', soloMuebles ? '1' : '0'); } catch {} build(); return soloMuebles; },
+    get soloMuebles() { return soloMuebles; },
     pick, toScreen,
     onRender(fn) { listeners.push(fn); },
     request() { listeners.forEach((fn) => fn()); },

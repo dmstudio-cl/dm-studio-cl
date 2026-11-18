@@ -11,6 +11,7 @@
 //     zocalo_retiro,                                  // cm que el zócalo queda hacia adentro desde el frente
 //     zocalo_atras, zocalo_izq, zocalo_der,           // retiros del marco del zócalo hacia la pared y los costados
 //     vuelo_frente, vuelo_atras, vuelo_izq, vuelo_der, // cuánto sobresale la cubierta del cuerpo (barra de desayuno)
+//     costados_atras,                                  // cm que los costados se alargan hacia atrás, hasta el piso (hueco para sillas)
 //     luces: [{ id, en: 'modulo' | 'f|col|fila', lado: arriba|abajo|izq|der|atras, tono: calida|neutra|fria, intensidad }]
 //     columnas: [{ ancho, frentes: [{ tipo, alto, bisagra, repisas, hojas }] }],   // hojas: puertas de la sección (puerta_doble)   // de izq. a der. / de arriba a abajo
 //     tiradores: [{ id, modelo, color, col, fila, dx, dy, rot }],  // dx,dy: cm desde el centro del frente
@@ -442,8 +443,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       const lado = (cara, p) => propio(`cuerpo|${p}`, 'cuerpo') || ((c) => (c === cara || c === 'front' || c === 'top' || c === 'bottom' ? MC : M.cuerpo));
       const tab = (p) => propio(`cuerpo|${p}`, 'cuerpo') || M.cuerpo;
       const piso = quitada('piso') ? Z : Z + T; // sin base: el interior llega hasta abajo (ej. sobre una cubierta)
-      if (!quitada('izq')) B({ w: T, h: H - Z, d: D, x: T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
-      if (!quitada('der')) B({ w: T, h: H - Z, d: D, x: W - T / 2, y: Z + (H - Z) / 2, z: D / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
+      // Costados alargados hacia atrás (isla con barra): llegan hasta la línea de la cubierta y bajan al piso, y el fondo
+      // (los listones) queda retirado: el hueco sirve para las sillas.
+      const ext = Math.max(0, +m.costados_atras || 0), cy0 = ext ? 0 : Z, dz = D + ext;
+      if (!quitada('izq')) B({ w: T, h: H - cy0, d: dz, x: T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
+      if (!quitada('der')) B({ w: T, h: H - cy0, d: dz, x: W - T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
       if (!quitada('piso')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, tab('piso'), `${id}|cuerpo|piso`); // base
       if (!quitada('techo')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
       if (!quitada('fondo')) B({ w: W - 2 * T, h: H - piso - T, d: .6, x: W / 2, y: piso + (H - piso - T) / 2, z: .3 }, tab('fondo'), `${id}|cuerpo|fondo`); // fondo

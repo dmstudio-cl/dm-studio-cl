@@ -1465,7 +1465,7 @@ function props() {
     const defP = PLANTILLAS[pl?.t] || {}, esIsla = pl?.t?.startsWith('isla');
     const bloquePl = pl ? `<div class="ed-plantilla"><p class="sub">${esc(defP.nombre || 'Cocina de referencia')} · se ajusta sola</p>
       <div class="ed-campos">
-        ${[...defP.medidas, 'fondo', 'alto', 'zocalo', ...(pl.p.aereos ? ['altoAereo', 'sepAereo', 'fondoAereo'] : []), ...((defP.extra || []).includes('lamparas') ? ['lamparas'] : []), 'x', 'z']
+        ${[...defP.medidas, 'fondo', 'alto', 'zocalo', ...(pl.p.aereos ? ['altoAereo', 'sepAereo', 'fondoAereo'] : []), 'x', 'z']
           .map((k) => `<label class="ed-campo">${(esIsla && { largoA: 'Largo de la isla', fondo: 'Fondo (lado cocina)', alto: 'Alto (sin cubierta)' }[k]) || ETIQUETAS[k]}<span class="u" data-u="${k === 'lamparas' ? 'un.' : 'cm'}"><input type="number" step="${k === 'lamparas' ? 1 : .5}" min="0" data-pk="${k}" value="${pl.p[k] ?? 0}"></span></label>`).join('')}
         ${(defP.extra || []).filter((k) => SELECTS[k]).map((k) => `<label class="ed-campo ancho2">${ETIQUETAS[k]}<select data-pk="${k}">${Object.entries(SELECTS[k]).map(([v, n]) => `<option value="${v}"${pl.p[k] === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`).join('')}
       </div>
@@ -1488,6 +1488,7 @@ function props() {
         ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
         ${num('elevacion', 'Altura del piso', m.elevacion)}${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
         ${opciones('tablero', 'Tablero', String(+m.tablero || 15), { 15: 'Melamina 15 mm', 18: 'Melamina 18 mm' }, 'ancho2')}
+        ${num('costados_atras', 'Costados alargados atrás', m.costados_atras || 0)}
         ${opciones('costados', 'Costados visibles', m.costados || '', { '': `Como el general (${PALETA.costados.opciones[colorDe(modelo.colores, 'costados')][0].toLowerCase()})`, frente: 'Igual a la melamina', cuerpo: 'Como el cuerpo' }, 'ancho2')}
       </div>
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
