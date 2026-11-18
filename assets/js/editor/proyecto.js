@@ -1,3 +1,4 @@
+import { despiece } from './despiece.js';
 // Proyectos de clientes en el editor: abrir desde el repo privado, ver y responder comentarios,
 // y "Publicar versión" (commit en el repo + registro en el chat + aviso al cliente).
 //
@@ -245,6 +246,7 @@ export function iniciarProyectos(ed) {
       raw.modulos = modelo.modulos.map((m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m)));
       raw.colores = modelo.colores || {};
       raw.objetos = modelo.objetos || [];
+      raw.despiece = despiece(modelo); // cantidades de materiales y herrajes: el Worker las cotiza
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };

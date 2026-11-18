@@ -4,6 +4,7 @@ import { createStage } from '../css3d/engine.js';
 import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
+import { despiece } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
@@ -1415,6 +1416,7 @@ function props() {
         ${num('a.desde', 'Al costado izq.', a.desde)}${num('a.hasta', 'Al costado der.', r1(W - a.x1))}
         ${num('a.frente', 'Al canto (frente)', a.frente)}${num('a.atras', 'A la pared (fondo)', r1(a.z0))}
         ${def.cubas ? opciones('a.lado', 'Escurridor', a.lado || 'derecha', { derecha: 'A la derecha', izquierda: 'A la izquierda' }, 'ancho2') : ''}
+        ${def.cubas ? opciones('a.montaje', 'Montaje (sacado en la cubierta)', a.montaje || 'sobrepuesto', { sobrepuesto: 'Sobrepuesto', bajo: 'Bajo cubierta (pulido)' }, 'ancho2') : ''}
       </div>
       <div class="ed-botones"><button data-a="centrar-art">Centrar en el mueble</button><button data-a="borrar-art" class="peligro">Eliminar</button></div>
       <p class="ed-ayuda">Medidas en cm hasta los bordes del mueble. Arrástralo en Planta (o hacia los lados en Frente); las flechas lo mueven (Mayús: 10 cm).</p></div>`;
@@ -1574,6 +1576,7 @@ function props() {
     h = `<p class="tit">Cubierta</p><p class="sub">${esc(m.nombre)} · ${cm(cb.x1 - cb.x0)} × ${cm(cb.z1 - cb.z0)} cm</p>
       <p class="sub" style="margin-top:10px">Vuelos: cuánto sobresale del mueble${sel.cara ? ` · cara elegida: ${lados[sel.cara].toLowerCase()}` : ''}</p>
       <div class="ed-campos">${Object.entries(lados).map(([k, n]) => num(`v.${k}`, n, cb.v[k], { cls: sel.cara === k ? 'resaltado' : '' })).join('')}</div>
+      <label class="ed-check"><input type="checkbox" data-k="cubierta_respaldo"${m.cubierta_respaldo ? ' checked' : ''}> Lleva zócalo de cubierta (respaldo contra el muro)</label>
       <div class="ed-botones"><button data-a="barra-desayuno" class="ed-primario">Barra de desayuno (${sel.cara && sel.cara !== 'frente' ? lados[sel.cara].toLowerCase() : 'atrás'}: 60 cm)</button></div>
       <p class="ed-ayuda">Toca el canto de la cubierta en 3D: la vista gira hacia ese lado y aparece la manija ⇆ para extruirla. En Planta también puedes arrastrar sus bordes.</p>
       <p class="sub" style="margin-top:10px">Agregar sobre la cubierta</p>
@@ -1673,6 +1676,7 @@ $('#props').addEventListener('change', (e) => {
     });
     return;
   }
+  if (s.tipo === 'cubierta' && k === 'cubierta_respaldo') { cambiar(() => { modulo(s.m).cubierta_respaldo = !!v; }); return; }
   if (s.tipo === 'cubierta' && k.startsWith('v.')) {
     cambiar(() => { modulo(s.m)[`vuelo_${k.slice(2)}`] = Math.max(0, Math.min(150, +v || 0)); });
     return;
@@ -1688,6 +1692,7 @@ $('#props').addEventListener('change', (e) => {
       if (k === 'a.frente' && v >= 0) a.frente = v;
       if (k === 'a.atras' && v >= 0) a.frente = Dc - v0.fondo - v;
       if (k === 'a.lado') a.lado = v;
+      if (k === 'a.montaje') a.montaje = v;
     });
     return;
   }
@@ -1949,10 +1954,42 @@ $('.ed-acciones').addEventListener('click', (e) => {
   if (a === 'rehacer') rehacer();
   if (a === 'encuadrar') { zoom = 1; encuadrar(true); dibujarPlano(); }
   if (a === 'respaldos') abrirRespaldos();
+  if (a === 'despiece') abrirDespiece();
   if (a === 'nuevo' && confirm('¿Empezar un modelo vacío? El actual se puede recuperar con Deshacer o en «Respaldos».') && (respaldar(proyActual?.id, JSON.parse(JSON.stringify(modelo)), 'antes de «Nuevo»'), true)) { cambiar((d) => { d.modulos = []; d.nombre = 'Nuevo modelo'; }); sel = null; setVista('frente'); setHerr('dibujar'); }
   if (a === 'exportar') exportar();
   if (a === 'importar') $('#archivo').click();
 });
+// Ventana «Lista de materiales»: lo que se publica con el proyecto y con lo que el Worker calcula el precio
+function abrirDespiece() {
+  const d = despiece(modelo);
+  const nombreMat = (k) => (k === 'frente' ? `Melamina de frentes (${nombreMaterial(modelo.frente) || 'la que elija el cliente'})` : nombreMaterial(k) || k);
+  const grupos = {};
+  for (const p of d.piezas) {
+    const [tipo, mat] = p.tipo === 'cholguan' ? ['Cholguán', p.material.replace(/^cholguan:/, '')] : [`Melamina ${p.espesor} mm`, p.material];
+    const k = `${tipo}|${mat}`; grupos[k] = grupos[k] || { tipo, mat, m2: 0, n: 0 }; grupos[k].m2 += p.area; grupos[k].n++;
+  }
+  const filas = Object.values(grupos).sort((a, b) => b.m2 - a.m2).map((g) => `<tr><td>${esc(g.tipo)}</td><td>${esc(g.mat === 'blanco' ? 'Blanco' : nombreMat(g.mat))}</td><td class="num">${g.n}</td><td class="num">${g.m2.toFixed(2)} m²</td></tr>`).join('');
+  const corr = Object.entries(d.herrajes.correderas).map(([l, n]) => `${n} par${n > 1 ? 'es' : ''} de ${l} cm`).join(', ') || '—';
+  let dlg = $('#dlg-despiece');
+  if (!dlg) {
+    dlg = document.createElement('dialog'); dlg.className = 'ed-dlg ed-dlg-ancho'; dlg.id = 'dlg-despiece';
+    dlg.innerHTML = '<div class="ed-dlg-cab"><h2>Lista de materiales</h2><button data-cerrar aria-label="Cerrar">✕</button></div><div class="ed-dlg-cuerpo"></div>';
+    dlg.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) dlg.close(); });
+    document.body.append(dlg);
+  }
+  dlg.querySelector('.ed-dlg-cuerpo').innerHTML = `
+    <p class="ed-ayuda">Calculada desde los módulos: cada tablero en su material (sin material propio: melamina blanca; frentes: la melamina general), traseras de cholguán, 2 bisagras de cierre suave por hoja, correderas telescópicas de cierre suave del largo más cercano al fondo, y tapacanto de los cantos visibles. Al publicar se envía con el proyecto y el Worker la cotiza con tus precios.</p>
+    <table class="ed-tabla"><thead><tr><th>Tipo</th><th>Material</th><th class="num">Piezas</th><th class="num">Superficie</th></tr></thead><tbody>${filas || '<tr><td colspan="4">Sin muebles.</td></tr>'}</tbody></table>
+    <table class="ed-tabla"><tbody>
+      <tr><td>Bisagras de cierre suave</td><td class="num">${d.herrajes.bisagras}</td></tr>
+      <tr><td>Correderas telescópicas de cierre suave</td><td class="num">${esc(corr)}</td></tr>
+      <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m</td></tr>
+    </tbody></table>
+    ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
+      <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (postformado, granito, cuarzo o mármol), con su merma, sacados y respaldo.</p>` : ''}
+    <details><summary>Ver las ${d.piezas.length} piezas</summary><table class="ed-tabla"><tbody>${d.piezas.map((p) => `<tr><td>${esc(p.mueble)}</td><td>${esc(p.nombre)}</td><td class="num">${cm(p.ancho)} × ${cm(p.alto)}</td><td>${esc(p.tipo === 'cholguan' ? 'Cholguán' : nombreMat(p.material))}</td></tr>`).join('')}</tbody></table></details>`;
+  dlg.showModal();
+}
 // Ventana «Respaldos»: copias automáticas del modelo de este proyecto (o del modelo local)
 function abrirRespaldos() {
   const id = proyActual?.id, lista = respaldos(id);

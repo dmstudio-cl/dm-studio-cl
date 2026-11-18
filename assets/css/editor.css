@@ -309,3 +309,11 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-version button { background: #fff; color: var(--ink); border: 0; font-weight: 600; }
 .ed-version small { opacity: .8; }
 .ed-mat-liston { margin: 4px 0 6px; font-size: .78rem; }
+
+/* lista de materiales */
+.ed-tabla { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ed-tabla th, .ed-tabla td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.ed-tabla th { font: 500 .66rem/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.ed-tabla .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+#dlg-despiece details summary { cursor: pointer; color: var(--muted); font-size: .8rem; margin: 6px 0; }
+#dlg-despiece .ed-dlg-cuerpo { max-height: 75vh; overflow: auto; }

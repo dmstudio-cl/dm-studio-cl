@@ -111,6 +111,7 @@ collections:
           - { label: "Posición Z (desde el muro)", name: z, widget: number, value_type: float, default: 0 }
           - { label: Giro en planta (grados), name: rotacion, widget: number, value_type: float, default: 0, hint: "Lo ajusta el editor. 90 = el frente mira hacia +X." }
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
+          - { label: Zócalo de cubierta (respaldo), name: cubierta_respaldo, widget: boolean, default: false, required: false }
           - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
           - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
           - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
@@ -268,7 +269,7 @@ collections:
         name: costos
         widget: list
         required: false
-        hint: "Materiales e insumos (melamina, bisagras, correderas, agorex, diluyente, transporte…). NO incluyas tiradores ni cubierta: se suman solos según lo que elija el cliente. El Worker aplica luz (20%) y el factor 2.3."
+        hint: "Si el modelo se publicó desde el Editor, melamina, cholguán, bisagras, correderas y tapacanto se calculan solos: aquí solo extras (agorex, diluyente, transporte…). Tiradores y cubierta también se suman solos. El Worker aplica luz (20%) y el factor 2.3."
         summary: "{{fields.cantidad}} × {{fields.item}}"
         fields:
           - { label: Ítem, name: item, widget: string, hint: "Ej: plancha melamina, bisagras, correderas, agorex, diluyente, transporte" }
@@ -299,6 +300,34 @@ collections:
               - { label: Formato, name: formato, widget: select, required: false, options: ["1830x2500", "2140x2500"] }
               - { label: Espesor (mm), name: espesor, widget: select, required: false, options: ["5.5", "15", "18"] }
               - { label: Precio (CLP), name: precio, widget: number, value_type: int }
+              - { label: Link Imperial (para actualizar precio y stock), name: url_imperial, widget: string, required: false }
+              - { label: Link Homecenter (para actualizar precio y stock), name: url_sodimac, widget: string, required: false }
+          - label: Cholguán (traseras y fondos de cajón)
+            name: cholguan
+            widget: list
+            required: false
+            hint: "Código: blanco, o el código de una melamina para cholguán de color. * = precio por defecto."
+            fields:
+              - { label: Código, name: codigo, widget: string, default: blanco }
+              - { label: Formato, name: formato, widget: select, required: false, options: ["1520x2440", "1830x2500"] }
+              - { label: Precio por plancha (CLP), name: precio, widget: number, value_type: int }
+              - { label: Link Imperial, name: url_imperial, widget: string, required: false }
+              - { label: Link Homecenter, name: url_sodimac, widget: string, required: false }
+          - label: Herrajes y tapacanto
+            name: herrajes
+            widget: object
+            required: false
+            fields:
+              - { label: Bisagra de cierre suave (CLP c/u), name: bisagra, widget: number, value_type: int, required: false }
+              - { label: Tapacanto (CLP por metro), name: tapacanto_ml, widget: number, value_type: int, required: false }
+              - { label: Merma de tableros (%), name: merma, widget: number, value_type: float, default: 0.1, required: false, hint: "0.1 = 10% extra por cortes" }
+              - label: Correderas telescópicas de cierre suave (precio por par)
+                name: correderas
+                widget: list
+                required: false
+                fields:
+                  - { label: Largo (cm), name: largo, widget: select, options: ["25", "30", "35", "40", "45", "50", "55"] }
+                  - { label: Precio por par (CLP), name: precio, widget: number, value_type: int }
           - label: Tiradores
             name: tiradores
             widget: list
@@ -317,4 +346,17 @@ collections:
             fields:
               - { label: Nombre, name: nombre, widget: string }
               - { label: Color, name: color, widget: color, default: "#cfc9bc" }
-              - { label: Precio por metro lineal (CLP), name: precio_ml, widget: number, value_type: int }
+              - { label: Precio por metro lineal (CLP), name: precio_ml, widget: number, value_type: int, required: false, hint: "Solo si no eliges un material: con material se calcula por m² con la tabla de abajo." }
+              - { label: Material (se cotiza por m²), name: material, widget: select, required: false, options: [postformado, granito, cuarzo, marmol] }
+          - label: Cubiertas · precio por m² y merma por material
+            name: cubiertas_tabla
+            widget: object
+            required: false
+            collapsed: true
+            hint: "Vacío = valores por defecto (postformado 65.000 ×1,10; granito 160.000 ×1,18; cuarzo 245.000 ×1,18; mármol 400.000 ×1,20)."
+            fields:
+              - { label: Postformado CLP/m², name: postformado, widget: number, value_type: int, required: false }
+              - { label: Granito CLP/m², name: granito, widget: number, value_type: int, required: false }
+              - { label: Cuarzo CLP/m², name: cuarzo, widget: number, value_type: int, required: false }
+              - { label: Mármol CLP/m², name: marmol, widget: number, value_type: int, required: false }
+              - { label: Aplicar luz y factor a las cubiertas, name: con_factor, widget: boolean, default: false, required: false, hint: "Desactivado: la cubierta se suma al final a su valor, sin el ×1,2 ×2,3." }
