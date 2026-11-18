@@ -51,7 +51,7 @@ export function createScene(el) {
   }
   function build() {
     modeloActual = modelo(sel);
-    dibujar(st, modeloActual, { capas: { muros: roomVisible }, mats: mats(sel), sel: piezaSel });
+    dibujar(st, modeloActual, { capas: { muros: roomVisible, cantoMuro: false }, mats: mats(sel), sel: piezaSel }); // el cliente no ve el borde superior de los muros
     listeners.forEach((fn) => fn());
   }
   function encuadrar() {

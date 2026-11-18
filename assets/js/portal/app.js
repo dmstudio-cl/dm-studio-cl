@@ -134,7 +134,7 @@ export async function startApp(api) {
     box.innerHTML = `
       ${piezaSel ? `<div class="ppieza-sel"><span>Pieza elegida: <b>${esc(nombrePieza(piezaSel))}</b><br><small>Toca un color para aplicarlo solo aquí.</small></span>
         <button type="button" data-pz="general">Color general</button><button type="button" data-pz="listo" aria-label="Terminar">✕</button></div>`
-        : '<p class="small muted ppieza-ayuda">Toca un color para <b>todo el mueble</b> (la cubierta se elige en su pestaña o tocándola). Para cambiar <b>una sola pieza</b> (una puerta, un costado, una repisa…), haz clic sobre ella en el modelo o arrastra el color encima. <b>Doble clic</b> para comentar.</p>'}
+        : '<p class="small muted ppieza-ayuda">Toca un color y cambia <b>todo lo que ya tiene color o madera</b>; lo blanco se mantiene. Para cambiar <b>una pieza</b> (también una blanca), arrastra el color sobre ella o haz clic en ella y luego en el color. La cubierta se elige en su pestaña. <b>Doble clic</b> para comentar.</p>'}
       ${lista.length ? `<details class="ppieza-lista"><summary>${lista.length} pieza${lista.length > 1 ? 's' : ''} con color propio</summary>
         ${lista.map(([ref, id]) => `<div><i style="background:${esc(byId(catalogo, id)?.hex || '#999')}"></i><span>${esc(nombrePieza(ref))} · ${esc(byId(catalogo, id)?.nombre || id)}</span><button type="button" data-pz-quitar="${esc(ref)}">Quitar</button></div>`).join('')}
         <button type="button" data-pz="todas">Quitar todos los colores por pieza</button></details>` : ''}`;
@@ -188,8 +188,29 @@ export async function startApp(api) {
   const schedule = () => { clearTimeout(qt); qt = setTimeout(() => { quote(); if (!isOwner) api.guardar(sel).catch(() => {}); }, 450); };
   quote();
 
+  // ¿Es blanco este material? (lo blanco se queda blanco al tocar un color; se cambia solo arrastrando sobre la pieza)
+  function esBlanco(mid) {
+    const id = String(mid || '').replace(/^liston:/, '');
+    let hex = '';
+    if (id.startsWith('color:')) hex = id.slice(6);
+    else { const x = catalogo.find((k) => k.id === id); if (!x) return false; if (/blanco/i.test(x.nombre)) return true; hex = x.hex || ''; }
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return false;
+    const n = parseInt(m[1], 16), lum = (.299 * (n >> 16 & 255) + .587 * (n >> 8 & 255) + .114 * (n & 255)) / 255;
+    return lum > .86;
+  }
+  const leerJSON = (v) => { if (!v) return {}; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return {}; } };
+  // Al tocar un color (sin pieza elegida): también cambian las piezas que ya tenían otra madera o color,
+  // las del estudio y las que eligió el cliente; los listones conservan su ranurado.
+  function recolorear(id) {
+    const nuevos = { ...sel.materiales };
+    const cambiar = (k, v) => { if (v && !esBlanco(v)) nuevos[k] = String(v).startsWith('liston:') ? `liston:${id}` : id; };
+    (proyecto.modulos || []).forEach((m, i) => { const mid = m.id || `m${i}`; for (const [k, v] of Object.entries(leerJSON(m.materiales))) if (!(`${mid}|${k}` in sel.materiales)) cambiar(`${mid}|${k}`, v); });
+    for (const [k, v] of Object.entries(sel.materiales)) cambiar(k, v);
+    sel.materiales = nuevos;
+  }
   function choose(kind, id) {
     if (aprobado() && !isOwner) { status('La propuesta ya fue aprobada. Para cambios, escríbenos en la conversación.'); return; }
+    if (kind === 'melamina') recolorear(id);
     sel[kind] = id;
     paintSelection();
     scene.update(resolved());

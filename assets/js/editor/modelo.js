@@ -413,7 +413,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     piso: mats.piso || '#2a2826',
     material: mats.material, // resolver de materiales por pieza (lo usan también las ventanas y puertas)
   };
-  if (ver('muros')) dibujarEspacio(st, modelo.espacio, M);
+  if (ver('muros')) dibujarEspacio(st, modelo.espacio, M, { canto: ver('cantoMuro') });
 
   modelo.modulos.forEach((m) => {
     const W = +m.ancho, H = +m.alto, D = +m.profundidad;
@@ -582,7 +582,7 @@ function dibujarVano(g, v, m, xl, k, M) {
 // Muros "casa de muñecas": solo se dibuja la cara interior (y el canto superior). Como las caras
 // tienen backface-visibility: hidden, los muros que dan hacia la cámara desaparecen solos y siempre
 // se ve el interior. Piso con la forma de la planta (clip-path) si el espacio está cerrado.
-function dibujarEspacio(st, esp, M) {
+function dibujarEspacio(st, esp, M, { canto = true } = {}) {
   const W = muros(esp);
   if (!W.length) return;
   const P = esp.puntos;
@@ -631,6 +631,6 @@ function dibujarEspacio(st, esp, M) {
     const e0 = conectado(m.i, false) ? m.espesor : 0, e1 = conectado(m.i, true) ? m.espesor : 0;
     const ux = Math.cos(ry * Math.PI / 180), uz = -Math.sin(ry * Math.PI / 180); // eje x local en el espacio
     const s = Math.sign(ux * dx + uz * dz) || 1; // +1 si el eje local va de a hacia b
-    g.box({ w: m.largo + e0 + e1, h: 1, d: m.espesor, x: s * (e1 - e0) / 2, y: m.alto - .5, z: -m.espesor / 2, tex: M.cantoMuro, ref, caras: ['top'] });
+    if (canto) g.box({ w: m.largo + e0 + e1, h: 1, d: m.espesor, x: s * (e1 - e0) / 2, y: m.alto - .5, z: -m.espesor / 2, tex: M.cantoMuro, ref, caras: ['top'] });
   }
 }
