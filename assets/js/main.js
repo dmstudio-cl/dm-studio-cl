@@ -43,6 +43,8 @@ document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
 // ----- modelos CSS 3D (sin WebGL): se montan de inmediato, son livianos.
 // data-scroll: el modelo además gira al bajar por la página (Anime.js).
 document.querySelectorAll('[data-css3d]').forEach((el) => {
+  // Portada: matero (mitad modelo, mitad plano técnico); gira y abre su tapa con el scroll por su cuenta.
+  if (el.dataset.css3d === 'matero') { import('./css3d/matero.js').then(({ mountMatero }) => mountMatero(el)); return; }
   import('./css3d/aparador.js').then(({ mountAparador }) => {
     const st = mountAparador(el);
     if (el.hasAttribute('data-scroll')) import('./css3d/scroll.js').then(({ girarConScroll }) => girarConScroll(el, st));

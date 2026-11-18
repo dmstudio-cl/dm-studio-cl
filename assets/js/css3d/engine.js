@@ -94,7 +94,35 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     // Normal local → del padre: primero rotateZ y luego rotateY (orden de la transformación CSS)
     const local = ([nx, ny, nz]) => rotY([nx * cz - ny * sz, nx * sz + ny * cz, nz], ay);
     const nr = (n) => nrot(local(n));
-    return { el: g, box: (o) => box({ ...o, parent: g, nrot: nr }), group: (o) => group({ ...o, parent: g, nrot: nr }) };
+    return { el: g, box: (o) => box({ ...o, parent: g, nrot: nr }), group: (o) => group({ ...o, parent: g, nrot: nr }), lathe: (o) => lathe({ ...o, parent: g, nrot: nr }) };
+  }
+
+  // Sólido de revolución (pieza torneada): perfil [[r, y], …] en cm, recorrido de abajo hacia arriba
+  // por el lado de afuera (así las normales miran hacia fuera). Cada tramo del perfil es un anillo de
+  // «lados» trapecios inclinados, con su normal real (la luz respeta la curva del perfil).
+  // tex({ i, a, w, yArriba, yAbajo }) → background de cada cara (para que la veta siga alrededor).
+  function lathe({ perfil, lados = 32, x = 0, y = 0, z = 0, tex, ref, parent = rig, nrot = (n) => n }) {
+    const paso = Math.PI * 2 / lados, tg = Math.tan(paso / 2) * 1.06; // solape: sin rendijas
+    for (let k = 0; k < perfil.length - 1; k++) {
+      const [ra, ya] = perfil[k], [rb, yb] = perfil[k + 1];
+      const dy = yb - ya, dr = ra - rb, L = Math.hypot(dy, dr);
+      if (L < 1e-3 || (ra <= 0 && rb <= 0)) continue;
+      const t = Math.atan2(dr, dy), ct = Math.cos(t), stt = Math.sin(t); // t > 0: la cara mira hacia arriba
+      const wa = 2 * ra * tg, wb = 2 * rb * tg, W = Math.max(wa, wb, .01);
+      const ia = ((W - wa) / 2 / W * 100).toFixed(2), ib = ((W - wb) / 2 / W * 100).toFixed(2);
+      const rm = (ra + rb) / 2, ym = (ya + yb) / 2;
+      for (let i = 0; i < lados; i++) {
+        const a = i * paso, sa = Math.sin(a), ca = Math.cos(a);
+        const bg = typeof tex === 'function' ? tex({ i, a, w: (wa + wb) / 2, yArriba: Math.max(ya, yb), yAbajo: Math.min(ya, yb), W }) : tex;
+        face(parent, {
+          w: W, h: L + .1, // un poco más alta: los anillos se traslapan y no se ven líneas entre ellos
+          at: [x + sa * rm, -(y + ym), z + ca * rm],
+          rot: `rotateY(${(a * 180 / Math.PI).toFixed(3)}deg) rotateX(${(t * 180 / Math.PI).toFixed(3)}deg)`,
+          n: nrot([sa * ct, -stt, ca * ct]), bg, ref,
+          clip: `polygon(${ib}% 0, ${100 - ib}% 0, ${100 - ia}% 100%, ${ia}% 100%)`,
+        });
+      }
+    }
   }
 
   // Prisma vertical de "sides" caras, más ancho arriba (r1) que abajo (r2): patas cónicas.
@@ -201,7 +229,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) spinning = false;
 
   return {
-    box, prism, floorShadow, group, rig,
+    box, prism, lathe, floorShadow, group, rig,
     // Borra todas las piezas (para reconstruir el modelo tras un cambio en el editor).
     clear() { rig.replaceChildren(); faces.length = 0; },
     // Bloquea el giro con el mouse/teclado (vistas fijas del editor).
