@@ -6,7 +6,7 @@
 // - Cada hoja de puerta lleva 2 bisagras de cierre suave; cada cajón, un par de correderas telescópicas de
 //   cierre suave del largo más cercano (sin pasarse) al fondo del mueble.
 // - Tapacanto: metros lineales de los cantos visibles.
-import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe } from './modelo.js';
+import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias } from './modelo.js';
 
 export const BLANCA = 'blanco-softwood'; // Masisa Blanco
 const ZOCALO = { grafito: 'gris-grafito-natural-matt', negro: 'negro-natural-matt', aluminio: 'aluminio', blanco: BLANCA, frente: 'frente' };
@@ -15,6 +15,24 @@ export const CORREDERAS = [25, 30, 35, 40, 45, 50, 55]; // largos comerciales (c
 const r1 = (v) => Math.round(v * 10) / 10;
 // material de una pieza: sin «liston:» (los listones se cotizan como su melamina)
 const limpio = (m) => String(m || '').replace(/^liston:/, '');
+
+// ¿Se ve este costado? Queda oculto si toca otro mueble del mismo muro (mismo giro y fondo, a la misma altura)
+// o un muro. lado: 'izq' (x = 0 del mueble) o 'der' (x = ancho).
+function costadoVisible(m, lado, modelo) {
+  const r = +m.rotacion || 0, u = girar(1, 0, r), v = girar(0, 1, r);
+  const s = (o) => +o.x * u[0] + +o.z * u[1], t = (o) => +o.x * v[0] + +o.z * v[1];
+  const borde = s(m) + (lado === 'der' ? +m.ancho : 0), y0 = +m.elevacion || 0, y1 = y0 + +m.alto;
+  for (const o of modelo.modulos || []) {
+    if (o === m || o.tipo === 'aereo' && m.tipo !== 'aereo' && +o.elevacion > y1) continue;
+    const dr = Math.abs(((((+o.rotacion || 0) - r) % 360) + 360) % 360);
+    if (Math.min(dr, 360 - dr) > 1 || Math.abs(t(o) - t(m)) > 5) continue; // otro muro u otra fila
+    const a = s(o), b = a + +o.ancho, oy0 = +o.elevacion || 0, oy1 = oy0 + +o.alto;
+    const toca = lado === 'der' ? Math.abs(a - borde) < 1.5 : Math.abs(b - borde) < 1.5;
+    if (toca && Math.min(y1, oy1) - Math.max(y0, oy0) > (y1 - y0) * .5) return false; // pegado a otro mueble
+  }
+  const d = distancias(m, modelo.espacio)?.[lado === 'der' ? 'derecha' : 'izquierda']?.d;
+  return !(d != null && d < 2); // contra un muro
+}
 
 export function despiece(modelo) {
   const col = modelo.colores || {}, piezas = [], herrajes = { bisagras: 0, correderas: {} }, cubiertas = [];
@@ -31,11 +49,15 @@ export function despiece(modelo) {
       canto += cantoCm;
     };
     // ---- cuerpo
-    const costadoDef = (m.costados || col.costados) === 'frente' ? 'frente' : cuerpoDef;
+    // Costados: los que se ven van en la melamina de frentes (salvo que el mueble o el general digan «como el cuerpo»);
+    // los que tocan otro mueble o un muro, en blanco.
+    const modoCostado = m.costados || col.costados || 'frente';
     const hc = H - (ext ? 0 : Z);
     for (const [p, n] of [['izq', 'Costado izquierdo'], ['der', 'Costado derecho']]) {
-      if (!quitar.includes(p)) add(`cuerpo|${p}`, n, mat(`cuerpo|${p}`, mat('cuerpo', costadoDef)), D + ext, hc, hc + (ext ? D + ext : 0));
+      const def = modoCostado === 'frente' && (m.costados === 'frente' || costadoVisible(m, p, modelo)) ? 'frente' : cuerpoDef;
+      if (!quitar.includes(p)) add(`cuerpo|${p}`, `${n}${def === 'frente' ? ' (visible)' : ''}`, mat(`cuerpo|${p}`, mat('cuerpo', def)), D + ext, hc, hc + (ext ? D + ext : 0));
     }
+    // (las bases de los aéreos se ven desde abajo, pero van en blanco por decisión del estudio)
     if (!quitar.includes('piso')) add('cuerpo|piso', 'Base', mat('cuerpo|piso', mat('cuerpo', cuerpoDef)), W - 2 * T, D, W - 2 * T);
     if (!quitar.includes('techo')) add('cuerpo|techo', 'Techo', mat('cuerpo|techo', mat('cuerpo', cuerpoDef)), W - 2 * T, D, W - 2 * T);
     if (!quitar.includes('fondo')) { // trasera de cholguán (blanco, o del color que se le asignó)

@@ -8,7 +8,7 @@ export const PALETA = {
     blanco: ['Blanco', '#e9e6df'], frente: ['Igual a la melamina', null] } },
   cuerpo: { titulo: 'Interior y cuerpo', def: 'blanco', opciones: {
     blanco: ['Blanco', '#e9e6df'], gris: ['Gris claro', '#c9c7c2'], negro: ['Negro', '#2a2928'] } },
-  costados: { titulo: 'Costados visibles', def: 'cuerpo', opciones: {
+  costados: { titulo: 'Costados visibles', def: 'frente', opciones: {
     cuerpo: ['Como el cuerpo', null], frente: ['Igual a la melamina', null] } },
   marco: { titulo: 'Marcos de ventanas', def: 'blanco', opciones: {
     blanco: ['Blanco', '#e3e1dc'], negro: ['Negro', '#262526'], aluminio: ['Aluminio', '#b4b7b9'], madera: ['Madera', '#9b7650'],

@@ -213,7 +213,7 @@ collections:
         fields:
           - { label: Zócalo, name: zocalo, widget: select, options: [grafito, negro, aluminio, blanco, frente], required: false }
           - { label: Interior y cuerpo, name: cuerpo, widget: select, options: [blanco, gris, negro], required: false }
-          - { label: Costados visibles, name: costados, widget: select, options: [cuerpo, frente], required: false }
+          - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
           - { label: Marcos de ventanas, name: marco, widget: select, options: [blanco, negro, aluminio, madera, grafito, bronce, champagne], required: false }
           - { label: Puertas de muro, name: hoja, widget: select, options: [madera, roble, nogal, wengue, blanca, hueso, gris, grafito, negra, verde, azul, terracota], required: false }
           - { label: Lavaplatos, name: lavaplatos, widget: select, options: [acero, negro, blanco], required: false }
@@ -359,4 +359,4 @@ collections:
               - { label: Granito CLP/m², name: granito, widget: number, value_type: int, required: false }
               - { label: Cuarzo CLP/m², name: cuarzo, widget: number, value_type: int, required: false }
               - { label: Mármol CLP/m², name: marmol, widget: number, value_type: int, required: false }
-              - { label: Aplicar luz y factor a las cubiertas, name: con_factor, widget: boolean, default: false, required: false, hint: "Desactivado: la cubierta se suma al final a su valor, sin el ×1,2 ×2,3." }
+              - { label: Aplicar luz y factor a las cubiertas, name: con_factor, widget: boolean, default: true, required: false, hint: "Activado (normal): la cubierta lleva el ×1,2 ×2,3 como el resto. Desactivado: se suma a su valor." }
