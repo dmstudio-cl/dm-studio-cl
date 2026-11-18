@@ -22,6 +22,7 @@ export async function startApp(api) {
   // ----- opciones disponibles
   const permitidas = proyecto.opciones?.melaminas?.length ? new Set(proyecto.opciones.melaminas) : null;
   const melaminas = catalogo.filter((m) => !permitidas || permitidas.has(m.id));
+  const sinStock = new Set(proyecto.opciones?.sin_stock || []); // sin stock en Imperial ni Homecenter: bloqueadas
   const tiradores = proyecto.opciones?.tiradores || [];
   const cubiertas = proyecto.opciones?.cubiertas || [];
   const byId = (list, id) => list.find((x) => x.id === id);
@@ -63,7 +64,7 @@ export async function startApp(api) {
     $('#mellist').querySelectorAll('[data-t]').forEach((x) => { x.hidden = b.dataset.f !== '*' && x.dataset.t !== b.dataset.f; });
   });
   $('#mellist').innerHTML = melaminas.length ? melaminas.map((m) => `
-    <button type="button" class="sw2" data-id="${esc(m.id)}" data-t="${esc(m.tipo)}" aria-pressed="false" title="${esc(m.nombre)}${m.textura ? ' · ' + esc(m.textura) : ''}">
+    <button type="button" class="sw2${sinStock.has(m.id) ? ' sin-stock' : ''}" data-id="${esc(m.id)}" data-t="${esc(m.tipo)}" aria-pressed="false"${sinStock.has(m.id) ? ' aria-disabled="true"' : ''} title="${esc(m.nombre)}${m.textura ? ' · ' + esc(m.textura) : ''}${sinStock.has(m.id) ? ' · sin stock por ahora' : ''}">
       <i style="${m.tipo === 'unicolor' ? `background:${esc(m.hex)}` : `background:${esc(m.hex)} url('${esc(m.imagen)}') center/cover`}"></i>
       <span>${esc(m.nombre)}</span>
     </button>`).join('') : '<p class="small muted">Catálogo de melaminas en preparación.</p>';
@@ -149,7 +150,7 @@ export async function startApp(api) {
   // Arrastrar un color desde la lista y soltarlo sobre una pieza del modelo
   let arrastrado = false;
   $('#mellist').addEventListener('pointerdown', (e) => {
-    const b = e.target.closest('[data-id]'); if (!b || e.button > 0) return;
+    const b = e.target.closest('[data-id]'); if (!b || e.button > 0 || sinStock.has(b.dataset.id)) return;
     const id = b.dataset.id, x0 = e.clientX, y0 = e.clientY;
     let fantasma = null; arrastrado = false;
     const mover = (ev) => {
@@ -197,6 +198,7 @@ export async function startApp(api) {
   $('#mellist').addEventListener('click', (e) => {
     const b = e.target.closest('[data-id]'); if (!b) return;
     if (arrastrado) { arrastrado = false; return; } // fue un arrastre, no un clic
+    if (sinStock.has(b.dataset.id)) { status(`${byId(melaminas, b.dataset.id)?.nombre || 'Esta melamina'} no tiene stock por ahora en nuestras tiendas. Elige otra o escríbenos.`); return; }
     if (piezaSel) aplicarPieza(piezaSel, b.dataset.id); else choose('melamina', b.dataset.id);
   });
   document.querySelectorAll('.optlist').forEach((l) => l.addEventListener('click', (e) => {

@@ -39,7 +39,7 @@ async function escribirProyecto(id, raw, sha, mensaje) {
 }
 
 // ----- Worker (comentarios) -----
-async function api(path, { method = 'GET', body, p, params = {} } = {}) {
+export async function api(path, { method = 'GET', body, p, params = {} } = {}) {
   const base = (window.DM.worker || '').replace(/\/$/, '');
   if (!base) throw new Error('Falta la URL del Worker en Ajustes del sitio.');
   const u = new URL(`${base}/api/portal/${path}`);

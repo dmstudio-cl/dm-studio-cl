@@ -317,3 +317,6 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-tabla .num { text-align: right; font-family: var(--mono); white-space: nowrap; }
 #dlg-despiece details summary { cursor: pointer; color: var(--muted); font-size: .8rem; margin: 6px 0; }
 #dlg-despiece .ed-dlg-cuerpo { max-height: 75vh; overflow: auto; }
+
+.ed-tiendas { margin-top: 12px; display: grid; gap: 8px; }
+.ed-tabla tr.ed-err td { color: #e8a39a; }

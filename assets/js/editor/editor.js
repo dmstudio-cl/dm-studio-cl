@@ -12,7 +12,7 @@ import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
-import { iniciarProyectos, aModelo } from './proyecto.js';
+import { iniciarProyectos, aModelo, api, tokenGitHub } from './proyecto.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -1987,8 +1987,26 @@ function abrirDespiece() {
     </tbody></table>
     ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
       <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (postformado, granito, cuarzo o mármol), con su merma, sacados y respaldo.</p>` : ''}
+    <div class="ed-tiendas" id="tiendas"><p class="sub">Precios y stock de las tiendas</p><p class="ed-ayuda">${tokenGitHub() ? 'Cargando…' : 'Entra a /admin/proyectos/ con GitHub para ver los precios de Imperial y Homecenter.'}</p></div>
     <details><summary>Ver las ${d.piezas.length} piezas</summary><table class="ed-tabla"><tbody>${d.piezas.map((p) => `<tr><td>${esc(p.mueble)}</td><td>${esc(p.nombre)}</td><td class="num">${cm(p.ancho)} × ${cm(p.alto)}</td><td>${esc(p.tipo === 'cholguan' ? 'Cholguán' : nombreMat(p.material))}</td></tr>`).join('')}</tbody></table></details>`;
   dlg.showModal();
+  if (tokenGitHub()) pintarTiendas();
+}
+// Precios leídos de Imperial (Santa Rosa) y Homecenter por el Worker (cada hora, de a poco). Solo el estudio los ve.
+async function pintarTiendas(actualizar = false) {
+  const box = $('#tiendas'); if (!box) return;
+  try {
+    let msg = '';
+    if (actualizar) { const r = await api('precios/actualizar', { method: 'POST' }); msg = `Se leyeron ${r.leidos} productos${r.fallas.length ? `, ${r.fallas.length} con error` : ''}${r.pendientes ? ` · quedan ${r.pendientes} para la próxima` : ''}.`; }
+    const { filas, conLink } = await api('precios');
+    const fecha = (t) => (t ? new Date(t).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+    const nom = (f) => (f.lista === 'herrajes' ? f.clave : f.lista === 'cholguan' ? `Cholguán ${f.clave}` : nombreMaterial(f.clave) || f.clave);
+    box.innerHTML = `<p class="sub">Precios y stock de las tiendas</p>
+      <p class="ed-ayuda">${conLink ? `${conLink} links en Configuración de precios.` : 'Agrega links de Imperial u Homecenter en Configuración de precios (planchas, cholguán y herrajes).'} Se actualizan solos cada hora (de a ${15} productos). Al cotizar se usa el más barato con stock; si ninguna tienda tiene stock, la melamina queda bloqueada para el cliente.</p>
+      ${filas.length ? `<table class="ed-tabla"><thead><tr><th>Producto</th><th>Tienda</th><th class="num">Precio</th><th>Stock</th><th>Leído</th></tr></thead><tbody>${filas.map((f) => `<tr${f.error ? ' class="ed-err"' : ''}><td>${esc(nom(f))}</td><td>${f.tienda === 'imperial' ? 'Imperial' : 'Homecenter'}</td><td class="num">${f.precio ? '$' + Number(f.precio).toLocaleString('es-CL') : '—'}</td><td>${f.stock === 1 ? `Sí${f.unidades ? ` (${f.unidades})` : ''}` : f.stock === 0 ? '<b>Sin stock</b>' : '—'}</td><td>${fecha(f.actualizado)}${f.error ? `<br><small>${esc(f.error)}</small>` : ''}</td></tr>`).join('')}</tbody></table>` : ''}
+      <div class="ed-botones"><button data-tiendas="actualizar">Actualizar ahora</button></div>${msg ? `<p class="ed-ayuda">${esc(msg)}</p>` : ''}`;
+    box.querySelector('[data-tiendas]').onclick = (e) => { e.target.disabled = true; e.target.textContent = 'Leyendo…'; pintarTiendas(true); };
+  } catch (e) { box.innerHTML = `<p class="sub">Precios y stock de las tiendas</p><p class="ed-ayuda">No se pudo consultar: ${esc(e.message)}</p>`; }
 }
 // Ventana «Respaldos»: copias automáticas del modelo de este proyecto (o del modelo local)
 function abrirRespaldos() {

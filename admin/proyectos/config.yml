@@ -321,6 +321,18 @@ collections:
               - { label: Bisagra de cierre suave (CLP c/u), name: bisagra, widget: number, value_type: int, required: false }
               - { label: Tapacanto (CLP por metro), name: tapacanto_ml, widget: number, value_type: int, required: false }
               - { label: Merma de tableros (%), name: merma, widget: number, value_type: float, default: 0.1, required: false, hint: "0.1 = 10% extra por cortes" }
+              - label: Productos en las tiendas (actualizan los precios de herrajes)
+                name: productos
+                widget: list
+                required: false
+                summary: "{{fields.item}} {{fields.largo}}"
+                hint: "Pega el link de la ficha en Imperial y/o Homecenter. Contenido = unidades del paquete (bisagras), pares (correderas) o metros del rollo (tapacanto)."
+                fields:
+                  - { label: Ítem, name: item, widget: select, options: [bisagra, corredera, tapacanto] }
+                  - { label: Largo (solo correderas, cm), name: largo, widget: select, required: false, options: ["25", "30", "35", "40", "45", "50", "55"] }
+                  - { label: Contenido del paquete, name: contenido, widget: number, value_type: float, default: 1 }
+                  - { label: Link Imperial, name: url_imperial, widget: string, required: false }
+                  - { label: Link Homecenter, name: url_sodimac, widget: string, required: false }
               - label: Correderas telescópicas de cierre suave (precio por par)
                 name: correderas
                 widget: list
