@@ -19,6 +19,7 @@ export function createScene(el) {
   // Fondo CSS de un material por pieza: melamina del catálogo (id) o color ('color:#rrggbb')
   const fondoMaterial = (mid) => {
     if (!mid) return null;
+    if (mid.startsWith('liston:')) { const b = fondoMaterial(mid.slice(7)); return b ? `repeating-linear-gradient(90deg, rgba(0, 0, 0, .32) 0 .4em, rgba(0, 0, 0, .06) .4em .9em, transparent .9em 4.2em), ${b}` : null; }
     if (mid.startsWith('color:')) return mid.slice(6);
     const x = catalogo.find((k) => k.id === mid);
     return x ? (x.imagen && x.tipo !== 'unicolor' ? `url('${x.imagen}') center / 60em 60em, ${x.hex}` : x.hex) : null;

@@ -107,6 +107,7 @@ permalink: /admin/editor/
         <button type="button" data-objeto="freidora">Freidora de aire</button>
         <button type="button" data-objeto="cafetera">Cafetera</button>
         <button type="button" data-objeto="hervidor">Hervidor</button>
+        <button type="button" data-objeto="colgante">Lámpara colgante</button>
       </div>
     </details>
     <details class="ed-sec" data-sec="ventanasypue">
@@ -188,7 +189,7 @@ permalink: /admin/editor/
 </dialog>
 
 <script>
-  window.DM = { base: "{{ site.baseurl }}", worker: "{{ site.data.sitio.worker_url }}" };
+  window.DM = { base: "{{ site.baseurl }}", worker: "{{ site.data.sitio.worker_url }}", build: "{{ site.time | date: '%s' }}" };
   window.MELAMINAS = {{ site.data.melaminas | jsonify }};
 </script>
 <script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>

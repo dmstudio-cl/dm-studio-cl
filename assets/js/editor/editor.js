@@ -168,15 +168,18 @@ function mats() {
 // Un material es una melamina del catálogo (su id) o un color ('color:#rrggbb'). Se guarda en m.materiales[pieza].
 const BASICOS = [['color:#f2f0eb', 'Blanco'], ['color:#d9d6cf', 'Hueso'], ['color:#8d8a85', 'Gris'], ['color:#3a3836', 'Gris grafito'],
   ['color:#1d1c1b', 'Negro'], ['color:#b4b7b9', 'Aluminio'], ['color:#a97d4d', 'Madera natural'], ['color:#6b4a2e', 'Madera oscura']];
+const RANURA = 'repeating-linear-gradient(90deg, rgba(0, 0, 0, .32) 0 .4em, rgba(0, 0, 0, .06) .4em .9em, transparent .9em 4.2em)';
 function fondoMaterial(mid) {
   if (!mid) return null;
+  if (mid.startsWith('liston:')) { const b = fondoMaterial(mid.slice(7)); return b ? `${RANURA}, ${b}` : null; } // panel de listones
   if (mid.startsWith('color:')) return mid.slice(6);
   const f = MEL.find((x) => x.id === mid);
   return f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 60em 60em, ${f.hex}` : f.hex) : null;
 }
-const nombreMaterial = (mid) => (mid?.startsWith('color:') ? (BASICOS.find((b) => b[0] === mid)?.[1] || `Color ${mid.slice(6)}`) : MEL.find((x) => x.id === mid)?.nombre || mid);
+const nombreMaterial = (mid) => (mid?.startsWith('liston:') ? `Listones · ${nombreMaterial(mid.slice(7))}` : mid?.startsWith('color:') ? (BASICOS.find((b) => b[0] === mid)?.[1] || `Color ${mid.slice(6)}`) : MEL.find((x) => x.id === mid)?.nombre || mid);
 // Esfera de muestra: textura del material con brillo y sombra
 function esfera(mid) {
+  if (mid?.startsWith('liston:')) return esfera(mid.slice(7)).replace('background: ', `background: ${RANURA.replace(/em/g, 'px')}, `);
   const f = !mid?.startsWith('color:') && MEL.find((x) => x.id === mid);
   const base = f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 180% auto, ${f.hex}` : f.hex) : mid?.slice(6) || '#ccc';
   return `background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.55), rgba(255,255,255,0) 38%), ${base};`;
@@ -224,11 +227,14 @@ function pintarMateriales() {
       ${[...usados].map(([mid, n]) => `<div class="ed-mat-usado"><i class="ed-esfera" style="${esfera(mid)}"></i><span>${esc(nombreMaterial(mid))}<small>${n} pieza${n > 1 ? 's' : ''} con este material</small></span><button data-quitar-mat="${esc(mid)}" title="Volver al material general en esas piezas">Quitar</button></div>`).join('')}
     </div>
     <input type="search" id="mat-buscar" class="ed-mat-buscar" placeholder="Buscar material…" value="${esc(q)}">
+    <label class="ed-check ed-mat-liston"><input type="checkbox" id="mat-liston"${matListon ? ' checked' : ''}> Aplicar como <b>listones</b> (panel ranurado, ej. el lado de las sillas de una isla)</label>
     <div class="ed-mat-grupo">Colores básicos</div>
     <div class="ed-mat-grid">${BASICOS.filter((b) => filtra(b[1])).map(([mid, n]) => tarjeta(mid, n)).join('')}</div>
     <label class="ed-mat-color">Color específico <input type="color" id="mat-color" value="#b4322e"> <span class="ed-mat" data-mat="color:#b4322e" id="mat-color-muestra" style="padding:4px 8px"><i class="ed-esfera" style="width:26px;height:26px;${esfera('color:#b4322e')}"></i></span></label>
     ${lineas.map((l) => { const xs = MEL.filter((x) => (x.linea || 'Melaminas') === l && filtra(x.nombre)); return xs.length ? `<div class="ed-mat-grupo">Masisa · ${esc(l)}</div><div class="ed-mat-grid">${xs.map((x) => tarjeta(x.id, x.nombre)).join('')}</div>` : ''; }).join('')}`;
 }
+let matListon = false;
+$('#materiales').addEventListener('change', (e) => { if (e.target.id === 'mat-liston') matListon = e.target.checked; });
 $('#materiales').addEventListener('input', (e) => {
   if (e.target.id === 'mat-buscar') { const pos = e.target.selectionStart; pintarMateriales(); const i = $('#mat-buscar'); i.focus(); i.setSelectionRange(pos, pos); }
   if (e.target.id === 'mat-color') { const m = $('#mat-color-muestra'); m.dataset.mat = `color:${e.target.value}`; m.querySelector('i').style.cssText = `width:26px;height:26px;${esfera(m.dataset.mat)}`; }
@@ -241,7 +247,7 @@ $('#materiales').addEventListener('click', (e) => {
 $('#materiales').addEventListener('pointerdown', (e) => {
   const b = e.target.closest('[data-mat]'); if (!b) return;
   e.preventDefault();
-  const mid = b.dataset.mat, x0 = e.clientX, y0 = e.clientY;
+  const mid = (matListon && !b.dataset.mat.startsWith('liston:') ? 'liston:' : '') + b.dataset.mat, x0 = e.clientX, y0 = e.clientY;
   let fantasma = null;
   const destino = (ev) => {
     const bajo = document.elementFromPoint(ev.clientX, ev.clientY);
@@ -478,6 +484,7 @@ function apoyosEn(x, z) {
 }
 // Al moverlo, queda sobre la superficie más alta que tenga debajo sin pasar por encima de donde estaba
 function apoyar(o) {
+  if (OBJETOS[o.tipo]?.apoyo === 'techo') return; // cuelga del techo: se queda a su altura
   const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= (+o.elevacion || 0) + 1);
   o.elevacion = r1(ap.length ? ap[ap.length - 1].y : 0);
 }
@@ -486,7 +493,13 @@ function agregarObjeto(tipo) {
   const o = { id: uid('o'), tipo, nombre: def.nombre, ancho: def.ancho, alto: def.alto, fondo: def.fondo, x: 0, z: 0, elevacion: 0, rotacion: 0 };
   const m = sel?.m && modulo(sel.m);
   const mc = def.apoyo === 'mesa' ? (m?.cubierta ? m : modelo.modulos.find((x) => x.cubierta && !x.artefacto)) : null;
-  if (mc) { // sobre una cubierta: centrado, mirando hacia el frente del mueble
+  if (def.apoyo === 'techo') { // lámpara colgante: sobre la cubierta del mueble elegido (o la primera), a 75 cm de ella
+    const mt = m?.cubierta ? m : modelo.modulos.find((x) => x.cubierta && !x.artefacto) || m;
+    const techo = +modelo.espacio?.alto || 240;
+    if (mt) { const c = mt.cubierta ? cubiertaDe(mt) : { x0: 0, x1: +mt.ancho, z0: 0, z1: +mt.profundidad }, [dx, dz] = girar((c.x0 + c.x1) / 2, (c.z0 + c.z1) / 2, +mt.rotacion || 0); o.x = r1(+mt.x + dx); o.z = r1(+mt.z + dz); o.elevacion = r1(+mt.elevacion + +mt.alto + (mt.cubierta ? CT : 0) + 75); }
+    else o.elevacion = 150;
+    o.cable = r1(Math.max(0, techo - o.elevacion - def.alto));
+  } else if (mc) { // sobre una cubierta: centrado, mirando hacia el frente del mueble
     const c = cubiertaDe(mc), [dx, dz] = girar((c.x0 + c.x1) / 2, (c.z1 - def.fondo / 2 - 4), +mc.rotacion || 0);
     o.x = r1(+mc.x + dx); o.z = r1(+mc.z + dz); o.rotacion = +mc.rotacion || 0; o.elevacion = r1(+mc.elevacion + +mc.alto + CT);
   } else {
@@ -1022,7 +1035,8 @@ plano.addEventListener('pointerup', (e) => {
   const g = gesto; gesto = null;
   if (g.tipo === 'obj-f') { // al soltar: se apoya en la superficie más alta que quede debajo (cubierta, repisa o piso)
     const o = objeto(g.o);
-    if (o) { const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= +o.elevacion + 4); const a = ap[ap.length - 1]; o.elevacion = r1(a ? a.y : 0); aviso(`${o.nombre}: ${a ? a.nombre.toLowerCase() : 'piso'} (a ${cm(o.elevacion)} cm del piso).`); }
+    if (o && OBJETOS[o.tipo]?.apoyo === 'techo') { o.cable = r1(Math.max(0, +o.cable + g.e0 - +o.elevacion)); } // colgante: el cable se ajusta
+    else if (o) { const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= +o.elevacion + 4); const a = ap[ap.length - 1]; o.elevacion = r1(a ? a.y : 0); aviso(`${o.nombre}: ${a ? a.nombre.toLowerCase() : 'piso'} (a ${cm(o.elevacion)} cm del piso).`); }
     if (JSON.stringify(modelo) !== g.antes) { hist.push(g.antes); fut.length = 0; guardar(); }
     render(); return;
   }
@@ -1362,7 +1376,7 @@ function props() {
         <label class="ed-campo ancho2">Modelo<select data-k="o.tipo">${Object.entries(OBJETOS).map(([k, d]) => `<option value="${k}"${k === o.tipo ? ' selected' : ''}>${d.nombre}</option>`).join('')}</select></label>
         ${num('o.ancho', 'Ancho', o.ancho)}${num('o.alto', 'Alto', o.alto)}${num('o.fondo', 'Fondo', o.fondo)}${num('o.elevacion', 'Altura del piso', o.elevacion)}
         ${num('o.x', 'Posición X', o.x, { min: -9999 })}${num('o.z', 'Posición Z', o.z, { min: -9999 })}${num('o.rotacion', 'Giro', o.rotacion, { u: '°', step: 90, min: -360 })}
-        ${opciones('o.color', 'Color', o.color || '', { '': 'Como cocina y encimeras', acero: 'Acero inoxidable', negro: 'Negro', blanco: 'Blanco' }, 'ancho2')}
+        ${o.tipo === 'colgante' ? num('o.cable', 'Largo del cable', o.cable) : opciones('o.color', 'Color', o.color || '', { '': 'Como cocina y encimeras', acero: 'Acero inoxidable', negro: 'Negro', blanco: 'Blanco' }, 'ancho2')}
       </div>
       <p class="sub" style="margin-top:12px">Apoyar en</p>
       <div class="ed-botones">${ap.map((a) => `<button data-a="apoyar:${a.y}"${Math.abs(a.y - +o.elevacion) < .5 ? ' class="ed-primario"' : ''}>${esc(a.nombre)} <small>${cm(a.y)}</small></button>`).join('')}</div>
@@ -1628,7 +1642,8 @@ $('#props').addEventListener('change', (e) => {
       if (c === 'nombre') { o.nombre = String(v).slice(0, 60); return; }
       if (c === 'color') { if (v) o.color = v; else delete o.color; return; }
       if (['ancho', 'alto', 'fondo'].includes(c) && v > 0) o[c] = v;
-      if (c === 'elevacion' && v >= 0) o.elevacion = v;
+      if (c === 'elevacion' && v >= 0) { if (o.tipo === 'colgante') o.cable = r1(Math.max(0, +o.cable + +o.elevacion - v)); o.elevacion = v; } // la colgante sube o baja con el cable
+      if (c === 'cable' && v >= 0) o.cable = v;
       if (['x', 'z', 'rotacion'].includes(c)) o[c] = v;
     });
     return;
@@ -2140,3 +2155,20 @@ setHerr('sel');
 render();
 referencias.cargar();
 window.editor = { get modelo() { return modelo; }, st, setVista, setHerr, render, referencias }; // para depurar en la consola
+
+// ===================== versión nueva del editor =====================
+// Una pestaña abierta sigue con el código con que se cargó. Si se publicó una versión nueva, se avisa para recargar.
+async function revisarVersion() {
+  try {
+    const v = await fetch(`${window.DM.base}/assets/data/version.json`, { cache: 'no-store' }).then((r) => r.json());
+    if (v.build && window.DM.build && v.build !== window.DM.build && !document.querySelector('.ed-version')) {
+      const b = document.createElement('div');
+      b.className = 'ed-version';
+      b.innerHTML = 'Hay una versión nueva del editor. <button>Recargar</button><small>Tus cambios quedan guardados en este navegador.</small>';
+      b.querySelector('button').addEventListener('click', () => location.reload());
+      document.body.append(b);
+    }
+  } catch (e) {}
+}
+setInterval(revisarVersion, 3 * 60e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) revisarVersion(); });

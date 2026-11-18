@@ -302,3 +302,10 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-extruir { position: absolute; z-index: 6; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px;
   background: var(--red-accent); color: #fff; font: 600 .8rem/1 var(--mono); cursor: ew-resize; box-shadow: 0 4px 14px rgba(0, 0, 0, .5); touch-action: none; user-select: none; }
 .ed-extruir span { font-size: 1rem; }
+
+/* aviso de versión nueva y listones */
+.ed-version { position: fixed; z-index: 80; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px; background: var(--red-accent); color: #fff; font-size: .85rem; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
+.ed-version button { background: #fff; color: var(--ink); border: 0; font-weight: 600; }
+.ed-version small { opacity: .8; }
+.ed-mat-liston { margin: 4px 0 6px; font-size: .78rem; }

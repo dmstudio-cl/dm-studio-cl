@@ -191,7 +191,8 @@ collections:
         summary: "{{fields.nombre}} {{fields.ancho}}×{{fields.alto}}"
         fields:
           - { label: ID, name: id, widget: string, required: false }
-          - { label: Modelo, name: tipo, widget: select, options: [refri1, refri2, lavavajillas, horno, microondas, freidora, cafetera, hervidor] }
+          - { label: Modelo, name: tipo, widget: select, options: [refri1, refri2, lavavajillas, horno, microondas, freidora, cafetera, hervidor, colgante] }
+          - { label: Largo del cable (colgante), name: cable, widget: number, value_type: float, required: false }
           - { label: Nombre, name: nombre, widget: string }
           - { label: X (cm), name: x, widget: number, value_type: float }
           - { label: Z (cm), name: z, widget: number, value_type: float }

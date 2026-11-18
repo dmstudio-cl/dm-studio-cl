@@ -14,6 +14,7 @@ export const OBJETOS = {
   freidora: { nombre: 'Freidora de aire', ancho: 30, alto: 32, fondo: 37, apoyo: 'mesa' },
   cafetera: { nombre: 'Cafetera', ancho: 24, alto: 35, fondo: 30, apoyo: 'mesa' },
   hervidor: { nombre: 'Hervidor', ancho: 22, alto: 25, fondo: 16, apoyo: 'mesa' },
+  colgante: { nombre: 'Lámpara colgante', ancho: 16, alto: 24, fondo: 16, apoyo: 'techo' },
 };
 
 const VIDRIO = 'linear-gradient(160deg, #3a4148, #121518 60%, #262b30)';
@@ -27,7 +28,7 @@ export function dibujarObjeto(st, o, ref, colorGeneral = 'acero') {
   const G = st.group({ x: +o.x || 0, y: +o.elevacion || 0, z: +o.z || 0, ry: +o.rotacion || 0 });
   const B = (b, bg, caras) => G.box({ ...b, tex: { bg }, ref, ...(caras ? { caras } : {}) });
   const zf = D / 2; // cara frontal
-  B({ w: W, h: H, d: D, x: 0, y: H / 2, z: 0 }, ac.cuerpo);
+  B({ w: W, h: H, d: D, x: 0, y: H / 2, z: 0 }, o.tipo === 'colgante' ? 'linear-gradient(180deg, #2a2a2b, #0f0f10)' : ac.cuerpo);
   const manilla = (w, h, x, y) => B({ w, h, d: 2.4, x, y, z: zf + 1.6 }, '#c9ccce');
   switch (o.tipo) {
     case 'refri1':
@@ -67,5 +68,14 @@ export function dibujarObjeto(st, o, ref, colorGeneral = 'acero') {
     case 'hervidor':
       B({ w: 3, h: H * .7, d: 3, x: 0, y: H * .5, z: -D / 2 - 1.5 }, '#1d1e20'); // asa
       break;
+    case 'colgante': { // pantalla negra con borde dorado, cable hasta el techo y cono de luz cálida hacia abajo
+      const cable = Math.max(0, +o.cable || 0), luz = '255, 176, 96';
+      if (cable) B({ w: .5, h: cable, d: .5, x: 0, y: H + cable / 2, z: 0 }, '#151515');
+      B({ w: W * .82, h: 1.2, d: D * .82, x: 0, y: .6, z: 0 }, '#c9a25f', ['bottom', 'front', 'back', 'left', 'right']); // aro inferior
+      const cono = { bg: `linear-gradient(to bottom, rgba(${luz}, .55), rgba(${luz}, .12) 55%, rgba(${luz}, 0))` };
+      for (const ry of [0, 90]) { const g = G.group({ x: 0, y: 0, z: 0, ry }); g.box({ w: W * 2.6, h: 70, d: .01, x: 0, y: -35, z: 0, tex: cono, emisiva: true, caras: ['front'] }); }
+      G.box({ w: W * .7, h: .2, d: D * .7, x: 0, y: -.1, z: 0, tex: { bg: `radial-gradient(circle, rgb(255, 244, 220), rgb(${luz}))` }, emisiva: true, caras: ['bottom'] });
+      break;
+    }
   }
 }
