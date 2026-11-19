@@ -52,6 +52,13 @@
       ]
     }
   ],
+  "objetos": [
+    { "id": "o-demo-1", "tipo": "conservadora", "nombre": "Conservadora", "x": 305, "z": 140, "elevacion": 0, "rotacion": 0, "ancho": 100, "alto": 85, "fondo": 62,
+      "links": [
+        { "nombre": "Freezer horizontal 200 L (ejemplo)", "tienda": "Sodimac", "precio": 299990, "url": "https://www.sodimac.cl/" },
+        { "nombre": "Freezer horizontal 300 L (ejemplo)", "tienda": "Falabella", "url": "https://www.falabella.com/" }
+      ] }
+  ],
   "opciones": {
     "melaminas": [],
     "tiradores": [

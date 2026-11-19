@@ -1,4 +1,5 @@
 import { despiece } from './despiece.js';
+import { optimizarDespiece } from './optimizador.js';
 // Proyectos de clientes en el editor: abrir desde el repo privado, ver y responder comentarios,
 // y "Publicar versión" (commit en el repo + registro en el chat + aviso al cliente).
 //
@@ -29,6 +30,12 @@ const b64enc = (s) => { let bin = ''; new TextEncoder().encode(s).forEach((b) =>
 export async function leerProyecto(id) {
   const f = await gh(`contents/proyectos/${encodeURIComponent(id)}.json?ref=main`);
   return { raw: JSON.parse(b64dec(f.content)), sha: f.sha };
+}
+// Configuración de precios del repo privado (SKU de Imperial de cada plancha, tapacanto…). null si no hay sesión.
+export async function leerPrecios() {
+  if (!tokenGitHub()) return null;
+  const f = await gh('contents/config/precios.json?ref=main');
+  return JSON.parse(b64dec(f.content));
 }
 async function escribirProyecto(id, raw, sha, mensaje) {
   const r = await gh(`contents/proyectos/${encodeURIComponent(id)}.json`, {
@@ -247,6 +254,8 @@ export function iniciarProyectos(ed) {
       raw.colores = modelo.colores || {};
       raw.objetos = modelo.objetos || [];
       raw.despiece = despiece(modelo); // cantidades de materiales y herrajes: el Worker las cotiza
+      // planchas enteras por melamina (optimizador); «frente» queda sin resolver (la elige el cliente) y con veta fija
+      raw.despiece.planchas = optimizarDespiece(raw.despiece).map((g) => ({ material: g.material, espesor: g.espesor, planchas: g.planchas, m2: Math.round(g.m2Piezas * 100) / 100 }));
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };

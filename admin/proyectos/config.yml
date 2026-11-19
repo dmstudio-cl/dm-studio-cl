@@ -147,6 +147,7 @@ collections:
                   - { label: Tipo, name: tipo, widget: select, options: [puerta, puerta_doble, cajon, panel, abierto, campana] }
                   - { label: Alto, name: alto, widget: number, value_type: float }
                   - { label: Bisagra, name: bisagra, widget: select, default: izquierda, options: [izquierda, derecha, arriba, abajo], required: false }
+                  - { label: Frente del cajón, name: montaje, widget: select, options: [sobre, dentro], required: false, hint: "sobre = sobre los cantos (como una puerta); dentro = dentro de las separaciones" }
                   - { label: Repisas, name: repisas, widget: number, value_type: int, required: false }
                   - { label: Hojas (puertas de la sección), name: hojas, widget: number, value_type: int, required: false }
           - label: Tiradores (ubicados en el editor)
@@ -193,7 +194,7 @@ collections:
         summary: "{{fields.nombre}} {{fields.ancho}}×{{fields.alto}}"
         fields:
           - { label: ID, name: id, widget: string, required: false }
-          - { label: Modelo, name: tipo, widget: select, options: [refri1, refri2, lavavajillas, horno, microondas, freidora, cafetera, hervidor, colgante] }
+          - { label: Modelo, name: tipo, widget: select, options: [refri1, refri2, lavavajillas, conservadora, horno, microondas, freidora, cafetera, hervidor, colgante] }
           - { label: Largo del cable (colgante), name: cable, widget: number, value_type: float, required: false }
           - { label: Nombre, name: nombre, widget: string }
           - { label: X (cm), name: x, widget: number, value_type: float }
@@ -204,6 +205,17 @@ collections:
           - { label: Alto (cm), name: alto, widget: number, value_type: float }
           - { label: Fondo (cm), name: fondo, widget: number, value_type: float }
           - { label: Color, name: color, widget: select, options: [acero, negro, blanco], required: false }
+          - label: Productos recomendados (el cliente los ve al tocar el electrodoméstico)
+            name: links
+            widget: list
+            required: false
+            collapsed: true
+            summary: "{{fields.nombre}} · {{fields.tienda}}"
+            fields:
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Tienda, name: tienda, widget: string, required: false }
+              - { label: Precio de referencia (CLP), name: precio, widget: number, value_type: int, required: false }
+              - { label: Link, name: url, widget: string }
 
       - label: Colores y materiales (los elige el editor)
         name: colores
@@ -301,6 +313,7 @@ collections:
               - { label: Espesor (mm), name: espesor, widget: select, required: false, options: ["5.5", "15", "18"] }
               - { label: Precio (CLP), name: precio, widget: number, value_type: int }
               - { label: Link Imperial (para actualizar precio y stock), name: url_imperial, widget: string, required: false }
+              - { label: SKU del tapacanto en Imperial (para el Excel del optimizador), name: tapacanto_sku, widget: string, required: false, hint: "Ej: 130908" }
               - { label: Link Homecenter (para actualizar precio y stock), name: url_sodimac, widget: string, required: false }
           - label: Cholguán (traseras y fondos de cajón)
             name: cholguan
@@ -318,7 +331,10 @@ collections:
             widget: object
             required: false
             fields:
-              - { label: Bisagra de cierre suave (CLP c/u), name: bisagra, widget: number, value_type: int, required: false }
+              - { label: Bisagra de cierre suave (CLP c/u), name: bisagra, widget: number, value_type: int, required: false, hint: "Se usa si no pones precio a la recta o a la semicurva" }
+              - { label: Bisagra recta 90° (CLP c/u), name: bisagra_recta, widget: number, value_type: int, required: false, hint: "Puertas que abren hacia un costado libre" }
+              - { label: Bisagra semicurva (CLP c/u), name: bisagra_semicurva, widget: number, value_type: int, required: false, hint: "Puertas que abren hacia otra puerta (división compartida)" }
+              - { label: Pino tapa canteada 1x4 de 3,2 m (CLP por tira), name: pino_tira, widget: number, value_type: int, required: false, default: 1600, hint: "Zócalo y soportes traseros" }
               - { label: Tapacanto (CLP por metro), name: tapacanto_ml, widget: number, value_type: int, required: false }
               - { label: Merma de tableros (%), name: merma, widget: number, value_type: float, default: 0.1, required: false, hint: "0.1 = 10% extra por cortes" }
               - label: Productos en las tiendas (actualizan los precios de herrajes)
@@ -328,7 +344,7 @@ collections:
                 summary: "{{fields.item}} {{fields.largo}}"
                 hint: "Pega el link de la ficha en Imperial y/o Homecenter. Contenido = unidades del paquete (bisagras), pares (correderas) o metros del rollo (tapacanto)."
                 fields:
-                  - { label: Ítem, name: item, widget: select, options: [bisagra, corredera, tapacanto] }
+                  - { label: Ítem, name: item, widget: select, options: [bisagra, bisagra_recta, bisagra_semicurva, corredera, tapacanto, pino] }
                   - { label: Largo (solo correderas, cm), name: largo, widget: select, required: false, options: ["25", "30", "35", "40", "45", "50", "55"] }
                   - { label: Contenido del paquete, name: contenido, widget: number, value_type: float, default: 1 }
                   - { label: Link Imperial, name: url_imperial, widget: string, required: false }

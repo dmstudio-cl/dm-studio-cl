@@ -30,7 +30,8 @@ export const hojasMin = (w) => Math.max(2, Math.ceil(w / MAX_HOJA - 1e-6));
 export const hojasDe = (fr, w) => Math.max(hojasMin(w), Math.round(+fr?.hojas || 0));
 export const GAP = .3;    // luz entre frentes
 export const CT = 3.8;    // espesor de cubierta
-export const OVER = 2;    // vuelo frontal de la cubierta
+export const OVER = 6;    // vuelo frontal de la cubierta desde la cara de las puertas (regla del estudio: cubierta = cuerpo + 7,8 cm)
+export const CHOLGUAN = .3; // trasera de cholguán (3 mm), dentro de la profundidad del módulo
 
 export const TIPOS_FRENTE = {
   puerta: 'Puerta',
@@ -154,8 +155,10 @@ function dibujarLuz(G, m, L, { T, W, H, D, Z, cs }) {
 // Marco del zócalo en coordenadas locales (x desde el costado izq., z desde la pared), con medidas válidas
 export function marcoZocalo(m, T = tablero(m)) {
   const W = +m.ancho, D = +m.profundidad, min = 2 * T + 5;
-  const izq = Math.max(0, +m.zocalo_izq || 0), der = Math.max(0, +m.zocalo_der || 0);
-  const atras = Math.max(0, +m.zocalo_atras || 0), frente = Math.max(0, +m.zocalo_retiro || 0);
+  // Por defecto (regla del estudio): el marco de pino se retira 5 cm del frente, 4 cm de la trasera de la base y 2 cm de cada costado
+  const def = (v, d) => (v == null || v === '' ? d : Math.max(0, +v || 0));
+  const izq = def(m.zocalo_izq, 2), der = def(m.zocalo_der, 2);
+  const atras = def(m.zocalo_atras, 4 + CHOLGUAN), frente = def(m.zocalo_retiro, 5);
   const x0 = Math.min(izq, W - min), x1 = Math.max(x0 + min, W - der);
   const z0 = Math.min(atras, D - min), z1 = Math.max(z0 + min, D - frente);
   return { x0, x1, z0, z1, izq: x0, der: W - x1, atras: z0, frente: D - z1 };
@@ -394,9 +397,13 @@ export function limites(modelo, { conMuros = true } = {}) {
 // mats: { cuerpo, frente, zocalo, cubierta } → valores CSS "background" para cada material.
 // Cada mueble se dibuja en un grupo con origen en su esquina trasera izquierda y girado en planta
 // (igual que three/mueble.js), así el editor y el portal ubican todo en el mismo lugar.
-export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) {
+// fabricacion: dibuja el mueble tal como se arma (basales sin techo, con soportes de 10 cm; puertas 7 cm bajo la
+// cubierta o 1 cm sin ella; zócalo de pino). Por ahora solo lo usa el editor; el portal del cliente va sin él.
+export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabricacion = false } = {}) {
   st.clear();
   const ver = (k) => capas[k] !== false;
+  const SOPORTE = 10;                       // alto de los soportes horizontales (cm)
+  const PINO = { bg: mats.pino || 'linear-gradient(180deg, #d8bd94, #c7a877)' }; // pino tapa canteada
   const M = {
     cuerpo: { bg: mats.cuerpo || '#e9e6df' },
     frente: { bg: mats.frente || '#cfc6b8' },
@@ -423,6 +430,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
+    const esBasal = m.tipo !== 'aereo' && m.tipo !== 'torre';
+    const fab = fabricacion && !m.artefacto;
+    const recorteSup = fab ? (m.cubierta ? 7 : 1) : 0; // cuánto bajan los frentes del borde superior
 
     // Material propio de una pieza (si el editor le asignó uno), probando de la clave más específica a la general
     const propio = (...claves) => {
@@ -431,7 +441,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
     };
     const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
     if (ver('zocalo') && Z > 0) { // marco de 4 tablas bajo el cuerpo (no se ve vacío por los costados)
-      const zr = marcoZocalo(m, T), MZ = propio('zocalo') || M.zocalo, rz = `${id}|zocalo`;
+      const zr = marcoZocalo(m, T), MZ = propio('zocalo') || (fab ? PINO : M.zocalo), rz = `${id}|zocalo`;
       const ancho = zr.x1 - zr.x0, fondo = zr.z1 - zr.z0;
       B({ w: ancho, h: Z, d: T, x: (zr.x0 + zr.x1) / 2, y: Z / 2, z: zr.z1 - T / 2 }, MZ, rz);              // frente
       B({ w: ancho, h: Z, d: T, x: (zr.x0 + zr.x1) / 2, y: Z / 2, z: zr.z0 + T / 2 }, MZ, rz);              // atrás
@@ -450,13 +460,24 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
       if (!quitada('izq')) B({ w: T, h: H - cy0, d: dz, x: T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
       if (!quitada('der')) B({ w: T, h: H - cy0, d: dz, x: W - T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
       if (!quitada('piso')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, tab('piso'), `${id}|cuerpo|piso`); // base
-      if (!quitada('techo')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
+      // Techo de melamina: los basales no llevan (quedan abiertos arriba); aéreos y torres sí
+      if (!quitada('techo') && !(fab && esBasal)) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
       if (!quitada('fondo')) B({ w: W - 2 * T, h: H - piso - T, d: .6, x: W / 2, y: piso + (H - piso - T) / 2, z: .3 }, tab('fondo'), `${id}|cuerpo|fondo`); // fondo
+      // Soportes horizontales de 10 cm (fabricación): delantero de melamina, trasero(s) de pino tapa
+      if (fab && (esBasal || m.tipo === 'aereo')) {
+        const li = W - 2 * T;
+        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, M.cuerpo, `${id}|soporte|frente`);
+        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`);
+        if (m.tipo === 'aereo') B({ w: li, h: SOPORTE, d: T, x: W / 2, y: Z + T + SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|anclaje`);
+      }
     }
     if (ver('frentes')) {
       for (const c of celdas(m)) {
         const k = `f|${c.col}|${c.fila}`, ref = `${id}|${k}`;
-        const fw = c.w - GAP, fh = c.h - GAP, zf = D + T / 2;
+        // En fabricación, los frentes de la fila de arriba bajan 7 cm (con cubierta) o 1 cm del borde superior
+        let cy = c.y, ch = c.h;
+        if (fab && recorteSup && c.tipo !== 'abierto' && c.y1 >= H - .05) { ch = Math.max(5, (H - recorteSup) - c.y0); cy = c.y0 + ch / 2; }
+        const fw = c.w - GAP, fh = ch - GAP, zf = D + T / 2;
         const MF = propio(k, 'frentes') || M.frente, MD = propio(`${k}|div`, 'cuerpo') || M.cuerpo;
         if (c.tipo === 'abierto') { // sin puerta: se ve el interior blanco, con sus divisiones y repisas
           if (ver('cuerpo')) {
@@ -471,9 +492,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null } = {}) 
           }
         } else if (c.tipo === 'puerta_doble') { // n hojas iguales (máx. 45 cm cada una)
           const n = c.hojas, lw = (fw - (n - 1) * GAP) / n;
-          for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: c.y, z: zf }, MF, ref);
+          for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: cy, z: zf }, MF, ref);
         } else {
-          B({ w: fw, h: fh, d: T, x: c.x, y: c.y, z: zf }, MF, ref);
+          B({ w: fw, h: fh, d: T, x: c.x, y: cy, z: zf }, MF, ref);
         }
       }
     }
