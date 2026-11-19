@@ -495,3 +495,29 @@
   hex: "#a6a49c"
   pagina: 143
   imagen: /assets/img/melaminas/sierra.webp
+# Agregados desde los PDF de precios de Imperial (2026-11-19); sin textura real (genéricos)
+- id: wengue
+  nombre: "Wengue"
+  linea: "Maderas"
+  tipo: generico
+  hex: "#3b2d23"
+- id: farola
+  nombre: "Farola"
+  linea: "Maderas"
+  tipo: generico
+  hex: "#8a6b45"
+- id: mortero
+  nombre: "Mortero"
+  linea: "Piedras y Textiles"
+  tipo: generico
+  hex: "#8f8b84"
+- id: blanca-premium
+  nombre: "Blanca Premium"
+  linea: "Unicolor"
+  tipo: generico
+  hex: "#f2f0ec"
+- id: blanca-clasica
+  nombre: "Blanca Clásica"
+  linea: "Unicolor"
+  tipo: generico
+  hex: "#f4f2ee"

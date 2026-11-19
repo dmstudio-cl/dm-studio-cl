@@ -7,7 +7,7 @@ import { OBJETOS } from './objetos.js';
 import { despiece } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
-import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS } from './modelo.js';
+import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
@@ -37,6 +37,7 @@ let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
+let catalogoTir = [];      // tiradores de la Configuración de precios (nombre, forma, color, largo, grosor, precio)
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
 const hist = [], fut = [];
@@ -132,7 +133,7 @@ function normalizar(m) {
   // Cada tirador se mantiene dentro de su frente (si el frente se achica, el tirador lo acompaña)
   const cs = celdas(m);
   for (const t of m.tiradores) {
-    const c = cs.find((k) => k.col === t.col && k.fila === t.fila), def = TIRADORES[t.modelo];
+    const c = cs.find((k) => k.col === t.col && k.fila === t.fila), def = tiradorDef(t.modelo);
     if (!c || !def) continue;
     const a = ((+t.rot || 0) % 180 + 180) % 180, rad = a * Math.PI / 180;
     const ex = Math.abs(Math.cos(rad)) * def.largo / 2 + 1, ey = Math.abs(Math.sin(rad)) * def.largo / 2 + 1; // medio largo proyectado
@@ -785,7 +786,7 @@ function dibujarPlano() {
     });
     // tiradores (zona para arrastrar)
     for (const t of m.tiradores || []) {
-      const c = cs.find((k) => k.col === t.col && k.fila === t.fila); const def = TIRADORES[t.modelo];
+      const c = cs.find((k) => k.col === t.col && k.fila === t.fila); const def = tiradorDef(t.modelo);
       if (!c || !def) continue;
       const cx = M.X(ox + c.x + +t.dx), cy = M.Y(oy + c.y + +t.dy), L = (def.largo + 1) * M.s, A = Math.max(3, 3.2) * M.s;
       el('rect', { x: cx - L / 2, y: cy - A / 2, width: L, height: A, rx: 3, transform: `rotate(${-(+t.rot || 0)} ${cx} ${cy})`, class: `tirador${sel?.tipo === 'tirador' && sel.t === t.id ? ' sel' : ''}`, 'data-tipo': 'tirador', 'data-m': m.id, 'data-t': t.id }, plano);
@@ -1187,7 +1188,7 @@ function unirDerecha(m, ci) {
 // ----- tiradores: ubicación por defecto según el tipo de frente
 function ubicarTirador(m, ci, fi, modeloT, punto = null) {
   const c = celdas(m).find((k) => k.col === ci && k.fila === fi);
-  const def = TIRADORES[modeloT];
+  const def = tiradorDef(modeloT);
   const f = m.columnas[ci].frentes[fi];
   const t = { id: uid('t'), modelo: modeloT, color: 'negro', col: ci, fila: fi, dx: 0, dy: 0, rot: 0 };
   const largo = /barra/.test(modeloT);
@@ -1310,20 +1311,34 @@ function desdeRef(ref) {
 
 // ===================== biblioteca de tiradores (arrastrar y soltar) =====================
 const biblio = $('#biblio');
-for (const [id, def] of Object.entries(TIRADORES)) {
+// Tiradores del catálogo de precios (Configuración de precios): se dibujan a escala con su medida y color reales
+function botonTirador(id, def, nombre, color = null) {
   const b = document.createElement('button');
   b.type = 'button'; b.dataset.tirador = id;
   const xs = def.piezas.map((p) => [p.x - p.w / 2, p.x + p.w / 2]).flat(), ys = def.piezas.map((p) => [p.y - p.h / 2, p.y + p.h / 2]).flat();
   const x0 = Math.min(...xs, -4), x1 = Math.max(...xs, 4), y0 = Math.min(...ys, -2), y1 = Math.max(...ys, 2);
-  b.innerHTML = `<svg viewBox="${x0 - 1} ${-y1 - 1} ${x1 - x0 + 2} ${y1 - y0 + 2}" preserveAspectRatio="xMidYMid meet">${def.piezas.map((p) => `<rect x="${p.x - p.w / 2}" y="${-p.y - p.h / 2}" width="${p.w}" height="${p.h}" rx=".3" fill="${p.z > 1.5 ? '#ece7dd' : '#8a857d'}"/>`).join('')}</svg>${esc(def.nombre)}`;
-  biblio.append(b);
+  const fill = (p) => color || (p.z > 1.5 ? '#ece7dd' : '#8a857d');
+  b.innerHTML = `<svg viewBox="${x0 - 1} ${-y1 - 1} ${x1 - x0 + 2} ${y1 - y0 + 2}" preserveAspectRatio="xMidYMid meet">${def.piezas.map((p) => `<rect x="${p.x - p.w / 2}" y="${-p.y - p.h / 2}" width="${p.w}" height="${p.h}" rx=".3" fill="${fill(p)}"${color ? ' stroke="#ece7dd" stroke-width=".15"' : ''}/>`).join('')}</svg>${esc(nombre)}`;
+  return b;
 }
+function pintarBiblio() {
+  biblio.replaceChildren();
+  const cat = catalogoTir.map((c, i) => ({ c, i, def: c.forma !== 'sin' && tiradorDef(modeloCatalogo(c)) })).filter((x) => x.def);
+  if (cat.length) {
+    const t = document.createElement('p'); t.className = 'ed-ayuda ed-biblio-tit'; t.textContent = 'Catálogo (a escala, con su precio en Configuración de precios)'; biblio.append(t);
+    for (const { c, i, def } of cat) { const b = botonTirador(modeloCatalogo(c), def, c.nombre, c.color); b.dataset.cat = i; b.title = `${c.nombre}${+c.precio ? ` · $${Number(c.precio).toLocaleString('es-CL')}` : ''}`; biblio.append(b); }
+    const t2 = document.createElement('p'); t2.className = 'ed-ayuda ed-biblio-tit'; t2.textContent = 'Básicos'; biblio.append(t2);
+  }
+  for (const [id, def] of Object.entries(TIRADORES)) biblio.append(botonTirador(id, def, def.nombre));
+}
+pintarBiblio();
+leerPrecios().then((cfg) => { catalogoTir = (cfg?.tiradores || []).filter((t) => t?.nombre); pintarBiblio(); }).catch(() => {});
 biblio.addEventListener('pointerdown', (e) => {
   const b = e.target.closest('[data-tirador]'); if (!b) return;
   e.preventDefault();
-  const id = b.dataset.tirador;
+  const id = b.dataset.tirador, cat = b.dataset.cat != null ? catalogoTir[+b.dataset.cat] : null;
   const fantasma = document.createElement('div');
-  fantasma.className = 'ed-fantasma'; fantasma.textContent = TIRADORES[id].nombre;
+  fantasma.className = 'ed-fantasma'; fantasma.textContent = cat?.nombre || tiradorDef(id)?.nombre || id;
   document.body.append(fantasma);
   const mover = (ev) => { fantasma.style.left = ev.clientX + 'px'; fantasma.style.top = ev.clientY + 'px'; };
   mover(e);
@@ -1342,6 +1357,7 @@ biblio.addEventListener('pointerdown', (e) => {
       const s = desdeRef(cara.dataset.ref); m = modulo(s.m); ci = s.col; fi = s.fila;
     } else { aviso('Suelta el tirador sobre una puerta o un cajón.'); return; }
     const t = ubicarTirador(m, ci, fi, id, punto);
+    if (cat) { t.color = cat.color || t.color; t.nombre = cat.nombre; } // del catálogo: su color y su nombre
     cambiar(() => m.tiradores.push(t));
     sel = { tipo: 'tirador', m: m.id, t: t.id }; render();
   };
@@ -1366,7 +1382,7 @@ function arbol() {
       h += `<div class="n2" style="padding:4px 0 2px 30px;font-size:.72rem">Columna ${ci + 1} <small>${cm(c.ancho)}</small></div>`;
       c.frentes.forEach((f, fi) => { h += btn({ tipo: 'frente', m: m.id, col: ci, fila: fi }, 'n3', `${tipoN(f)} <small>${cm(f.alto)}</small>`); });
     });
-    (m.tiradores || []).forEach((t) => { h += btn({ tipo: 'tirador', m: m.id, t: t.id }, 'n1', `↳ ${esc(TIRADORES[t.modelo]?.nombre || t.modelo)} <small>c${t.col + 1}·f${t.fila + 1}</small>`); });
+    (m.tiradores || []).forEach((t) => { h += btn({ tipo: 'tirador', m: m.id, t: t.id }, 'n1', `↳ ${esc(t.nombre || tiradorDef(t.modelo)?.nombre || t.modelo)} <small>c${t.col + 1}·f${t.fila + 1}</small>`); });
     if (m.cubierta) h += btn({ tipo: 'cubierta', m: m.id }, 'n1', 'Cubierta');
     for (const a of artefactosDe(m)) h += btn({ tipo: 'artefacto', m: m.id, a: a.id }, 'n3', `${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)}×${cm(a.fondo)}</small>`);
     return h;
@@ -1567,10 +1583,16 @@ function props() {
   } else if (sel.tipo === 'tirador') {
     const t = m.tiradores.find((k) => k.id === sel.t);
     if (!t) { sel = null; return props(); }
-    h = `<p class="tit">${esc(TIRADORES[t.modelo]?.nombre || t.modelo)}</p><p class="sub">Tirador · columna ${t.col + 1} · fila ${t.fila + 1}</p>
+    // Modelo: los del catálogo de precios (a escala y con su color) y los de la biblioteca básica
+    const enCat = catalogoTir.findIndex((c) => c.nombre === t.nombre);
+    const modelos = { ...Object.fromEntries(catalogoTir.map((c, i) => [`cat|${i}`, `${c.nombre}`])), ...Object.fromEntries(Object.entries(TIRADORES).map(([k, v]) => [k, `Básico · ${v.nombre}`])) };
+    if (enCat < 0 && !modelos[t.modelo]) modelos[t.modelo] = tiradorDef(t.modelo)?.nombre || t.modelo;
+    const colores = { negro: 'Negro mate', acero: 'Acero', dorado: 'Dorado', blanco: 'Blanco' };
+    if (!colores[t.color]) colores[t.color] = t.color;
+    h = `<p class="tit">${esc(t.nombre || tiradorDef(t.modelo)?.nombre || t.modelo)}</p><p class="sub">Tirador · columna ${t.col + 1} · fila ${t.fila + 1}${tiradorDef(t.modelo) ? ` · ${cm(tiradorDef(t.modelo).largo)} cm de largo` : ''}</p>
       <div class="ed-campos">
-        ${opciones('t.modelo', 'Modelo', t.modelo, Object.fromEntries(Object.entries(TIRADORES).map(([k, v]) => [k, v.nombre])), 'ancho2')}
-        ${opciones('t.color', 'Color', t.color, { negro: 'Negro mate', acero: 'Acero', dorado: 'Dorado', blanco: 'Blanco' }, 'ancho2')}
+        ${opciones('t.modelo', 'Modelo', enCat >= 0 ? `cat|${enCat}` : t.modelo, modelos, 'ancho2')}
+        ${opciones('t.color', 'Color', t.color, colores, 'ancho2')}
         ${num('t.dx', 'Desde el centro →', t.dx, { min: -999 })}${num('t.dy', 'Desde el centro ↑', t.dy, { min: -999 })}
         ${num('t.rot', 'Giro', t.rot, { u: '°', step: 1, min: -360 })}
       </div>
@@ -1636,7 +1658,11 @@ function aplicarCampo(m, k, v, s = {}) {
       col.ancho = v; cols[j].ancho = +cols[j].ancho - d;
     }
   } else if (k.startsWith('t.')) {
-    const t = m.tiradores.find((x) => x.id === s.t); t[k.slice(2)] = v;
+    const t = m.tiradores.find((x) => x.id === s.t);
+    if (k === 't.modelo' && String(v).startsWith('cat|')) { // tirador del catálogo: modelo a escala, su color y su nombre
+      const c = catalogoTir[+String(v).slice(4)];
+      if (c) { t.modelo = modeloCatalogo(c); t.color = c.color || t.color; t.nombre = c.nombre; }
+    } else { t[k.slice(2)] = v; if (k === 't.modelo') delete t.nombre; }
   } else if (k === 'ancho') {
     if (v < 10) return aviso('Ancho mínimo: 10 cm.');
     const k2 = v / (+m.ancho || 1); m.columnas.forEach((c) => { c.ancho = +c.ancho * k2; }); m.ancho = v;
@@ -2043,7 +2069,7 @@ function abrirDespiece() {
       <tr><td>Bisagras de cierre suave</td><td class="num">${d.herrajes.bisagras} (${d.herrajes.bisagras_rectas || 0} rectas · ${d.herrajes.bisagras_semicurvas || 0} semicurvas)</td></tr>
       <tr><td>Pino tapa canteada 1x4 (zócalo y soportes)</td><td class="num">${d.herrajes.pino?.tiras || 0} tira${d.herrajes.pino?.tiras === 1 ? '' : 's'} de 3,2 m · ${(d.herrajes.pino?.metros || 0).toFixed(2)} m</td></tr>
       <tr><td>Correderas telescópicas de cierre suave</td><td class="num">${esc(corr)}</td></tr>
-      <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m</td></tr>
+      <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m${d.tapacanto_blanco_m != null ? ` (${d.tapacanto_blanco_m.toFixed(1)} blanco · ${d.tapacanto_color_m.toFixed(1)} color)` : ''}</td></tr>
     </tbody></table>
     ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
       <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (postformado, granito, cuarzo o mármol), con su merma, sacados y respaldo.</p>` : ''}

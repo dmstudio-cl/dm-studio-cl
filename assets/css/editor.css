@@ -91,6 +91,7 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-campo.ancho2 { grid-column: span 2; }
 .ed-plancha { display: block; width: 100%; height: auto; margin: 4px 0 14px; font-family: var(--mono, monospace); }
 .ed-dlg-acc { display: flex; gap: 8px; align-items: center; }
+.ed-biblio-tit { grid-column: 1 / -1; margin: 6px 0 2px; }
 .plano-mueble { margin: 0 0 22px; }
 .plano-mueble h3 { margin: 0 0 6px; font-size: .95rem; }
 .plano-mueble small { color: var(--muted); font-weight: 400; }
