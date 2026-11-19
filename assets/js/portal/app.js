@@ -233,6 +233,32 @@ export async function startApp(api) {
     document.querySelectorAll('.ppanel').forEach((p) => { p.hidden = p.dataset.panel !== b.dataset.tab; });
   });
 
+  // ----- electrodoméstico tocado en el modelo: muestra a la derecha los productos que el estudio recomienda
+  // (links que se agregan en el editor; se compran aparte y no suman al precio)
+  const clp = (n) => new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(n);
+  function mostrarElectro(id) {
+    const o = (proyecto.objetos || []).find((x) => x.id === id); if (!o) return;
+    if (piezaSel) { piezaSel = null; pintarPiezas(); }
+    scene.seleccionar(`obj|${id}`);
+    const links = o.links || [];
+    $('#pelectro').innerHTML = `
+      <div class="pelectro-cab"><div><h2 class="eyebrow">Electrodoméstico</h2><p class="pelectro-tit">${esc(o.nombre)}</p>
+        <p class="small muted mono">${+o.ancho} × ${+o.alto} × ${+o.fondo} cm</p></div>
+        <button type="button" class="pelectro-cerrar" data-electro="cerrar" aria-label="Cerrar">✕</button></div>
+      ${links.length ? `<p class="small muted">Te recomendamos estos modelos, que calzan con el espacio del diseño. Se compran aparte y no suman al precio del mueble.</p>
+        <div class="optlist">${links.map((l) => `<a class="opt pelectro-link" href="${esc(l.url)}" target="_blank" rel="noopener">
+          <span><b>${esc(l.nombre || 'Ver producto')}</b>${l.tienda || l.precio ? `<small>${[l.tienda && esc(l.tienda), l.precio && `desde ${clp(l.precio)}`].filter(Boolean).join(' · ')}</small>` : ''}</span><i aria-hidden="true">↗</i></a>`).join('')}</div>`
+        : '<p class="small muted">Es una referencia para mostrar el espacio que ocupa; no está incluido en la cotización. Si quieres una recomendación, pregúntanos en la conversación.</p>'}`;
+    document.querySelectorAll('.ptabs [data-tab]').forEach((x) => x.setAttribute('aria-selected', 'false'));
+    document.querySelectorAll('.ppanel').forEach((p) => { p.hidden = p.dataset.panel !== 'electro'; });
+    status(links.length ? `${o.nombre}: ${links.length} producto${links.length > 1 ? 's' : ''} recomendado${links.length > 1 ? 's' : ''} a la derecha.` : `${o.nombre}: referencia, sin precio.`);
+  }
+  $('#pelectro').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-electro="cerrar"]')) return;
+    scene.seleccionar(null);
+    document.querySelector('.ptabs [data-tab="melamina"]')?.click();
+  });
+
   // ----- mis datos (perfil del cliente): se guardan en el Worker (D1), nunca en un repositorio
   const pform = $('#perfilform');
   const pstat = (t, estado = '') => { $('#perfilstatus').textContent = t; $('#perfilstatus').dataset.state = estado; };
@@ -340,6 +366,7 @@ export async function startApp(api) {
     const ref = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]')?.dataset.ref;
     clearTimeout(clicPendiente);
     clicPendiente = setTimeout(() => {
+      if (/^obj\|/.test(ref || '')) { mostrarElectro(ref.slice(4)); return; } // un electrodoméstico: sus productos recomendados
       if (refPintable(ref)) { elegirPieza(ref); return; } // una pieza: se le cambia el color
       if (!/\|cubierta$/.test(ref || '')) { if (piezaSel) { piezaSel = null; scene.seleccionar(null); pintarPiezas(); } return; } // fondo: suelta la pieza
       document.querySelector('.ptabs [data-tab="cubierta"]')?.click(); // la cubierta: su material y su borde

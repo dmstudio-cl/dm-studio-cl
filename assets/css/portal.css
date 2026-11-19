@@ -112,6 +112,16 @@
 .pbordes-tit { margin-top: 18px; }
 .opt-borde .borde-ico { display: grid; place-items: center; width: 44px; height: 26px; background: transparent !important; color: var(--bone); }
 .opt-borde .borde-ico svg { width: 44px; height: 18px; }
+.pelectro-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.pelectro-cab .eyebrow { margin: 0 0 4px; }
+.pelectro-tit { margin: 0; font-family: var(--serif, serif); font-size: 1.25rem; color: var(--bone); }
+.pelectro-cerrar { flex: none; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--bone); cursor: pointer; }
+.pelectro .optlist { margin-top: 12px; }
+.pelectro-link { justify-content: space-between; }
+.pelectro-link span { display: grid; gap: 3px; }
+.pelectro-link small { color: var(--muted); font-size: .78rem; }
+.pelectro-link i { font-style: normal; color: var(--muted); }
+.pelectro-link:hover { border-color: var(--bone); }
 .opt-borde img { width: 44px; height: 26px; object-fit: cover; border-radius: 4px; }
 .pbordes.flash { animation: pbordes-flash 1.2s ease-out; border-radius: 10px; }
 @keyframes pbordes-flash { 0%, 40% { box-shadow: 0 0 0 2px var(--red-accent); } 100% { box-shadow: 0 0 0 0 transparent; } }

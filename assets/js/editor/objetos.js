@@ -9,6 +9,7 @@ export const OBJETOS = {
   refri1: { nombre: 'Refrigerador 1 puerta', ancho: 60, alto: 170, fondo: 65, apoyo: 'piso' },
   refri2: { nombre: 'Refrigerador 2 puertas con pantalla', ancho: 91, alto: 178, fondo: 72, apoyo: 'piso' },
   lavavajillas: { nombre: 'Lavavajillas', ancho: 60, alto: 85, fondo: 60, apoyo: 'piso' },
+  conservadora: { nombre: 'Conservadora (freezer horizontal)', ancho: 100, alto: 85, fondo: 62, apoyo: 'piso' },
   horno: { nombre: 'Horno eléctrico', ancho: 52, alto: 32, fondo: 42, apoyo: 'mesa' },
   microondas: { nombre: 'Microondas', ancho: 48, alto: 28, fondo: 36, apoyo: 'mesa' },
   freidora: { nombre: 'Freidora de aire', ancho: 30, alto: 32, fondo: 37, apoyo: 'mesa' },
@@ -48,6 +49,14 @@ export function dibujarObjeto(st, o, ref, colorGeneral = 'acero') {
       B({ w: W - 1, h: 9, d: .6, x: 0, y: H - 5, z: zf + .3 }, `linear-gradient(90deg, transparent 70%, #1f2224 70% 92%, transparent 92%), ${ac.cuerpo}`, ['front']);
       manilla(W * .6, 2, 0, H - 13);
       break;
+    case 'conservadora': { // tapa abatible arriba (junta oscura a 7 cm del borde), manilla al centro, termostato y rejilla abajo
+      const tapa = Math.min(8, H * .1);
+      B({ w: W + .2, h: .7, d: D + .2, x: 0, y: H - tapa, z: 0 }, '#1b1c1e', ['front', 'back', 'left', 'right']); // junta de la tapa
+      B({ w: Math.min(34, W * .36), h: 2.6, d: 2, x: 0, y: H - tapa - 2.4, z: zf + 1 }, 'linear-gradient(180deg, #d4d7d9, #8e9295)'); // manilla
+      B({ w: 9, h: 4, d: .4, x: W / 2 - 8, y: 9, z: zf + .2 }, 'radial-gradient(circle at 25% 50%, #6cff8a 0 .35em, #1d4a28 .5em, transparent .6em), linear-gradient(180deg, #2a2d30, #16181a)', ['front']); // termostato
+      B({ w: W - 1, h: 5, d: .4, x: 0, y: 2.5, z: zf + .2 }, 'repeating-linear-gradient(90deg, #17191b 0 1.2em, #34383b 1.2em 1.8em)', ['front']); // rejilla
+      break;
+    }
     case 'horno':
       B({ w: W * .72, h: H - 7, d: .6, x: -W * .12, y: H / 2, z: zf + .3 }, VIDRIO, ['front']);
       B({ w: W * .2, h: H - 7, d: .4, x: W * .37, y: H / 2, z: zf + .2 }, `${perillas(3)}, ${ac.cuerpo}`, ['front']);

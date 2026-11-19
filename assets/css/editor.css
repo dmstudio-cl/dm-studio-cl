@@ -89,6 +89,25 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ed-campo { display: grid; gap: 4px; font-size: .74rem; color: var(--muted); }
 .ed-campo.ancho2 { grid-column: span 2; }
+.ed-plancha { display: block; width: 100%; height: auto; margin: 4px 0 14px; font-family: var(--mono, monospace); }
+.ed-dlg-acc { display: flex; gap: 8px; align-items: center; }
+.plano-mueble { margin: 0 0 22px; }
+.plano-mueble h3 { margin: 0 0 6px; font-size: .95rem; }
+.plano-mueble small { color: var(--muted); font-weight: 400; }
+.plano-svg { display: block; width: 100%; max-height: 60vh; height: auto; background: #faf8f3; border: 1px solid var(--line); border-radius: 8px; }
+.plano-svg .pieza { fill: #f4f1ea; stroke: #222; stroke-width: .6; }
+.plano-svg .zocalo { fill: #ddd6c8; stroke: #222; stroke-width: .5; }
+.plano-svg .frente { fill: none; stroke: #555; stroke-width: .5; }
+.plano-svg .div { stroke: #222; stroke-width: .8; }
+.plano-svg .muro { stroke: #222; stroke-width: 3; stroke-linecap: square; }
+.plano-svg .mueble { fill: #f4f1ea; stroke: #333; stroke-width: .8; }
+.plano-svg .frente-m { stroke: #b4322e; stroke-width: 1.6; }
+.plano-svg .et { font: 4px system-ui, sans-serif; fill: #333; }
+.plano-svg .et.chico { font-size: 3.2px; fill: #888; }
+.plano-svg .cota line { stroke: #b4322e; stroke-width: .4; }
+.plano-svg .cota text { font: 3.6px system-ui, sans-serif; fill: #b4322e; }
+.ed-link { padding: 10px 0; border-top: 1px solid var(--line); }
+.ed-link .ed-botones { grid-column: span 2; margin: 0; }
 .ed-campo .u { position: relative; }
 .ed-campo .u input { padding-right: 30px; }
 .ed-campo .u::after { content: attr(data-u); position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: .7rem var(--mono); color: var(--muted); pointer-events: none; }

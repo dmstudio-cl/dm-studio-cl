@@ -12,7 +12,10 @@ import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
-import { iniciarProyectos, aModelo, api, tokenGitHub } from './proyecto.js';
+import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios } from './proyecto.js';
+import { optimizarDespiece, svgPlancha, vetaLibre } from './optimizador.js';
+import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
+import { planoHTML } from './plano.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -600,7 +603,7 @@ $('#muro-frente').addEventListener('change', (e) => {
 });
 function render({ panel = true } = {}) {
   const mv = modeloVista();
-  dibujar(st, mv, { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef() });
+  dibujar(st, mv, { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef(), fabricacion: true });
   if (vista !== 'inferior' && (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros)) pisoGrilla(mv); // desde abajo el piso taparía el mueble
   if (vista !== 'frente' && vista !== 'inferior') dibujarPines();
   encuadrar(false);
@@ -1401,6 +1404,16 @@ function props() {
       </div>
       <p class="sub" style="margin-top:12px">Apoyar en</p>
       <div class="ed-botones">${ap.map((a) => `<button data-a="apoyar:${a.y}"${Math.abs(a.y - +o.elevacion) < .5 ? ' class="ed-primario"' : ''}>${esc(a.nombre)} <small>${cm(a.y)}</small></button>`).join('')}</div>
+      <p class="sub" style="margin-top:12px">Productos recomendados para el cliente</p>
+      <p class="ed-ayuda">Cuando el cliente toque este electrodoméstico en su portal, verá estos links a la derecha. Pega el link del producto en la tienda.</p>
+      ${(o.links || []).map((l, i) => `<div class="ed-campos ed-link">
+        <label class="ed-campo ancho2">Nombre<input type="text" data-k="o.links.${i}.nombre" value="${esc(l.nombre || '')}" placeholder="Ej.: Freezer horizontal 200 L"></label>
+        <label class="ed-campo">Tienda<input type="text" data-k="o.links.${i}.tienda" value="${esc(l.tienda || '')}" placeholder="Ej.: Falabella"></label>
+        <label class="ed-campo">Precio<input type="number" min="0" step="1000" data-k="o.links.${i}.precio" value="${+l.precio || ''}" placeholder="opcional"></label>
+        <label class="ed-campo ancho2">Link<input type="url" data-k="o.links.${i}.url" value="${esc(l.url || '')}" placeholder="https://…"></label>
+        <div class="ed-botones ancho2"><button data-a="obj-link-del:${i}" class="peligro">Quitar este link</button></div>
+      </div>`).join('')}
+      <div class="ed-botones"><button data-a="obj-link-add"${(o.links || []).length >= 6 ? ' disabled' : ''}>+ Agregar link</button></div>
       <div class="ed-botones"><button data-a="obj-girar">⟳ 90°</button><button data-a="obj-duplicar">Duplicar</button><button data-a="obj-borrar" class="peligro">Eliminar</button></div>
       <p class="ed-ayuda">Arrástralo en Planta (se queda sobre la cubierta o repisa que tenga debajo) o en Frente (también en altura: al soltarlo se apoya en la superficie de abajo).</p></div>`;
     return;
@@ -1531,6 +1544,7 @@ function props() {
       <div class="ed-campos">
         ${opciones('f.tipo', 'Tipo', f.tipo, TIPOS_FRENTE, 'ancho2')}
         ${tieneBis ? opciones('f.bisagra', 'Bisagra', f.bisagra || 'izquierda', { izquierda: 'Izquierda', derecha: 'Derecha', arriba: 'Arriba (abatible)', abajo: 'Abajo' }, 'ancho2') : ''}
+        ${f.tipo === 'cajon' ? opciones('f.montaje', 'Frente del cajón', f.montaje || 'sobre', { sobre: 'Sobre los cantos (como una puerta)', dentro: 'Dentro de las separaciones' }, 'ancho2') : ''}
         ${num('f.alto', 'Alto del frente', f.alto)}${num('c.ancho', 'Ancho de columna', col.ancho)}
       </div>
       ${f.tipo !== 'cajon' ? (() => {
@@ -1606,6 +1620,7 @@ function aplicarCampo(m, k, v, s = {}) {
     const col = m.columnas[s.col], fr = col.frentes;
     if (k === 'f.tipo') { fr[s.fila].tipo = v; if (v === 'abierto') m.tiradores = m.tiradores.filter((t) => !(t.col === s.col && t.fila === s.fila)); }
     if (k === 'f.bisagra') fr[s.fila].bisagra = v;
+    if (k === 'f.montaje') { if (v === 'dentro') fr[s.fila].montaje = 'dentro'; else delete fr[s.fila].montaje; }
     if (k === 'f.alto') { // el vecino de abajo (o de arriba si es el último) absorbe la diferencia
       const j = s.fila < fr.length - 1 ? s.fila + 1 : s.fila - 1;
       if (j < 0) return aviso('Este frente ocupa todo el alto: cambia el alto del módulo.');
@@ -1668,6 +1683,12 @@ $('#props').addEventListener('change', (e) => {
       const c = k.slice(2);
       if (c === 'tipo' && OBJETOS[v]) { const d = OBJETOS[v]; Object.assign(o, { tipo: v, nombre: d.nombre, ancho: d.ancho, alto: d.alto, fondo: d.fondo }); return; }
       if (c === 'nombre') { o.nombre = String(v).slice(0, 60); return; }
+      if (c.startsWith('links.')) { // links.<i>.<campo>
+        const [, i, campo] = c.split('.'), l = o.links?.[+i]; if (!l) return;
+        if (campo === 'precio') { if (+v > 0) l.precio = Math.round(+v); else delete l.precio; }
+        else if (['nombre', 'tienda', 'url'].includes(campo)) l[campo] = String(v).trim().slice(0, campo === 'url' ? 500 : 80);
+        return;
+      }
       if (c === 'color') { if (v) o.color = v; else delete o.color; return; }
       if (['ancho', 'alto', 'fondo'].includes(c) && v > 0) o[c] = v;
       if (c === 'elevacion' && v >= 0) { if (o.tipo === 'colgante') o.cable = r1(Math.max(0, +o.cable + +o.elevacion - v)); o.elevacion = v; } // la colgante sube o baja con el cable
@@ -1734,9 +1755,11 @@ $('#props').addEventListener('click', (e) => {
   }
   if (b.dataset.a.startsWith('art:')) { agregarArtefacto(b.dataset.a.slice(4)); return; }
   if (b.dataset.a.startsWith('apoyar:')) { const y = +b.dataset.a.slice(7); cambiarObjeto((o) => { o.elevacion = y; }); return; }
+  if (b.dataset.a === 'obj-link-add') { cambiarObjeto((o) => { o.links = [...(o.links || []), { nombre: '', tienda: '', url: '' }].slice(0, 6); }); props(); return; }
+  if (b.dataset.a.startsWith('obj-link-del:')) { const i = +b.dataset.a.slice(13); cambiarObjeto((o) => { o.links = (o.links || []).filter((_, j) => j !== i); if (!o.links.length) delete o.links; }); props(); return; }
   if (b.dataset.a === 'obj-girar') { cambiarObjeto((o) => { o.rotacion = ((+o.rotacion || 0) + 90) % 360; }); return; }
   if (b.dataset.a === 'obj-borrar') { borrarSel(); return; }
-  if (b.dataset.a === 'obj-duplicar') { const o = objeto(sel.o), c = { ...o, id: uid('o'), x: r1(+o.x + +o.ancho + 2) }; cambiar((d) => { d.objetos.push(c); }); sel = { tipo: 'objeto', o: c.id }; render(); return; }
+  if (b.dataset.a === 'obj-duplicar') { const o = objeto(sel.o), c = { ...o, id: uid('o'), x: r1(+o.x + +o.ancho + 2), ...(o.links ? { links: o.links.map((l) => ({ ...l })) } : {}) }; cambiar((d) => { d.objetos.push(c); }); sel = { tipo: 'objeto', o: c.id }; render(); return; }
   if (b.dataset.a.startsWith('ver-art:')) { sel = { tipo: 'artefacto', m: sel.m, a: b.dataset.a.slice(8) }; render(); return; }
   if (b.dataset.a === 'borrar-art') { borrarSel(); return; }
   if (b.dataset.a === 'centrar-art') { cambiarArtefacto((a, m, { W }) => { a.desde = r1((W - Math.min(+a.ancho, W)) / 2); }); return; }
@@ -1955,16 +1978,49 @@ $('.ed-acciones').addEventListener('click', (e) => {
   if (a === 'encuadrar') { zoom = 1; encuadrar(true); dibujarPlano(); }
   if (a === 'respaldos') abrirRespaldos();
   if (a === 'despiece') abrirDespiece();
+  if (a === 'plano') abrirPlano();
   if (a === 'nuevo' && confirm('¿Empezar un modelo vacío? El actual se puede recuperar con Deshacer o en «Respaldos».') && (respaldar(proyActual?.id, JSON.parse(JSON.stringify(modelo)), 'antes de «Nuevo»'), true)) { cambiar((d) => { d.modulos = []; d.nombre = 'Nuevo modelo'; }); sel = null; setVista('frente'); setHerr('dibujar'); }
   if (a === 'exportar') exportar();
   if (a === 'importar') $('#archivo').click();
 });
+// Ventana «Plano técnico»: planta general y un frente por mueble con cotas, para imprimir o mandar a fabricar
+function abrirPlano() {
+  let dlg = $('#dlg-plano');
+  if (!dlg) {
+    dlg = document.createElement('dialog'); dlg.className = 'ed-dlg ed-dlg-ancho'; dlg.id = 'dlg-plano';
+    dlg.innerHTML = '<div class="ed-dlg-cab"><h2>Plano técnico</h2><div class="ed-dlg-acc"><button data-plano-print>Imprimir / PDF</button><button data-cerrar aria-label="Cerrar">✕</button></div></div><div class="ed-dlg-cuerpo"></div>';
+    dlg.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cerrar]')) dlg.close();
+      if (e.target.closest('[data-plano-print]')) imprimirPlano();
+    });
+    document.body.append(dlg);
+  }
+  dlg.querySelector('.ed-dlg-cuerpo').innerHTML = planoHTML(modelo, { titulo: proyActual?.raw?.titulo ? `Plano técnico · ${proyActual.raw.titulo}` : 'Plano técnico' });
+  dlg.showModal();
+}
+function imprimirPlano() {
+  const doc = $('#dlg-plano .plano-doc')?.outerHTML; if (!doc) return;
+  const w = window.open('', '_blank'); if (!w) { aviso('Permite las ventanas emergentes para imprimir el plano.'); return; }
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Plano técnico</title><style>
+    body { font-family: system-ui, sans-serif; margin: 24px; color: #111; }
+    .plano-cab h2 { margin: 0 0 2px; } .plano-cab p { margin: 0 0 16px; color: #555; font-size: 13px; }
+    .plano-mueble { margin: 0 0 26px; page-break-inside: avoid; } .plano-mueble h3 { margin: 0 0 6px; font-size: 15px; } .plano-mueble small { color: #666; font-weight: 400; }
+    .plano-svg { width: 100%; max-height: 640px; height: auto; }
+    .plano-svg .pieza { fill: #f4f1ea; stroke: #222; stroke-width: .6; } .plano-svg .zocalo { fill: #ddd6c8; stroke: #222; stroke-width: .5; }
+    .plano-svg .frente { fill: none; stroke: #444; stroke-width: .5; } .plano-svg .div { stroke: #222; stroke-width: .8; }
+    .plano-svg .muro { stroke: #222; stroke-width: 3; stroke-linecap: square; } .plano-svg .mueble { fill: #f4f1ea; stroke: #333; stroke-width: .8; } .plano-svg .frente-m { stroke: #b4322e; stroke-width: 1.6; }
+    .plano-svg .et { font: 4px system-ui, sans-serif; fill: #333; } .plano-svg .et.chico { font-size: 3.2px; fill: #777; }
+    .plano-svg .cota line { stroke: #b4322e; stroke-width: .4; } .plano-svg .cota text { font: 3.6px system-ui, sans-serif; fill: #b4322e; }
+  </style></head><body>${doc}</body></html>`);
+  w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+}
 // Ventana «Lista de materiales»: lo que se publica con el proyecto y con lo que el Worker calcula el precio
 function abrirDespiece() {
   const d = despiece(modelo);
   const nombreMat = (k) => (k === 'frente' ? `Melamina de frentes (${nombreMaterial(modelo.frente) || 'la que elija el cliente'})` : nombreMaterial(k) || k);
   const grupos = {};
   for (const p of d.piezas) {
+    if (p.tipo === 'pino') continue; // el pino se cuenta en tiras
     const [tipo, mat] = p.tipo === 'cholguan' ? ['Cholguán', p.material.replace(/^cholguan:/, '')] : [`Melamina ${p.espesor} mm`, p.material];
     const k = `${tipo}|${mat}`; grupos[k] = grupos[k] || { tipo, mat, m2: 0, n: 0 }; grupos[k].m2 += p.area; grupos[k].n++;
   }
@@ -1974,23 +2030,63 @@ function abrirDespiece() {
   if (!dlg) {
     dlg = document.createElement('dialog'); dlg.className = 'ed-dlg ed-dlg-ancho'; dlg.id = 'dlg-despiece';
     dlg.innerHTML = '<div class="ed-dlg-cab"><h2>Lista de materiales</h2><button data-cerrar aria-label="Cerrar">✕</button></div><div class="ed-dlg-cuerpo"></div>';
-    dlg.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) dlg.close(); });
+    dlg.addEventListener('click', (e) => {
+      if (e.target.closest('[data-cerrar]')) dlg.close();
+      const i = e.target.closest('[data-imperial]')?.dataset.imperial; if (i != null) exportarImperial(+i);
+    });
     document.body.append(dlg);
   }
   dlg.querySelector('.ed-dlg-cuerpo').innerHTML = `
-    <p class="ed-ayuda">Calculada desde los módulos: cada tablero en su material (sin material propio: melamina blanca; frentes: la melamina general), traseras de cholguán, 2 bisagras de cierre suave por hoja, correderas telescópicas de cierre suave del largo más cercano al fondo, y tapacanto de los cantos visibles. Al publicar se envía con el proyecto y el Worker la cotiza con tus precios.</p>
+    <p class="ed-ayuda">Calculada con tus reglas de fabricación: cuerpo = profundidad − 3 mm de cholguán; basales sin techo con soportes de 10 cm; aéreos con base, techo y 3 soportes; zócalo y soportes traseros de pino; frentes con 3 mm de luz y 7 cm (con cubierta) o 1 cm menos arriba. La medida de corte descuenta 1 mm por canto con tapacanto. Al publicar se envía con el proyecto y el Worker la cotiza con tus precios.</p>
     <table class="ed-tabla"><thead><tr><th>Tipo</th><th>Material</th><th class="num">Piezas</th><th class="num">Superficie</th></tr></thead><tbody>${filas || '<tr><td colspan="4">Sin muebles.</td></tr>'}</tbody></table>
     <table class="ed-tabla"><tbody>
-      <tr><td>Bisagras de cierre suave</td><td class="num">${d.herrajes.bisagras}</td></tr>
+      <tr><td>Bisagras de cierre suave</td><td class="num">${d.herrajes.bisagras} (${d.herrajes.bisagras_rectas || 0} rectas · ${d.herrajes.bisagras_semicurvas || 0} semicurvas)</td></tr>
+      <tr><td>Pino tapa canteada 1x4 (zócalo y soportes)</td><td class="num">${d.herrajes.pino?.tiras || 0} tira${d.herrajes.pino?.tiras === 1 ? '' : 's'} de 3,2 m · ${(d.herrajes.pino?.metros || 0).toFixed(2)} m</td></tr>
       <tr><td>Correderas telescópicas de cierre suave</td><td class="num">${esc(corr)}</td></tr>
       <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m</td></tr>
     </tbody></table>
     ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
       <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (postformado, granito, cuarzo o mármol), con su merma, sacados y respaldo.</p>` : ''}
+    ${(() => { // planchas por melamina (optimizador propio, igual que el de Imperial) y Excel para pedir el corte
+      const grupos = optimizarDespiece(d, { frente: modelo.frente });
+      ultimaOptimizacion = grupos;
+      if (!grupos.length) return '';
+      return `<p class="sub" style="margin-top:14px">Planchas y corte (2500 × 1830 mm)</p>
+        <p class="ed-ayuda">Acomodo como el optimizador de Imperial: refilado de 10 mm, sierra de 3,2 mm y medidas de corte. Las melaminas con veta (maderas, piedras y textiles) no se giran; las unicolor sí. «Excel para Imperial» descarga su template con las piezas de esa melamina.</p>
+        <table class="ed-tabla"><thead><tr><th>Melamina</th><th class="num">Piezas</th><th class="num">Planchas</th><th class="num">Aprovechamiento</th><th></th></tr></thead><tbody>
+        ${grupos.map((g, i) => `<tr><td>${esc(nombreMat(g.material))} · ${g.espesor} mm${vetaLibre(g.material) ? '' : ' <small>(veta fija)</small>'}</td><td class="num">${g.piezas.length}</td><td class="num">${g.planchas}</td><td class="num">${(g.aprovechamiento * 100).toFixed(0)} %</td>
+          <td><button type="button" data-imperial="${i}">Excel para Imperial</button></td></tr>`).join('')}</tbody></table>
+        ${(() => { // Imperial no corta bajo 300 × 100 mm: esas piezas se piden agrandadas al mínimo y se repasan en el taller
+          const chicas = d.piezas.filter((p) => p.tipo === 'tablero' && bajoMinimo({ ancho: p.corte.ancho * 10, alto: p.corte.alto * 10 }))
+            .map((p) => `${p.mueble} · ${p.nombre} ${Math.round(p.corte.ancho * 10)} × ${Math.round(p.corte.alto * 10)} mm`);
+          return chicas.length ? `<p class="ed-ayuda ed-err">Imperial no corta bajo 300 × 100 mm. Estas ${chicas.length} se piden al mínimo y se repasan en el taller: ${chicas.map(esc).join('; ')}.</p>` : '';
+        })()}
+        ${grupos.some((g) => g.noCaben.length) ? `<p class="ed-ayuda ed-err">Hay piezas más grandes que la plancha: ${grupos.flatMap((g) => g.noCaben).map((p) => esc(`${p.mueble} · ${p.nombre}`)).join(', ')}.</p>` : ''}
+        <details><summary>Ver el esquema de corte</summary>${grupos.map((g) => g.tableros.map((t, j) => `<p class="ed-ayuda">${esc(nombreMat(g.material))} · plancha ${j + 1} de ${g.planchas}</p>${svgPlancha(t)}`).join('')).join('')}</details>
+        <p class="ed-ayuda" id="imperial-msg"></p>`;
+    })()}
     <div class="ed-tiendas" id="tiendas"><p class="sub">Precios y stock de las tiendas</p><p class="ed-ayuda">${tokenGitHub() ? 'Cargando…' : 'Entra a /admin/proyectos/ con GitHub para ver los precios de Imperial y Homecenter.'}</p></div>
-    <details><summary>Ver las ${d.piezas.length} piezas</summary><table class="ed-tabla"><tbody>${d.piezas.map((p) => `<tr><td>${esc(p.mueble)}</td><td>${esc(p.nombre)}</td><td class="num">${cm(p.ancho)} × ${cm(p.alto)}</td><td>${esc(p.tipo === 'cholguan' ? 'Cholguán' : nombreMat(p.material))}</td></tr>`).join('')}</tbody></table></details>`;
+    <details><summary>Ver las ${d.piezas.length} piezas (medida final y de corte)</summary><table class="ed-tabla"><thead><tr><th>Mueble</th><th>Pieza</th><th class="num">Final</th><th class="num">Corte</th><th>Tapacanto</th><th>Material</th></tr></thead><tbody>${d.piezas.map((p) => {
+      const tc = p.cantos ? [p.cantos.ancho && `${p.cantos.ancho} × ${cm(p.ancho)}`, p.cantos.alto && `${p.cantos.alto} × ${cm(p.alto)}`].filter(Boolean).join(' + ') : '';
+      const mat = p.tipo === 'cholguan' ? 'Cholguán' : p.tipo === 'pino' ? 'Pino 1x4' : nombreMat(p.material);
+      return `<tr><td>${esc(p.mueble)}</td><td>${esc(p.nombre)}${p.nota ? `<br><small>${esc(p.nota)}</small>` : ''}</td><td class="num">${p.tipo === 'pino' ? `${cm(p.ancho)} cm` : `${cm(p.ancho)} × ${cm(p.alto)}`}</td><td class="num">${p.corte ? `${cm(p.corte.ancho)} × ${cm(p.corte.alto)}` : '—'}</td><td>${tc || '—'}</td><td>${esc(mat)}</td></tr>`;
+    }).join('')}</tbody></table></details>`;
   dlg.showModal();
   if (tokenGitHub()) pintarTiendas();
+}
+// Excel para Imperial de una melamina: el SKU de la plancha y del tapacanto salen de la Configuración de precios
+let ultimaOptimizacion = [];
+async function exportarImperial(i) {
+  const g = ultimaOptimizacion[i], msg = $('#imperial-msg'); if (!g) return;
+  try {
+    const cfg = await leerPrecios().catch(() => null);
+    const e = (cfg?.planchas || []).find((x) => x.codigo === g.material);
+    const sku = skuDe(e?.url_imperial), tapacanto = e?.tapacanto_sku || '';
+    const slug = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    await descargarImperial(g, { sku, tapacanto, archivo: `imperial-${slug(proyActual?.raw?.titulo || modelo.nombre || 'proyecto')}-${slug(nombreMaterial(g.material))}-${g.espesor}mm` });
+    if (msg) msg.textContent = sku ? `Descargado el Excel de ${nombreMaterial(g.material)} (SKU ${sku}${tapacanto ? `, tapacanto ${tapacanto}` : ''}).`
+      : `Descargado el Excel de ${nombreMaterial(g.material)} sin SKU: agrega el link de Imperial de esa plancha en Configuración de precios (o escríbelo en la celda B3).`;
+  } catch (err) { if (msg) msg.textContent = `No se pudo crear el Excel: ${err.message}`; }
 }
 // Precios leídos de Imperial (Santa Rosa) y Homecenter por el Worker (cada hora, de a poco). Solo el estudio los ve.
 async function pintarTiendas(actualizar = false) {
