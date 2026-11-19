@@ -54,12 +54,16 @@ const vetaDe = (k, nombre) => (/^cuerpo\|(izq|der)$|^div\|/.test(k) || /^(Puerta
 // Clase de construcción del módulo
 export function estructura(m) {
   const Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
-  if (m.tipo === 'aereo') return { clase: 'aereo', base: true, techo: true, Z };
-  if (m.tipo === 'torre') {
+  let E;
+  if (m.tipo === 'aereo') E = { clase: 'aereo', base: true, techo: true, Z };
+  else if (m.tipo === 'torre') {
     const sobreCubierta = !Z && (+m.elevacion || 0) > 20;
-    return { clase: sobreCubierta ? 'torre-cubierta' : 'torre', base: !sobreCubierta, techo: true, Z };
-  }
-  return { clase: 'basal', base: true, techo: false, Z };
+    E = { clase: sobreCubierta ? 'torre-cubierta' : 'torre', base: !sobreCubierta, techo: true, Z };
+  } else E = { clase: 'basal', base: true, techo: false, Z };
+  // techo de melamina forzado en el mueble (panel derecho): 'si' | 'no'
+  if (m.techo === 'si') E.techo = true;
+  if (m.techo === 'no') E.techo = false;
+  return E;
 }
 
 // Reparte una lista de largos de pino en tiras de 3,2 m (primero los más largos)
@@ -117,12 +121,13 @@ export function despiece(modelo) {
     // Soportes horizontales de 10 cm entre las caras interiores de los costados
     const li = W - 2 * T;
     // El soporte de melamina lleva tapacanto solo en el borde inferior (no costados ni borde superior)
+    const matSoporte = mat('soporte', mat('cuerpo', cuerpoDef)); // color propio del soporte (ej. coigüe), si se eligió
     if (E.clase === 'basal') {
-      add('soporte|frente', 'Soporte superior delantero', mat('cuerpo', cuerpoDef), li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+      add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
       pino('Soporte superior trasero (pino)', li, 'soporte|atras');
     }
     if (E.clase === 'aereo') {
-      add('soporte|frente', 'Soporte superior delantero', mat('cuerpo', cuerpoDef), li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+      add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
       pino('Soporte superior trasero (pino)', li, 'soporte|atras');
       pino('Soporte inferior trasero, anclaje al muro (pino)', li, 'soporte|anclaje');
     }
