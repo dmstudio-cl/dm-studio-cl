@@ -484,13 +484,15 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       if (!quitada('izq')) B({ w: T, h: H - cy0, d: dz, x: T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
       if (!quitada('der')) B({ w: T, h: H - cy0, d: dz, x: W - T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
       if (!quitada('piso')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, tab('piso'), `${id}|cuerpo|piso`); // base
-      // Techo de melamina: los basales no llevan (quedan abiertos arriba); aéreos y torres sí
-      if (!quitada('techo') && !(fab && esBasal)) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
+      // Techo de melamina: por defecto los basales no llevan (quedan abiertos arriba) y aéreos y torres sí;
+      // cada mueble puede forzarlo con m.techo = 'si' | 'no' (ej. el nicho del microondas o una torre con placa arriba)
+      const conTechoDib = m.techo === 'si' ? true : m.techo === 'no' ? false : !(fab && esBasal);
+      if (!quitada('techo') && conTechoDib) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
       if (!quitada('fondo')) B({ w: W - 2 * T, h: H - piso - T, d: .6, x: W / 2, y: piso + (H - piso - T) / 2, z: .3 }, tab('fondo'), `${id}|cuerpo|fondo`); // fondo
       // Soportes horizontales de 10 cm (fabricación): delantero de melamina, trasero(s) de pino tapa
       if (fab && (esBasal || m.tipo === 'aereo')) {
         const li = W - 2 * T;
-        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, M.cuerpo, `${id}|soporte|frente`);
+        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || M.cuerpo, `${id}|soporte|frente`); // color propio por mueble
         B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`);
         if (m.tipo === 'aereo') B({ w: li, h: SOPORTE, d: T, x: W / 2, y: Z + T + SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|anclaje`);
       }

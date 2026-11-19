@@ -113,6 +113,7 @@ collections:
           - { label: Lleva cubierta, name: cubierta, widget: boolean, default: false }
           - { label: Zócalo de cubierta (respaldo), name: cubierta_respaldo, widget: boolean, default: false, required: false }
           - { label: Tablero (mm), name: tablero, widget: select, default: "15", options: ["15", "18"], required: false }
+          - { label: Techo de melamina, name: techo, widget: select, options: [si, "no"], required: false, hint: "Vacío = automático (basales sin techo; aéreos y torres con techo)" }
           - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
           - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
           - { label: Materiales por pieza (los asigna el editor), name: materiales, widget: string, required: false }

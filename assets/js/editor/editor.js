@@ -200,14 +200,17 @@ function claveDeSel() {
   if (sel?.tipo === 'vano') return { vano: { i: sel.i, v: sel.v } };
   if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
   const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
-    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes' }[sel.tipo];
+    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte' }[sel.tipo];
   return k ? { m: sel.m, k } : null;
 }
 const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo' };
+// Opciones de melamina para los selectores del panel (vacío = la opción por defecto)
+const opcionesMelamina = (vacio) => ({ '': vacio, ...Object.fromEntries(MEL.map((x) => [x.id, `${x.nombre}${x.linea ? ` · ${x.linea}` : ''}`])) });
 function nombreClave(k) {
   if (k === 'frentes') return 'todos los frentes del mueble';
   if (k === 'cuerpo') return 'todo el cuerpo';
   if (k === 'zocalo') return 'el zócalo'; if (k === 'cubierta') return 'la cubierta';
+  if (k === 'soporte') return 'el soporte delantero';
   const p = k.split('|');
   if (p[0] === 'cuerpo') return (NOMBRE_PIEZA[p[1]] || p[1]).toLowerCase();
   if (p[0] === 'f') return p[3] === 'rep' ? `la repisa ${+p[4] + 1} (c${+p[1] + 1}·f${+p[2] + 1})` : p[3] === 'div' ? 'las divisiones de la sección' : `el frente c${+p[1] + 1}·f${+p[2] + 1}`;
@@ -1543,8 +1546,18 @@ function props() {
         ${num('costados_atras', 'Costados alargados atrás', m.costados_atras || 0)}
         ${opciones('costados', 'Costados visibles', m.costados || '', { '': `Como el general (${PALETA.costados.opciones[colorDe(modelo.colores, 'costados')][0].toLowerCase()})`, frente: 'Igual a la melamina', cuerpo: 'Como el cuerpo' }, 'ancho2')}
       </div>
+      <p class="sub" style="margin-top:12px">Techo y soportes de este mueble</p>
+      <div class="ed-campos">
+        ${opciones('techo', 'Techo de melamina', m.techo || '', { '': `Automático (${(m.tipo || 'base') === 'base' || m.tipo === 'isla' ? 'sin techo' : 'con techo'})`, si: 'Con techo', no: 'Sin techo' }, 'ancho2')}
+        ${opciones('mat|cuerpo|techo', 'Color del techo', m.materiales?.['cuerpo|techo'] || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
+        ${opciones('mat|soporte', 'Color de los soportes', m.materiales?.soporte || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
+      </div>
+      <p class="ed-ayuda">El techo es una placa de melamina arriba del mueble (ej. el nicho del microondas o una torre). El soporte es el tablero de 10 cm de adelante. Se guardan en este mueble y se cotizan en su melamina.</p>
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
+  } else if (sel.tipo === 'soporte') {
+    h = `<p class="tit">Soporte delantero</p><p class="sub">${esc(m.nombre)} · tablero horizontal de 10 cm bajo la cubierta o el techo</p>
+      <p class="ed-ayuda">Elige su color abajo («Cambiar…»), arrastra un material encima o usa «Color de los soportes» en el panel del mueble.</p>`;
   } else if (sel.tipo === 'zocalo') {
     const z = marcoZocalo(m);
     h = `<p class="tit">Zócalo</p><p class="sub">${esc(m.nombre)} · marco de 4 lados · ${cm(z.x1 - z.x0)} × ${cm(z.z1 - z.z0)} cm</p>
@@ -1620,7 +1633,7 @@ function props() {
       ${artefactosDe(m).map((a) => `<button class="ed-fila-art" data-a="ver-art:${a.id}">${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)} × ${cm(a.fondo)}</small></button>`).join('')}
       <div class="ed-botones"><button data-a="quitar-cubierta" class="peligro">Quitar cubierta</button></div>`;
   }
-  if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo'].includes(sel.tipo)) h += bloqueMaterial();
+  if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo', 'soporte'].includes(sel.tipo)) h += bloqueMaterial();
   if (['frente', 'cuerpo', 'modulo', 'repisa', 'cubierta'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
   // Piezas quitadas del cuerpo (se pueden restaurar)
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
@@ -1681,6 +1694,12 @@ function aplicarCampo(m, k, v, s = {}) {
     for (const x of modelo.modulos) if (x.grupo && x.grupo === m.grupo) x.grupo_nombre = String(v).slice(0, 60);
   } else if (k === 'costados') {
     if (v) m.costados = v; else delete m.costados;
+  } else if (k === 'techo') { // techo de melamina forzado: 'si' | 'no' (vacío = automático según el tipo)
+    if (v === 'si' || v === 'no') m.techo = v; else delete m.techo;
+    if (v === 'si' && Array.isArray(m.quitar)) m.quitar = m.quitar.filter((p) => p !== 'techo');
+  } else if (k.startsWith('mat|')) { // material de una pieza del mueble (techo, soporte…) desde el panel
+    const p = k.slice(4); m.materiales = { ...(m.materiales || {}) };
+    if (v) m.materiales[p] = v; else delete m.materiales[p];
   } else if (k === 'tablero') {
     m.tablero = +v === 18 ? 18 : 15;
   } else if (k === 'tipo') {
