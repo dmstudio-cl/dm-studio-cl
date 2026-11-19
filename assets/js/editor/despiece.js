@@ -80,10 +80,12 @@ function tirasPino(largos) {
 export function despiece(modelo) {
   const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [];
   const herrajes = { bisagras: 0, bisagras_rectas: 0, bisagras_semicurvas: 0, correderas: {} };
+  const porModulo = {}; // herrajes de cada mueble (el Worker cotiza cualquier combinación de muebles)
   let canto = 0, cantoBlanco = 0; // cm de tapacanto (total y de las piezas en melamina blanca)
   const cuerpoDef = CUERPO[col.cuerpo] || BLANCA;
   for (const m of modelo.modulos || []) {
     if (!m || m.artefacto) continue; // artefactos de piso: referencia, no se fabrican
+    const h0 = { b: herrajes.bisagras, r: herrajes.bisagras_rectas, s: herrajes.bisagras_semicurvas, c: { ...herrajes.correderas } };
     const T = tablero(m), W = +m.ancho, H = +m.alto, D = +m.profundidad;
     const E = estructura(m), Z = E.Z, Dk = r1(D - CHOLGUAN), Hc = H - Z; // profundidad y alto del cuerpo
     const quitar = Array.isArray(m.quitar) ? m.quitar : [], ext = Math.max(0, +m.costados_atras || 0);
@@ -213,9 +215,13 @@ export function despiece(modelo) {
       pino('Zócalo frente (pino)', r1(z.x1 - z.x0), 'zocalo'); pino('Zócalo atrás (pino)', r1(z.x1 - z.x0), 'zocalo');
       pino('Zócalo costado (pino)', r1(z.z1 - z.z0 - 2 * PINO.espesor), 'zocalo'); pino('Zócalo costado (pino)', r1(z.z1 - z.z0 - 2 * PINO.espesor), 'zocalo');
     }
+    // herrajes de este mueble = lo que sumó al total
+    const cor = {};
+    for (const [l, n] of Object.entries(herrajes.correderas)) { const d = n - (h0.c[l] || 0); if (d) cor[l] = d; }
+    porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: cor };
   }
   herrajes.pino = { tiras: tirasPino(pinos), metros: Math.round(pinos.reduce((a, b) => a + b, 0)) / 100 };
-  return { version: 2, piezas, herrajes, cubiertas, tapacanto_m: Math.round(canto) / 100,
+  return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, tapacanto_m: Math.round(canto) / 100,
     tapacanto_blanco_m: Math.round(cantoBlanco) / 100, tapacanto_color_m: Math.round(canto - cantoBlanco) / 100, tapacanto_mm: TAPACANTO * 10 };
 }
 

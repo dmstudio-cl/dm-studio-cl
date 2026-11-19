@@ -51,6 +51,7 @@ const dread = () => { try { return JSON.parse(localStorage.getItem(DKEY)) || {};
 const dwrite = (v) => { try { localStorage.setItem(DKEY, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
 
 export function demoApi() {
+  let demoP = null; // proyecto de ejemplo (para los nombres de los muebles)
   return {
     mode: 'demo',
     async proyecto() {
@@ -58,12 +59,23 @@ export function demoApi() {
       const st = dread();
       return { ...p, seleccion: st.seleccion || p.seleccion, aprobacion: st.aprobacion || null };
     },
-    // Precio ficticio solo para mostrar la interfaz. El real lo calcula el Worker con los costos privados.
+    // Precio ficticio solo para mostrar la interfaz (por mueble, repartido por tamaño; al elegir solo algunos, un
+    // recargo simula las planchas enteras). El real lo calcula el Worker con los costos privados.
     async cotizar(sel) {
-      let total = 1890000;
-      if (sel?.tirador && /acero|laton|latón/.test(sel.tirador)) total += 45000;
-      if (sel?.cubierta && /roble|piedra/.test(sel.cubierta)) total += 120000;
-      return { total, anticipo: Math.round(total * .5), demo: true };
+      let base = 1890000;
+      if (sel?.tirador && /acero|laton|latón/.test(sel.tirador)) base += 45000;
+      if (sel?.cubierta && /roble|piedra/.test(sel.cubierta)) base += 120000;
+      demoP ||= fetch(`${window.DM.base}/assets/data/proyecto-demo.json`).then((r) => r.json());
+      const mods = ((await demoP).modulos || []).map((m, i) => ({ id: m.id || `m${i}`, nombre: m.nombre, peso: (+m.ancho || 60) * (+m.alto || 90) }));
+      const extras = 90000, pt = mods.reduce((s, m) => s + m.peso, 0) || 1, todos = mods.map((m) => m.id);
+      const elegidos = sel?.modulos?.length ? sel.modulos.filter((id) => todos.includes(id)) : todos;
+      const parcial = elegidos.length < todos.length;
+      const modulos = mods.map((m) => {
+        const incluido = elegidos.includes(m.id);
+        return { id: m.id, nombre: m.nombre, incluido, precio: Math.round((base - extras) * m.peso / pt * (incluido && parcial ? 1.15 : 1) / 10) * 10 };
+      });
+      const total = modulos.filter((m) => m.incluido).reduce((s, m) => s + m.precio, 0) + extras;
+      return { total, anticipo: Math.round(total * .5), extras, modulos, parcial, demo: true };
     },
     async guardar(sel) { dwrite({ ...dread(), seleccion: sel }); return { ok: true }; },
     async mensajes() { return { mensajes: dread().mensajes || [] }; },
@@ -84,7 +96,7 @@ export function demoApi() {
     },
     async aprobar(sel) {
       const q = await this.cotizar(sel);
-      const ap = { fecha: Date.now(), total: q.total, anticipo: q.anticipo, version: 1 };
+      const ap = { fecha: Date.now(), total: q.total, anticipo: q.anticipo, version: 1, ...(q.parcial ? { modulos: q.modulos.filter((m) => m.incluido).map((m) => m.id) } : {}) };
       dwrite({ ...dread(), aprobacion: ap });
       return { aprobacion: ap };
     },

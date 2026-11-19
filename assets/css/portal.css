@@ -112,6 +112,23 @@
 .pbordes-tit { margin-top: 18px; }
 .opt-borde .borde-ico { display: grid; place-items: center; width: 44px; height: 26px; background: transparent !important; color: var(--bone); }
 .opt-borde .borde-ico svg { width: 44px; height: 18px; }
+/* Muebles a cotizar: casilla, nombre y precio de cada uno (el cliente elige cuáles aprueba) */
+.pmuebles { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.pmuebles-tit { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 2px; }
+.pmuebles-tit button { background: none; border: 0; color: var(--muted); font: inherit; font-size: .78rem; text-decoration: underline; cursor: pointer; padding: 0; }
+.pmueble { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; font-size: .88rem; cursor: pointer; }
+.pmueble input { width: 16px; height: 16px; accent-color: var(--bone); }
+.pmueble .pm-precio { font-family: var(--mono, monospace); }
+.pmueble.fuera .pm-nombre, .pmueble.fuera .pm-precio { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.pmueble small { grid-column: 2 / -1; color: var(--muted); font-size: .74rem; margin-top: -4px; }
+.pmueble.extra { cursor: default; }
+.pmuebles-nota { margin: 4px 0 0; font-size: .76rem; color: var(--muted); }
+.is-locked .pmueble { cursor: default; }
+/* Solo el estudio: gasto en materiales y ganancia en mano de obra */
+.pcostos { margin-top: 12px; padding: 10px 12px; border: 1px dashed rgba(180, 50, 46, .6); border-radius: 10px; display: grid; gap: 4px; font-size: .84rem; }
+.pcostos .row { display: flex; justify-content: space-between; gap: 8px; }
+.pcostos .row span:last-child { font-family: var(--mono, monospace); }
+.pcostos .fuerte { font-weight: 600; color: var(--bone); }
 .pelectro-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
 .pelectro-cab .eyebrow { margin: 0 0 4px; }
 .pelectro-tit { margin: 0; font-family: var(--serif, serif); font-size: 1.25rem; color: var(--bone); }
