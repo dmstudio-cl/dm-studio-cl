@@ -124,12 +124,13 @@ export function despiece(modelo) {
     const li = W - 2 * T;
     // El soporte de melamina lleva tapacanto solo en el borde inferior (no costados ni borde superior)
     const matSoporte = mat('soporte', mat('cuerpo', cuerpoDef)); // color propio del soporte (ej. coigüe), si se eligió
+    const conSoporte = !quitar.includes('soporte'); // se puede quitar el soporte delantero (ej. nicho del microondas)
     if (E.clase === 'basal') {
-      add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+      if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
       pino('Soporte superior trasero (pino)', li, 'soporte|atras');
     }
     if (E.clase === 'aereo') {
-      add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+      if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
       pino('Soporte superior trasero (pino)', li, 'soporte|atras');
       pino('Soporte inferior trasero, anclaje al muro (pino)', li, 'soporte|anclaje');
     }
