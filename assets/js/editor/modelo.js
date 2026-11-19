@@ -492,7 +492,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       // Soportes horizontales de 10 cm (fabricación): delantero de melamina, trasero(s) de pino tapa
       if (fab && (esBasal || m.tipo === 'aereo')) {
         const li = W - 2 * T;
-        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || M.cuerpo, `${id}|soporte|frente`); // color propio por mueble
+        if (!quitada('soporte')) B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || M.cuerpo, `${id}|soporte|frente`); // color propio por mueble
         B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`);
         if (m.tipo === 'aereo') B({ w: li, h: SOPORTE, d: T, x: W / 2, y: Z + T + SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|anclaje`);
       }

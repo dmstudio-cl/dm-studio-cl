@@ -203,9 +203,32 @@ function claveDeSel() {
     zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte' }[sel.tipo];
   return k ? { m: sel.m, k } : null;
 }
-const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo' };
+const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo', soporte: 'Soporte delantero' };
 // Opciones de melamina para los selectores del panel (vacío = la opción por defecto)
 const opcionesMelamina = (vacio) => ({ '': vacio, ...Object.fromEntries(MEL.map((x) => [x.id, `${x.nombre}${x.linea ? ` · ${x.linea}` : ''}`])) });
+// Techo y soporte delantero del mueble: se muestra al tocar el mueble o cualquiera de sus partes (sección, pieza, soporte)
+function bloqueTechoSoportes(m) {
+  const basal = (m.tipo || 'base') === 'base' || m.tipo === 'isla';
+  const lleva = m.techo === 'si' || (m.techo !== 'no' && !basal);
+  const sinSoporte = (m.quitar || []).includes('soporte');
+  return `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Techo y soportes · ${esc(m.nombre)}</p>
+    <div class="ed-campos">
+      ${opciones('techo', 'Techo de melamina', m.techo || '', { '': `Automático (${basal ? 'sin techo' : 'con techo'})`, si: 'Con techo', no: 'Sin techo' }, 'ancho2')}
+      ${opciones('mat|cuerpo|techo', 'Color del techo', m.materiales?.['cuerpo|techo'] || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
+      ${opciones('sin_soporte', 'Soporte delantero (barra de 10 cm)', sinSoporte ? 'si' : '', { '': 'Con soporte', si: 'Sin soporte' }, 'ancho2')}
+      ${opciones('mat|soporte', 'Color del soporte', m.materiales?.soporte || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
+    </div>
+    <p class="ed-ayuda">El techo es una placa de melamina arriba del mueble (ej. sobre el nicho del microondas o una torre).${lleva && m.cubierta ? ' <b>Este mueble lleva cubierta: el techo queda debajo de ella</b> (desmarca «Lleva cubierta» si quieres verlo).' : ''} Se guardan en este mueble y se cotizan en su melamina.</p></div>`;
+}
+// Repisas de cada sección del mueble (sin cajones), con − y + (también se cambian tocando la sección)
+function bloqueRepisas(m) {
+  const cs = celdas(m).filter((c) => c.tipo !== 'cajon');
+  if (!cs.length) return '<p class="ed-ayuda" style="margin-top:10px">Este mueble solo tiene cajones: no lleva repisas.</p>';
+  const nom = { puerta: 'Puerta', puerta_doble: 'Puertas', panel: 'Panel', abierto: 'Abierta' };
+  return `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Repisas</p>
+    ${cs.map((c) => `<div class="ed-repisas"><span>${nom[c.tipo] || 'Sección'} · c${c.col + 1}·f${c.fila + 1}</span><button data-a="rep-@${c.col}@${c.fila}" title="Quitar una repisa">−</button><b>${c.repisas}</b><button data-a="rep+@${c.col}@${c.fila}" title="Agregar una repisa">+</button></div>`).join('')}
+    <p class="ed-ayuda">Detrás de puertas se ven punteadas con Capas → Repisas.</p></div>`;
+}
 function nombreClave(k) {
   if (k === 'frentes') return 'todos los frentes del mueble';
   if (k === 'cuerpo') return 'todo el cuerpo';
@@ -1546,18 +1569,14 @@ function props() {
         ${num('costados_atras', 'Costados alargados atrás', m.costados_atras || 0)}
         ${opciones('costados', 'Costados visibles', m.costados || '', { '': `Como el general (${PALETA.costados.opciones[colorDe(modelo.colores, 'costados')][0].toLowerCase()})`, frente: 'Igual a la melamina', cuerpo: 'Como el cuerpo' }, 'ancho2')}
       </div>
-      <p class="sub" style="margin-top:12px">Techo y soportes de este mueble</p>
-      <div class="ed-campos">
-        ${opciones('techo', 'Techo de melamina', m.techo || '', { '': `Automático (${(m.tipo || 'base') === 'base' || m.tipo === 'isla' ? 'sin techo' : 'con techo'})`, si: 'Con techo', no: 'Sin techo' }, 'ancho2')}
-        ${opciones('mat|cuerpo|techo', 'Color del techo', m.materiales?.['cuerpo|techo'] || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
-        ${opciones('mat|soporte', 'Color de los soportes', m.materiales?.soporte || '', opcionesMelamina('Como el cuerpo'), 'ancho2')}
-      </div>
-      <p class="ed-ayuda">El techo es una placa de melamina arriba del mueble (ej. el nicho del microondas o una torre). El soporte es el tablero de 10 cm de adelante. Se guardan en este mueble y se cotizan en su melamina.</p>
+      ${bloqueTechoSoportes(m)}
+      ${bloqueRepisas(m)}
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
   } else if (sel.tipo === 'soporte') {
     h = `<p class="tit">Soporte delantero</p><p class="sub">${esc(m.nombre)} · tablero horizontal de 10 cm bajo la cubierta o el techo</p>
-      <p class="ed-ayuda">Elige su color abajo («Cambiar…»), arrastra un material encima o usa «Color de los soportes» en el panel del mueble.</p>`;
+      <p class="ed-ayuda">Elige su color abajo («Cambiar…») o arrastra un material encima.</p>
+      <div class="ed-botones"><button data-a="quitar-soporte" class="peligro">Quitar el soporte (Supr)</button></div>`;
   } else if (sel.tipo === 'zocalo') {
     const z = marcoZocalo(m);
     h = `<p class="tit">Zócalo</p><p class="sub">${esc(m.nombre)} · marco de 4 lados · ${cm(z.x1 - z.x0)} × ${cm(z.z1 - z.z0)} cm</p>
@@ -1635,6 +1654,8 @@ function props() {
   }
   if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo', 'soporte'].includes(sel.tipo)) h += bloqueMaterial();
   if (['frente', 'cuerpo', 'modulo', 'repisa', 'cubierta'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
+  // Techo y soporte también al tocar una sección, una pieza o el soporte (ej. el nicho del microondas)
+  if (['frente', 'pieza', 'soporte', 'repisa'].includes(sel.tipo) && m && !m.artefacto) h += bloqueTechoSoportes(m);
   // Piezas quitadas del cuerpo (se pueden restaurar)
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
     h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Piezas quitadas: ${m.quitar.map((p) => (NOMBRE_PIEZA[p] || p).toLowerCase()).join(', ')}</p><div class="ed-botones"><button data-a="restaurar-piezas">Restaurar piezas</button></div></div>`;
@@ -1694,6 +1715,10 @@ function aplicarCampo(m, k, v, s = {}) {
     for (const x of modelo.modulos) if (x.grupo && x.grupo === m.grupo) x.grupo_nombre = String(v).slice(0, 60);
   } else if (k === 'costados') {
     if (v) m.costados = v; else delete m.costados;
+  } else if (k === 'sin_soporte') { // quitar o volver a poner el soporte delantero
+    const q = (m.quitar || []).filter((p) => p !== 'soporte');
+    m.quitar = v === 'si' ? [...q, 'soporte'] : q;
+    if (!m.quitar.length) delete m.quitar;
   } else if (k === 'techo') { // techo de melamina forzado: 'si' | 'no' (vacío = automático según el tipo)
     if (v === 'si' || v === 'no') m.techo = v; else delete m.techo;
     if (v === 'si' && Array.isArray(m.quitar)) m.quitar = m.quitar.filter((p) => p !== 'techo');
@@ -1865,12 +1890,17 @@ $('#props').addEventListener('click', (e) => {
   if (a === 'div-v') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirV(m, sel.col, c.x)); return; }
   if (a === 'unir-abajo') { cambiar(() => unirAbajo(m, sel.col, sel.fila)); return; }
   if (a === 'unir-der') { cambiar(() => unirDerecha(m, sel.col)); return; }
-  if (a === 'rep+' || a === 'rep-') {
-    const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.repisas || 0;
-    cambiar(() => { m.columnas[sel.col].frentes[sel.fila].repisas = Math.max(0, Math.min(12, n + (a === 'rep+' ? 1 : -1))); });
-    if (a === 'rep+' && !capas.repisas && m.columnas[sel.col].frentes[sel.fila].tipo !== 'abierto') aviso('Repisa agregada detrás de la puerta. Activa Capas → Repisas para verla punteada.');
+  if (/^rep[+-]/.test(a)) { // 'rep+' / 'rep-' en la sección elegida, o 'rep+@col@fila' desde el panel del mueble
+    const [, signo, cc, ff] = /^rep([+-])(?:@(\d+)@(\d+))?$/.exec(a) || [];
+    if (!signo) return;
+    const col = cc != null ? +cc : sel.col, fila = ff != null ? +ff : sel.fila;
+    if (!m.columnas?.[col]?.frentes?.[fila]) return;
+    const n = celdas(m).find((k) => k.col === col && k.fila === fila)?.repisas || 0;
+    cambiar(() => { m.columnas[col].frentes[fila].repisas = Math.max(0, Math.min(12, n + (signo === '+' ? 1 : -1))); });
+    if (signo === '+' && !capas.repisas && m.columnas[col].frentes[fila].tipo !== 'abierto') aviso('Repisa agregada detrás de la puerta. Activa Capas → Repisas para verla punteada.');
     return;
   }
+  if (a === 'quitar-soporte') { cambiar(() => { m.quitar = [...new Set([...(m.quitar || []), 'soporte'])]; }); sel = { tipo: 'modulo', m: m.id }; render(); aviso(`Se quitó el soporte delantero de «${m.nombre}». Se restaura desde el panel del mueble o con Ctrl+Z.`); return; }
   if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
   if (a.startsWith('tono:')) { tonoLuz = a.slice(5); props(); return; }
   const nuevaLuz = (o) => ({ id: uid('l'), tono: tonoLuz, intensidad: .8, lado: 'arriba', ...o });
@@ -1920,6 +1950,12 @@ function borrarSel() {
   if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); return; }
   if (sel.tipo === 'artefacto') { const s = { ...sel }; cambiar((d) => { const m = d.modulos.find((x) => x.id === s.m); m.artefactos = (m.artefactos || []).filter((x) => x.id !== s.a); }); sel = { tipo: 'cubierta', m: s.m }; render(); return; }
+  if (sel.tipo === 'soporte') { // Supr sobre el soporte delantero: el mueble va sin él
+    const m = modulo(sel.m); if (!m) return;
+    cambiar(() => { m.quitar = [...new Set([...(m.quitar || []), 'soporte'])]; });
+    aviso(`Se quitó el soporte delantero de «${m.nombre}». Se restaura desde el panel del mueble o con Ctrl+Z.`);
+    sel = { tipo: 'modulo', m: m.id }; render(); return;
+  }
   if (sel.tipo === 'pieza') { // Supr sobre la base, el techo, el fondo o un costado: el mueble va sin esa pieza
     const s = { ...sel }, m = modulo(s.m);
     if (!['piso', 'techo', 'fondo', 'izq', 'der'].includes(s.p)) return;
