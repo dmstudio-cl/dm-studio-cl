@@ -33,6 +33,8 @@ export async function startApp(api) {
     cubierta: proyecto.seleccion?.cubierta || cubiertas[0]?.id || '',
     borde: proyecto.seleccion?.borde || bordes[0]?.id || '',
     materiales: { ...(proyecto.seleccion?.materiales || {}) }, // color propio por pieza: { "idMódulo|pieza": idMelamina }
+    // muebles que el cliente quiere cotizar (vacío = todos); si ya aprobó, los aprobados
+    modulos: [...(proyecto.aprobacion?.modulos || proyecto.seleccion?.modulos || [])],
   };
   const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales });
   const aprobado = () => !!proyecto.aprobacion;
@@ -180,12 +182,57 @@ export async function startApp(api) {
       lastQuote = await api.cotizar(sel);
       $('#ptotal').textContent = clp(lastQuote.total);
       $('#panticipo').textContent = clp(lastQuote.anticipo);
+      pintarMuebles(lastQuote);
+      pintarCostos(lastQuote);
     } catch (e) {
       $('#ptotal').textContent = '—';
       status(e.message);
     } finally { $('#ptotal').classList.remove('loading'); }
   }
   const schedule = () => { clearTimeout(qt); qt = setTimeout(() => { quote(); if (!isOwner) api.guardar(sel).catch(() => {}); }, 450); };
+
+  // ----- muebles a cotizar: cada uno con su precio; el cliente marca los que quiere (y aprueba solo esos)
+  function pintarMuebles(q) {
+    const box = $('#pmuebles');
+    const mods = q?.modulos || [];
+    box.hidden = mods.length < 2; // con un solo mueble no hay nada que elegir
+    if (box.hidden) return;
+    const elegidos = mods.filter((m) => m.incluido).length;
+    box.innerHTML = `<p class="pmuebles-tit small"><span class="muted">Muebles a cotizar (${elegidos} de ${mods.length})</span>${elegidos < mods.length && !(aprobado() && !isOwner) ? '<button type="button" data-todos>Elegir todos</button>' : ''}</p>
+      ${mods.map((m) => `<label class="pmueble${m.incluido ? '' : ' fuera'}">
+        <input type="checkbox" data-mod="${esc(m.id)}"${m.incluido ? ' checked' : ''}${aprobado() && !isOwner ? ' disabled' : ''}>
+        <span class="pm-nombre">${esc(m.nombre)}</span><span class="pm-precio">${clp(m.precio)}</span>
+        ${isOwner && m.materiales != null ? `<small>Materiales ${clp(m.materiales)} · mano de obra ${clp(m.mano_obra)}</small>` : ''}</label>`).join('')}
+      ${q.extras ? `<div class="pmueble extra"><span></span><span class="pm-nombre">Gastos generales del proyecto</span><span class="pm-precio">${clp(q.extras)}</span><small>Transporte, instalación e insumos: se cobran completos.</small></div>` : ''}
+      <p class="pmuebles-nota">${q.parcial ? 'Los muebles tachados no se incluyen (su precio es el que tienen dentro del proyecto completo). Al cotizar solo algunos, las planchas se compran enteras para ellos, por eso cada uno puede costar un poco más.' : 'Desmarca los muebles que no quieras y el total se recalcula. Puedes aprobar solo los que elijas.'}</p>`;
+  }
+  $('#pmuebles').addEventListener('change', (e) => {
+    const id = e.target.dataset?.mod; if (!id || !lastQuote) return;
+    if (aprobado() && !isOwner) { e.target.checked = !e.target.checked; return; }
+    const todos = lastQuote.modulos.map((m) => m.id);
+    let elegidos = sel.modulos.length ? sel.modulos.filter((x) => todos.includes(x)) : [...todos];
+    elegidos = e.target.checked ? [...new Set([...elegidos, id])] : elegidos.filter((x) => x !== id);
+    if (!elegidos.length) { e.target.checked = true; status('Elige al menos un mueble para cotizar.'); return; }
+    sel.modulos = elegidos.length === todos.length ? [] : elegidos;
+    e.target.closest('.pmueble')?.classList.toggle('fuera', !e.target.checked);
+    schedule();
+  });
+  $('#pmuebles').addEventListener('click', (e) => {
+    if (!e.target.closest('[data-todos]')) return;
+    sel.modulos = []; schedule();
+  });
+  // Solo el estudio: gasto en materiales y ganancia en mano de obra de lo elegido (el Worker no lo envía al cliente)
+  function pintarCostos(q) {
+    const box = $('#pcostos'), e = q?.estudio;
+    box.hidden = !isOwner || !e;
+    if (box.hidden) return;
+    box.innerHTML = `<p class="eyebrow" style="margin:0 0 4px">Solo el estudio</p>
+      <div class="row"><span>Materiales${e.extras_costo ? ` <small class="muted">(incluye ${clp(e.extras_costo)} de extras)</small>` : ''}</span><span>${clp(e.materiales)}</span></div>
+      <div class="row"><span>Luz (${Math.round(e.luz_pct * 100)}%)</span><span>${clp(e.luz)}</span></div>
+      <div class="row"><span>Subtotal</span><span>${clp(e.subtotal)}</span></div>
+      <div class="row fuerte"><span>Mano de obra (ganancia)</span><span>${clp(e.mano_obra)}</span></div>
+      <div class="row"><span class="muted">Total al cliente (×${e.factor})</span><span>${clp(q.total)}</span></div>`;
+  }
   quote();
 
   // ¿Es blanco este material? (lo blanco se queda blanco al tocar un color; se cambia solo arrastrando sobre la pieza)
@@ -542,7 +589,7 @@ export async function startApp(api) {
     const locked = !!ap && !isOwner;
     $('#plock').hidden = !locked;
     document.querySelector('.papp-side').classList.toggle('is-locked', locked);
-    if (ap) status(`Aprobado el ${new Date(ap.fecha).toLocaleDateString('es-CL')} · Total ${clp(ap.total)} · Anticipo ${clp(ap.anticipo)}.`);
+    if (ap) status(`Aprobado el ${new Date(ap.fecha).toLocaleDateString('es-CL')} · Total ${clp(ap.total)} · Anticipo ${clp(ap.anticipo)}${ap.modulos?.length ? ` · ${ap.modulos.length} mueble${ap.modulos.length > 1 ? 's' : ''}` : ''}.`);
   }
   paintApproval();
 
@@ -571,6 +618,7 @@ export async function startApp(api) {
         <tr><th>Cubierta</th><td>${esc(r.cubierta?.nombre || '—')}</td></tr>
         <tr><th>Borde</th><td>${esc(r.borde?.nombre || '—')}</td></tr>
         ${Object.keys(sel.materiales).length ? `<tr><th>Colores por pieza</th><td>${Object.entries(sel.materiales).map(([ref, id]) => `${esc(nombrePieza(ref))}: ${esc(byId(catalogo, id)?.nombre || id)}`).join('<br>')}</td></tr>` : ''}
+        ${lastQuote?.modulos?.length > 1 ? `<tr><th>Muebles</th><td>${lastQuote.parcial ? lastQuote.modulos.filter((m) => m.incluido).map((m) => `${esc(m.nombre)} · ${clp(m.precio)}`).join('<br>') : 'Todo el proyecto'}</td></tr>` : ''}
         <tr><th>Total</th><td><b>${lastQuote ? clp(lastQuote.total) : '—'}</b></td></tr>
         <tr><th>Anticipo 50%</th><td>${lastQuote ? clp(lastQuote.anticipo) : '—'}</td></tr>
       </table>`;
@@ -584,17 +632,19 @@ export async function startApp(api) {
       const { aprobacion } = await api.aprobar(sel);
       proyecto.aprobacion = aprobacion;
       paintApproval();
-      await notifyApproval(proyecto, resolved(), aprobacion, api.mode);
+      await notifyApproval(proyecto, resolved(), aprobacion, api.mode, lastQuote?.parcial ? lastQuote.modulos.filter((m) => m.incluido).map((m) => m.nombre) : null);
+      pintarMuebles(lastQuote);
       await refresh();
     } catch (e) { status(e.message); }
   });
 }
 
 // Aviso al estudio por correo (Web3Forms) + WhatsApp prellenado para coordinar el anticipo.
-async function notifyApproval(p, r, ap, mode) {
+async function notifyApproval(p, r, ap, mode, muebles = null) {
   const resumen = [
     `Proyecto: ${p.titulo} (v${p.version || 1})`,
     `Cliente: ${p.cliente?.nombre || ''}`,
+    ...(muebles?.length ? [`Muebles aprobados: ${muebles.join(', ')}`] : []),
     `Melamina: ${r.melamina?.nombre || '—'}`,
     `Tirador: ${r.tirador?.nombre || '—'}`,
     `Cubierta: ${r.cubierta?.nombre || '—'}`,

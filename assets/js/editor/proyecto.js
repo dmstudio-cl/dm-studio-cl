@@ -256,6 +256,8 @@ export function iniciarProyectos(ed) {
       raw.despiece = despiece(modelo); // cantidades de materiales y herrajes: el Worker las cotiza
       // planchas enteras por melamina (optimizador); «frente» queda sin resolver (la elige el cliente) y con veta fija
       raw.despiece.planchas = optimizarDespiece(raw.despiece).map((g) => ({ material: g.material, espesor: g.espesor, planchas: g.planchas, m2: Math.round(g.m2Piezas * 100) / 100 }));
+      // melaminas que se pueden girar en la plancha (unicolor): el Worker re-optimiza las planchas de los muebles elegidos
+      raw.despiece.libres = (window.MELAMINAS || []).filter((x) => /unicolor/i.test(x.linea || '')).map((x) => x.id);
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };
