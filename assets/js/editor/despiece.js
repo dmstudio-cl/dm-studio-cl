@@ -76,7 +76,7 @@ function tirasPino(largos) {
 export function despiece(modelo) {
   const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [];
   const herrajes = { bisagras: 0, bisagras_rectas: 0, bisagras_semicurvas: 0, correderas: {} };
-  let canto = 0; // cm de tapacanto
+  let canto = 0, cantoBlanco = 0; // cm de tapacanto (total y de las piezas en melamina blanca)
   const cuerpoDef = CUERPO[col.cuerpo] || BLANCA;
   for (const m of modelo.modulos || []) {
     if (!m || m.artefacto) continue; // artefactos de piso: referencia, no se fabrican
@@ -94,6 +94,7 @@ export function despiece(modelo) {
         espesor: tipo === 'cholguan' ? 3 : T * 10, cantos: { ancho: ca, alto: cb },
         corte: { ancho: r1(a - cb * TAPACANTO), alto: r1(b - ca * TAPACANTO) }, veta: vetaDe(k, nombre), ...extra });
       canto += a * ca + b * cb;
+      if (material === BLANCA) cantoBlanco += a * ca + b * cb; // tapacanto blanco (más barato); el resto es de color
     };
     const pino = (nombre, largo, k = 'pino') => { if (largo <= 0) return; pinos.push(largo); piezas.push({ m: m.id, k, mueble: m.nombre, nombre, material: 'pino-1x4', tipo: 'pino', ancho: r1(largo), alto: SOPORTE, area: 0, espesor: PINO.espesor * 10 }); };
 
@@ -209,7 +210,8 @@ export function despiece(modelo) {
     }
   }
   herrajes.pino = { tiras: tirasPino(pinos), metros: Math.round(pinos.reduce((a, b) => a + b, 0)) / 100 };
-  return { version: 2, piezas, herrajes, cubiertas, tapacanto_m: Math.round(canto) / 100, tapacanto_mm: TAPACANTO * 10 };
+  return { version: 2, piezas, herrajes, cubiertas, tapacanto_m: Math.round(canto) / 100,
+    tapacanto_blanco_m: Math.round(cantoBlanco) / 100, tapacanto_color_m: Math.round(canto - cantoBlanco) / 100, tapacanto_mm: TAPACANTO * 10 };
 }
 
 // Resumen por material (para el editor): m² de tablero y de cholguán, herrajes y tapacanto

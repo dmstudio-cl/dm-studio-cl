@@ -44,13 +44,19 @@ export const TIPOS_FRENTE = {
 // ----- Biblioteca de tiradores prehechos -----
 // Cada pieza es una caja en coordenadas locales del tirador: x a lo largo, y vertical, z hacia afuera
 // del frente (0 = superficie del frente). rot = 0 → horizontal.
-const barra = (cc) => ({
-  nombre: `Barra ${cc * 10} mm`, largo: cc + 3,
+// cc = distancia entre centros (cm); g = grosor del tubo (cm). La barra sobresale 1,5 cm a cada lado de las patas.
+const barra = (cc, g = 1) => ({
+  nombre: `Barra ${Math.round(cc * 10)} mm`, largo: cc + 3,
   piezas: [
-    { w: cc + 3, h: 1, d: 1, x: 0, y: 0, z: 2.9 },
-    { w: 1, h: 1, d: 2.4, x: -cc / 2, y: 0, z: 1.2 },
-    { w: 1, h: 1, d: 2.4, x: cc / 2, y: 0, z: 1.2 },
+    { w: cc + 3, h: g, d: g, x: 0, y: 0, z: 2.4 + g / 2 },
+    { w: g, h: g, d: 2.4, x: -cc / 2, y: 0, z: 1.2 },
+    { w: g, h: g, d: 2.4, x: cc / 2, y: 0, z: 1.2 },
   ],
+});
+// Perilla o botón de diámetro d (cm)
+const perilla = (d) => ({
+  nombre: `Perilla ${Math.round(d * 10)} mm`, largo: d,
+  piezas: [{ w: d, h: d, d: 1.2, x: 0, y: 0, z: 2 }, { w: d * .55, h: d * .55, d: 1.6, x: 0, y: 0, z: .8 }],
 });
 export const TIRADORES = {
   'barra-96': barra(9.6),
@@ -63,6 +69,27 @@ export const TIRADORES = {
   concha: { nombre: 'Concha', largo: 9, piezas: [{ w: 9, h: 3.2, d: .7, x: 0, y: 0, z: .35 }, { w: 7, h: .8, d: 1.4, x: 0, y: -1.2, z: 1 }] },
 };
 export const COLORES_TIRADOR = { negro: '#151312', acero: '#a9aaa7', dorado: '#b8975a', blanco: '#e8e6e1' };
+
+// Modelo de tirador por su nombre: los de la biblioteca, o a escala según medidas del catálogo:
+// 'barra-<cc mm>[-<grosor mm>]' (ej. barra-160-12) y 'boton-<diámetro mm>' (ej. boton-25).
+const TIR_CACHE = {};
+export function tiradorDef(id) {
+  if (!id) return null;
+  if (TIRADORES[id]) return TIRADORES[id];
+  if (TIR_CACHE[id]) return TIR_CACHE[id];
+  let m = /^barra-(\d+(?:\.\d+)?)(?:-(\d+(?:\.\d+)?))?$/.exec(id);
+  if (m) return (TIR_CACHE[id] = barra(+m[1] / 10, m[2] ? +m[2] / 10 : 1));
+  m = /^boton-(\d+(?:\.\d+)?)$/.exec(id);
+  if (m) return (TIR_CACHE[id] = perilla(+m[1] / 10));
+  return null;
+}
+// Nombre del modelo a escala para un tirador del catálogo { forma, largo (cm), grosor (cm) }
+export function modeloCatalogo(t) {
+  const mm = (v) => Math.round(+v * 10);
+  if (t?.forma === 'boton') return +t.largo > 0 && +t.largo <= 8 ? `boton-${mm(t.largo)}` : 'boton'; // sin diámetro real: el botón estándar
+  if (t?.forma === 'perfil') return 'perfil';
+  return `barra-${mm(+t?.largo || 16)}${+t?.grosor > 0 ? `-${mm(t.grosor)}` : ''}`;
+}
 
 // ----- utilidades de datos -----
 let nid = 0;
@@ -192,19 +219,16 @@ export function iconoBorde(perfil) {
 // El cliente elige un tirador del catálogo de precios: { forma: barra|boton|perfil|sin, color, largo (cm) }.
 // Si el estudio ubicó tiradores a mano en el editor, se respetan sus posiciones y se cambia el modelo;
 // si no, se ubican automáticamente con las mismas reglas que tenía three/mueble.js.
-const BARRAS = [['barra-96', 9.6], ['barra-128', 12.8], ['barra-192', 19.2], ['barra-320', 32]];
-const barraPara = (largo = 16) => BARRAS.reduce((a, b) => (Math.abs(b[1] - largo) < Math.abs(a[1] - largo) ? b : a))[0];
-
 export function tiradoresCliente(m, sel) {
   const forma = sel?.forma || 'barra';
   if (forma === 'sin') return [];
   const color = sel?.color || COLORES_TIRADOR.negro;
   const cs = celdas(m);
   const celda = (t) => cs.find((k) => k.col === t.col && k.fila === t.fila);
+  // el modelo a escala con las medidas reales del tirador elegido (barra: entre centros y grosor; perilla: diámetro)
   const modeloDe = (f, c, rot) => {
-    if (f === 'boton') return { modelo: 'boton' };
     if (f === 'perfil') return { modelo: 'perfil', largo: (Math.abs(rot % 180) === 90 ? c.h : c.w) * .96 };
-    return { modelo: barraPara(+sel?.largo || 16) };
+    return { modelo: modeloCatalogo({ forma: f, largo: sel?.largo, grosor: sel?.grosor }) };
   };
   // Tiradores ubicados a mano en el editor
   if (m.tiradores?.length) {
@@ -212,7 +236,7 @@ export function tiradoresCliente(m, sel) {
   }
   // Ubicación automática
   const out = [];
-  const largoBarra = TIRADORES[barraPara(+sel?.largo || 16)].largo;
+  const largoBarra = tiradorDef(modeloCatalogo({ forma: 'barra', largo: sel?.largo, grosor: sel?.grosor })).largo;
   for (const c of cs) {
     const f = m.columnas[c.col].frentes[c.fila], tipo = f.tipo || 'puerta';
     if (!['puerta', 'puerta_doble', 'cajon'].includes(tipo)) continue;
@@ -503,7 +527,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       const cs = celdas(m);
       (m.tiradores || []).forEach((t) => {
         const c = cs.find((k) => k.col === t.col && k.fila === t.fila);
-        const def = TIRADORES[t.modelo];
+        const def = tiradorDef(t.modelo);
         if (!c || !def) return;
         const g = G.group({ x: c.x + (+t.dx || 0), y: c.y + (+t.dy || 0), z: D + T, rz: +t.rot || 0 });
         const color = { bg: COLORES_TIRADOR[t.color] || t.color || COLORES_TIRADOR.negro };
