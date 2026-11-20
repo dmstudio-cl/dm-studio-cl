@@ -47,9 +47,10 @@ function costadoVisible(m, lado, modelo) {
   return !(d != null && d < 2); // contra un muro
 }
 
-// Dirección de la veta en el mueble: 'v' = a lo largo del alto de la pieza (costados, divisiones, puertas),
-// 'h' = a lo largo del ancho (base, techo, repisas, soportes, frentes y cajas de cajón)
-const vetaDe = (k, nombre) => (/^cuerpo\|(izq|der)$|^div\|/.test(k) || /^(Puerta|Panel)/.test(nombre) ? 'v' : 'h');
+// Dirección de la veta de la pieza (regla del estudio, 2026-11-20): siempre a lo largo de su lado más largo, que
+// va a lo largo de los 2500 mm de la plancha. 'v' = el alto es el lado largo; 'h' = el ancho.
+const vetaDe = (ancho, alto) => (alto >= ancho ? 'v' : 'h');
+export const vetaLargo = (p) => (+p.alto >= +p.ancho ? 'v' : 'h');
 
 // Clase de construcción del módulo
 export function estructura(m) {
@@ -98,7 +99,7 @@ export function despiece(modelo) {
       const ca = tipo === 'tablero' ? cantos.ancho : 0, cb = tipo === 'tablero' ? cantos.alto : 0;
       piezas.push({ m: m.id, k, mueble: m.nombre, nombre, material, tipo, ancho: r1(a), alto: r1(b), area: Math.round(a * b) / 1e4,
         espesor: tipo === 'cholguan' ? 3 : T * 10, cantos: { ancho: ca, alto: cb },
-        corte: { ancho: r1(a - cb * TAPACANTO), alto: r1(b - ca * TAPACANTO) }, veta: vetaDe(k, nombre), ...extra });
+        corte: { ancho: r1(a - cb * TAPACANTO), alto: r1(b - ca * TAPACANTO) }, veta: vetaDe(a, b), ...extra });
       canto += a * ca + b * cb;
       if (material === BLANCA) cantoBlanco += a * ca + b * cb; // tapacanto blanco (más barato); el resto es de color
     };

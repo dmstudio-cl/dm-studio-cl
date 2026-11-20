@@ -28,7 +28,7 @@ export function aMinimo(x, y) {
 export function filasImperial(grupo) {
   const filas = new Map();
   for (const p of grupo.piezas) {
-    const v = p.veta === 'v';
+    const v = +p.alto >= +p.ancho; // la veta va por el lado más largo, que es la «base» (largo) en Imperial
     let base = v ? p.alto : p.ancho, altura = v ? p.ancho : p.alto; // mm; base = a lo largo de la veta
     [base, altura] = aMinimo(base, altura);
     const cb = v ? p.cantos.alto : p.cantos.ancho, ca = v ? p.cantos.ancho : p.cantos.alto; // cantos del largo y del ancho
