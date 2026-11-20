@@ -53,7 +53,9 @@
 .pactions .btn { padding: 12px 10px; font-size: .85rem; }
 .ppie-total { display: flex; justify-content: space-between; align-items: baseline; font-size: .9rem; padding-top: 10px; border-top: 1px solid var(--line); }
 .ppie-total .mono { font-size: 1.05rem; color: var(--bone); }
-.papp-side[data-vista="productos"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
+.papp-side[data-vista="productos"] .ppie-total, .papp-side[data-vista="personalizar"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
+/* En «Personalizar» el total queda fijo arriba mientras se recorren los materiales */
+.pprice-mini { margin-bottom: 14px; position: sticky; top: 0; z-index: 3; box-shadow: 0 -22px 0 var(--ink), 0 10px 18px -8px rgba(0, 0, 0, .7); }
 
 .ptools { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 5; pointer-events: none; }
 .ptool { pointer-events: auto; font: 500 .75rem var(--sans); color: var(--bone); background: rgba(11, 11, 13, .72); backdrop-filter: blur(8px); border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
@@ -116,6 +118,9 @@
   .chat-list { max-height: max(120px, calc(46svh - 170px)); }
   .papp-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
   .pactions { bottom: 0; margin-bottom: 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 11; }
+  /* bajo el modelo fijo (64 px del menú + alto del visor) */
+  .pprice-mini { top: calc(64px + max(46vh, 280px)); top: calc(64px + max(46svh, 280px)); z-index: 9; padding: 10px 16px; box-shadow: 0 10px 18px -8px rgba(0, 0, 0, .7); }
+  .pprice-mini .ptotal { font-size: 1.5rem; }
   .chat { max-width: none; }
   .swgrid { max-height: none; }
   .pin-hint { white-space: normal; width: 80%; text-align: center; }

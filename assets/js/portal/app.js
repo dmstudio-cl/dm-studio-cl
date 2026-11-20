@@ -186,20 +186,19 @@ export async function startApp(api) {
   // ----- precio y guardado (con espera para no saturar)
   let qt = 0, lastQuote = null;
   async function quote() {
-    $('#ptotal').classList.add('loading');
+    const totales = ['#ptotal', '#ptotal3'].map((s) => $(s));
+    totales.forEach((n) => n.classList.add('loading'));
     try {
       lastQuote = await api.cotizar(sel);
-      $('#ptotal').textContent = clp(lastQuote.total);
-      $('#ptotal2').textContent = clp(lastQuote.total);
-      $('#panticipo').textContent = clp(lastQuote.anticipo);
+      ['#ptotal', '#ptotal2', '#ptotal3'].forEach((s) => { $(s).textContent = clp(lastQuote.total); });
+      ['#panticipo', '#panticipo3'].forEach((s) => { $(s).textContent = clp(lastQuote.anticipo); });
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
       pintarDespacho(lastQuote);
     } catch (e) {
-      $('#ptotal').textContent = '—';
-      $('#ptotal2').textContent = '—';
+      ['#ptotal', '#ptotal2', '#ptotal3', '#panticipo3'].forEach((s) => { $(s).textContent = '—'; });
       status(e.message);
-    } finally { $('#ptotal').classList.remove('loading'); }
+    } finally { totales.forEach((n) => n.classList.remove('loading')); }
   }
   const schedule = () => { clearTimeout(qt); qt = setTimeout(() => { quote(); if (!isOwner) api.guardar(sel).catch(() => {}); }, 450); };
 
