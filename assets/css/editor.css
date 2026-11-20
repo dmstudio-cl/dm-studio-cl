@@ -148,6 +148,12 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-msg .acc { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .ed-msg .acc:empty { display: none; }
 .ed-msg .acc button { padding: 5px 8px; font-size: .72rem; }
+.ed-msg .acc .peligro { color: var(--err); margin-left: auto; }
+.ed-modo { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+.ed-modo .ed-check { align-items: flex-start; padding: 10px 12px; border: 1px solid rgba(236, 231, 221, .14); border-radius: 8px; cursor: pointer; line-height: 1.35; }
+.ed-modo .ed-check:has(input:checked) { border-color: rgba(236, 231, 221, .5); background: rgba(236, 231, 221, .05); }
+.ed-modo input { margin-top: 3px; }
+.ed-modo small { opacity: .75; }
 .ed-form { display: grid; gap: 8px; }
 .ed-form textarea { width: 100%; font: 400 .85rem/1.4 var(--sans); color: var(--bone); background: var(--ink); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px; resize: vertical; }
 .ed-wa { display: inline-block; padding: 9px 14px; border-radius: 999px; background: #1f8f4e; color: #fff; text-decoration: none; font: 600 .8rem/1 var(--sans); }
