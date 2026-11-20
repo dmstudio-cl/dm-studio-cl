@@ -185,6 +185,7 @@ export function iniciarProyectos(ed) {
           ${m.tipo === 'pin' && m.pin ? '<button data-ver>Ver en el modelo</button>' : ''}
           ${m.tipo === 'pin' && !m.resuelto ? '<button data-resolver>Marcar resuelto</button>' : ''}
           ${m.autor === 'cliente' ? '<button data-citar>Responder</button>' : ''}
+          <button data-borrar class="peligro" title="Eliminar este mensaje (también desaparece del portal del cliente)">Eliminar</button>
         </div>
       </li>`).join('') || '<li class="ed-ayuda">Sin comentarios todavía.</li>';
     lista.scrollTop = lista.scrollHeight;
@@ -197,6 +198,13 @@ export function iniciarProyectos(ed) {
       const ta = $('#coment-texto');
       ta.value = `${m.tipo === 'pin' ? `Sobre el 📍 ${nPin(m)}: ` : ''}${ta.value}`;
       ta.focus();
+    }
+    if (e.target.closest('[data-borrar]')) {
+      const quien = m.autor === 'estudio' ? 'tuyo' : 'del cliente';
+      const extra = m.tipo === 'aprobacion' ? '\n\nOjo: es el registro de la aprobación (la aprobación en sí no se deshace).' : '';
+      if (!confirm(`¿Eliminar este mensaje ${quien}?\n\n«${m.texto.slice(0, 120)}»\n\nTambién desaparece del portal del cliente y no se puede recuperar.${extra}`)) return;
+      try { await api('mensajes', { method: 'DELETE', p: info.id, params: { id: m.id } }); await cargarComentarios(); } catch (err) { ed.aviso(err.message); }
+      return;
     }
     if (e.target.closest('[data-resolver]')) {
       try { await api('mensajes', { method: 'PATCH', p: info.id, body: { id: m.id } }); await cargarComentarios(); } catch (err) { ed.aviso(err.message); }
@@ -230,26 +238,40 @@ export function iniciarProyectos(ed) {
     const v = (+info.raw.version || 1) + 1;
     $('.ed-dlg-cuerpo', dlgV).innerHTML = `
       <form id="form-version" class="ed-form">
-        <p class="ed-ayuda">Se guarda el modelo en el proyecto <b>${esc(info.raw.titulo)}</b> como <b>versión ${v}</b>, queda registrado en su chat y se le avisa.</p>
-        <label class="ed-campo">¿Qué cambió?<textarea id="v-msg" rows="3" required placeholder="Ej: Agrandé el cajón superior a 22 cm y moví los tiradores al centro."></textarea></label>
-        <label class="ed-check"><input type="checkbox" id="v-avisar" checked> Avisar por correo${(() => { const c = contactoDe(info); return !c.email ? ' (el cliente aún no deja su correo)' : !c.avisos_correo ? ' (el cliente pidió no recibir correos)' : ` a ${esc(c.email)}`; })()}</label>
-        <div class="ed-botones"><button type="submit" class="ed-primario">Publicar versión ${v}</button><button type="button" data-cerrar>Cancelar</button></div>
+        <p class="ed-ayuda">Se guarda el modelo en el proyecto <b>${esc(info.raw.titulo)}</b>. ¿Le avisas al cliente?</p>
+        <fieldset class="ed-modo">
+          <label class="ed-check"><input type="radio" name="v-modo" value="avisar" checked> <span><b>Publicar versión ${v} y avisar</b><br><small>Queda en su chat y le llega el aviso por correo o WhatsApp.</small></span></label>
+          <label class="ed-check"><input type="radio" name="v-modo" value="silencio"> <span><b>Solo actualizar el modelo</b><br><small>Sin mensaje ni aviso: el cliente ve el cambio al entrar (sigue la versión ${v - 1}). Útil para correcciones chicas.</small></span></label>
+        </fieldset>
+        <label class="ed-campo"><span id="v-msg-tit">¿Qué cambió?</span><textarea id="v-msg" rows="3" required placeholder="Ej: Agrandé el cajón superior a 22 cm y moví los tiradores al centro."></textarea></label>
+        <label class="ed-check" id="v-avisar-fila"><input type="checkbox" id="v-avisar" checked> Avisar por correo${(() => { const c = contactoDe(info); return !c.email ? ' (el cliente aún no deja su correo)' : !c.avisos_correo ? ' (el cliente pidió no recibir correos)' : ` a ${esc(c.email)}`; })()}</label>
+        <div class="ed-botones"><button type="submit" class="ed-primario" id="v-enviar">Publicar versión ${v}</button><button type="button" data-cerrar>Cancelar</button></div>
         <div id="v-resultado"></div>
       </form>`;
+    // Sin aviso: el texto pasa a ser una nota opcional (solo queda en el historial del repositorio)
+    const modo = () => {
+      const silencio = $('[name="v-modo"]:checked', dlgV).value === 'silencio';
+      $('#v-msg').required = !silencio;
+      $('#v-msg-tit').textContent = silencio ? 'Nota para ti (opcional, el cliente no la ve)' : '¿Qué cambió?';
+      $('#v-avisar-fila').hidden = silencio;
+      $('#v-enviar').textContent = silencio ? 'Actualizar el modelo' : `Publicar versión ${v}`;
+    };
+    dlgV.querySelectorAll('[name="v-modo"]').forEach((r) => r.addEventListener('change', modo));
     dlgV.showModal();
     $('#v-msg').focus();
   });
   dlgV.addEventListener('click', (e) => { if (e.target.closest('[data-cerrar]')) dlgV.close(); });
   dlgV.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const msg = $('#v-msg').value.trim(); if (!msg) return;
-    const btn = e.submitter; btn.disabled = true; btn.textContent = 'Publicando…';
+    const silencio = $('[name="v-modo"]:checked', dlgV)?.value === 'silencio';
+    const msg = $('#v-msg').value.trim(); if (!msg && !silencio) return;
+    const btn = e.submitter; btn.disabled = true; btn.textContent = silencio ? 'Guardando…' : 'Publicando…';
     const out = $('#v-resultado');
     try {
       // 1) Se lee la última versión del repo (por si se editó en Decap) y se reemplaza solo lo del editor.
       const { raw, sha } = await leerProyecto(info.id);
       const modelo = ed.modelo();
-      const v = (+raw.version || 1) + 1;
+      const v = (+raw.version || 1) + (silencio ? 0 : 1); // sin aviso: misma versión
       raw.modulos = modelo.modulos.map((m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m)));
       raw.colores = modelo.colores || {};
       raw.objetos = modelo.objetos || [];
@@ -262,11 +284,17 @@ export function iniciarProyectos(ed) {
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };
       raw.version = v;
-      if (raw.estado === 'cambios') raw.estado = 'propuesta'; // respondiste a los cambios pedidos: vuelve a ser propuesta
-      const { sha: nuevo, commit } = await escribirProyecto(info.id, raw, sha, `Proyecto: «${info.id}» versión ${v} · ${msg}`.slice(0, 200));
+      if (!silencio && raw.estado === 'cambios') raw.estado = 'propuesta'; // respondiste a los cambios pedidos: vuelve a ser propuesta
+      const titulo = silencio ? `Proyecto: «${info.id}» actualizado sin aviso (versión ${v})${msg ? ` · ${msg}` : ''}` : `Proyecto: «${info.id}» versión ${v} · ${msg}`;
+      const { sha: nuevo, commit } = await escribirProyecto(info.id, raw, sha, titulo.slice(0, 200));
       info = { ...info, raw, sha: nuevo };
       ed.abrir(raw, info, { conservarVista: true });
       pintarBarra();
+      if (silencio) { // 2') sin mensaje en el chat ni aviso
+        btn.textContent = 'Modelo actualizado';
+        out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}), sin avisar al cliente. Lo verá en su portal en alrededor de un minuto.${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
+        return;
+      }
       // 2) Registro en el chat del proyecto + aviso por correo (lo envía el Worker)
       const r = await api('mensajes', { method: 'POST', p: info.id, body: { texto: `Versión ${v}: ${msg}`, tipo: 'version', avisar: $('#v-avisar').checked, melamina: modelo.frente || '' } }); // la melamina del editor manda
       await cargarComentarios();
