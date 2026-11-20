@@ -53,7 +53,8 @@
 .pactions .btn { padding: 12px 10px; font-size: .85rem; }
 .ppie-total { display: flex; justify-content: space-between; align-items: baseline; font-size: .9rem; padding-top: 10px; border-top: 1px solid var(--line); }
 .ppie-total .mono { font-size: 1.05rem; color: var(--bone); }
-.papp-side[data-vista="productos"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
+.papp-side[data-vista="productos"] .ppie-total, .papp-side[data-vista="personalizar"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
+.pprice-mini { margin-bottom: 14px; }
 
 .ptools { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 5; pointer-events: none; }
 .ptool { pointer-events: auto; font: 500 .75rem var(--sans); color: var(--bone); background: rgba(11, 11, 13, .72); backdrop-filter: blur(8px); border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
