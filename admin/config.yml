@@ -100,3 +100,17 @@ collections:
           - { label: Link de cobro MACH, name: mach_link, widget: string, required: false }
           - { label: URL del Cloudflare Worker, name: worker_url, widget: string, required: false }
           - { label: URL de dmstudio.dev, name: dev_url, widget: string, required: false }
+      - name: despacho
+        label: Despacho por comuna
+        file: _data/despacho.yml
+        fields:
+          - { label: Tarifa base (CLP), name: tarifa_base, widget: number, value_type: int, default: 6000 }
+          - { label: Valor por km (CLP), name: valor_km, widget: number, value_type: int, default: 450, hint: "Se multiplica por 2 (ida y vuelta). Despacho = tarifa base + km × 2 × valor por km + tag." }
+          - label: Comunas
+            name: comunas
+            widget: list
+            summary: "{{fields.nombre}} · {{fields.km}} km · tag ${{fields.tag}}"
+            fields:
+              - { label: Comuna, name: nombre, widget: string }
+              - { label: Distancia (km, solo ida), name: km, widget: number, value_type: float }
+              - { label: TAG / peajes (CLP), name: tag, widget: number, value_type: int, default: 0 }

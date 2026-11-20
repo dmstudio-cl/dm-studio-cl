@@ -1,0 +1,59 @@
+# Despacho automático según la comuna del cliente («Mis datos» del portal).
+# despacho = tarifa_base + km × 2 (ida y vuelta) × valor_km + tag
+# Se suma al total del proyecto sin luz ni factor. Comuna fuera de la lista = despacho a coordinar.
+# Se edita en /admin → Ajustes del sitio → Despacho.
+tarifa_base: 6000
+valor_km: 450
+comunas:
+  - { nombre: "La Cisterna", km: 2, tag: 0 }
+  - { nombre: "San Ramón", km: 3, tag: 0 }
+  - { nombre: "El Bosque", km: 4, tag: 0 }
+  - { nombre: "San Miguel", km: 4, tag: 0 }
+  - { nombre: "Lo Espejo", km: 5, tag: 0 }
+  - { nombre: "La Granja", km: 5, tag: 0 }
+  - { nombre: "Pedro Aguirre Cerda", km: 6, tag: 0 }
+  - { nombre: "San Joaquín", km: 7, tag: 0 }
+  - { nombre: "La Pintana", km: 8, tag: 0 }
+  - { nombre: "Cerrillos", km: 9, tag: 1500 }
+  - { nombre: "Macul", km: 10, tag: 1500 }
+  - { nombre: "Santiago", km: 11, tag: 2000 }
+  - { nombre: "Estación Central", km: 11, tag: 2000 }
+  - { nombre: "San Bernardo", km: 11, tag: 1500 }
+  - { nombre: "La Florida", km: 12, tag: 1500 }
+  - { nombre: "Ñuñoa", km: 13, tag: 2500 }
+  - { nombre: "Maipú", km: 15, tag: 3000 }
+  - { nombre: "Providencia", km: 15, tag: 3500 }
+  - { nombre: "Quinta Normal", km: 15, tag: 2500 }
+  - { nombre: "Puente Alto", km: 16, tag: 2000 }
+  - { nombre: "Peñalolén", km: 16, tag: 2500 }
+  - { nombre: "Independencia", km: 16, tag: 3000 }
+  - { nombre: "Recoleta", km: 17, tag: 3000 }
+  - { nombre: "Lo Prado", km: 17, tag: 2500 }
+  - { nombre: "Cerro Navia", km: 18, tag: 3000 }
+  - { nombre: "Pudahuel", km: 20, tag: 3500 }
+  - { nombre: "Renca", km: 20, tag: 3500 }
+  - { nombre: "Las Condes", km: 21, tag: 4500 }
+  - { nombre: "Vitacura", km: 21, tag: 4500 }
+  - { nombre: "Conchalí", km: 21, tag: 3500 }
+  - { nombre: "Huechuraba", km: 24, tag: 4500 }
+  - { nombre: "Quilicura", km: 25, tag: 4000 }
+  - { nombre: "La Reina", km: 25, tag: 3500 }
+  - { nombre: "Lo Barnechea", km: 30, tag: 5500 }
+  - { nombre: "Calera de Tango", km: 22, tag: 1500 }
+  - { nombre: "Padre Hurtado", km: 26, tag: 2500 }
+  - { nombre: "Buin", km: 28, tag: 3000 }
+  - { nombre: "Peñaflor", km: 32, tag: 3000 }
+  - { nombre: "Pirque", km: 32, tag: 2000 }
+  - { nombre: "Colina", km: 40, tag: 5500 }
+  - { nombre: "Lampa", km: 42, tag: 4500 }
+  - { nombre: "Talagante", km: 42, tag: 3500 }
+  - { nombre: "Paine", km: 43, tag: 4000 }
+  - { nombre: "San José de Maipo", km: 48, tag: 2000 }
+  - { nombre: "Isla de Maipo", km: 48, tag: 3500 }
+  - { nombre: "El Monte", km: 52, tag: 3500 }
+  - { nombre: "Curacaví", km: 58, tag: 6000 }
+  - { nombre: "Tiltil", km: 65, tag: 5500 }
+  - { nombre: "María Pinto", km: 68, tag: 6000 }
+  - { nombre: "Melipilla", km: 72, tag: 5500 }
+  - { nombre: "San Pedro", km: 105, tag: 5500 }
+  - { nombre: "Alhué", km: 115, tag: 5500 }

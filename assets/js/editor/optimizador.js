@@ -1,9 +1,9 @@
 // Optimizador de planchas (como el de Imperial, Lepton Sistemas): acomoda las piezas de cada melamina en
 // planchas de 2500 × 1830 mm con cortes de guillotina en franjas a lo largo de los 2500 mm.
 // - Refilado: 10 mm por lado de la plancha (útil 2490 × 1820). Sierra: 3,2 mm.
-// - La veta de la plancha corre a lo largo de los 2500 mm («base»). Una melamina con veta (maderas, piedras y
-//   textiles) no se puede girar: la dirección de la veta de la pieza en el mueble va a lo largo de la base.
-//   Las unicolor se pueden girar libremente.
+// - La veta de la plancha corre a lo largo de los 2500 mm («base»). Regla del estudio: toda pieza va con su lado
+//   más largo a lo largo de la base. Una melamina con veta (maderas, piedras y textiles) no se gira;
+//   las unicolor se pueden girar libremente.
 // - Mide con la medida de CORTE (ya descontado 1 mm por canto con tapacanto).
 // Sirve para saber cuántas planchas de cada melamina se usan (precio) y para revisar el esquema antes de pedir.
 
@@ -53,7 +53,8 @@ export function optimizar(piezas, { plancha = PLANCHA } = {}) {
   const L = plancha.base - plancha.refilado, A = plancha.altura - plancha.refilado, k = plancha.sierra;
   const noCaben = [], base = [];
   for (const p of piezas) {
-    const largoVeta = p.veta === 'v' ? p.alto : p.ancho, otro = p.veta === 'v' ? p.ancho : p.alto; // b = a lo largo de los 2500 mm
+    // b = a lo largo de los 2500 mm (la veta de la plancha): siempre el lado más largo de la pieza
+    const largoVeta = Math.max(p.alto, p.ancho), otro = Math.min(p.alto, p.ancho);
     const ors = [{ b: largoVeta, a: otro, girada: false }];
     if (p.libre && largoVeta !== otro) ors.push({ b: otro, a: largoVeta, girada: true });
     if (p.libre) ors.sort((x, y) => y.b - x.b);

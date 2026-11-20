@@ -70,6 +70,7 @@ body_class: portal-page
     <div class="pprice panel">
       <div class="row"><span class="muted">Total</span><span class="ptotal" id="ptotal">—</span></div>
       <div class="row"><span class="muted">Anticipo 50%</span><span class="mono" id="panticipo">—</span></div>
+      <div class="pdespacho small" id="pdespacho" hidden></div>
       <div class="pmuebles" id="pmuebles" hidden></div>
       <div class="pcostos" id="pcostos" hidden></div>
       <p class="small muted" id="pvalid"></p>
@@ -109,7 +110,7 @@ body_class: portal-page
         <div class="field"><label for="pf-nombre">Nombre</label><input id="pf-nombre" name="nombre" autocomplete="name" maxlength="80"></div>
         <div class="field"><label for="pf-email">Correo</label><input id="pf-email" name="email" type="email" autocomplete="email" maxlength="120" placeholder="tu@correo.cl"></div>
         <div class="field"><label for="pf-tel">WhatsApp</label><input id="pf-tel" name="telefono" type="tel" autocomplete="tel" maxlength="20" placeholder="+56 9 1234 5678"></div>
-        <div class="field"><label for="pf-comuna">Comuna</label><input id="pf-comuna" name="comuna" autocomplete="address-level2" maxlength="60"></div>
+        <div class="field"><label for="pf-comuna">Comuna <span class="muted">(con ella calculamos el despacho)</span></label><select id="pf-comuna" name="comuna"><option value="">Elige tu comuna…</option></select></div>
         <div class="field"><label for="pf-dir">Dirección <span class="muted">(opcional, para la entrega)</span></label><input id="pf-dir" name="direccion" autocomplete="street-address" maxlength="120"></div>
         <label class="small check"><input type="checkbox" name="avisos_correo" checked> Avisarme por correo cuando haya una versión nueva o una respuesta</label>
         <label class="small check"><input type="checkbox" name="avisos_whatsapp" checked> Pueden escribirme por WhatsApp</label>
