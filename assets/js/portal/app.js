@@ -13,11 +13,19 @@ export async function startApp(api) {
   document.body.classList.add('in-app');
 
   const isOwner = api.mode === 'owner';
-  const [proyecto, catalogo, bordes] = await Promise.all([
+  const [proyecto, catalogo, bordes, despacho] = await Promise.all([
     api.proyecto(),
     fetch(`${window.DM.base}/assets/data/melaminas.json`).then((r) => r.json()).catch(() => []),
     fetch(`${window.DM.base}/assets/data/bordes.json`).then((r) => r.json()).catch(() => []),
+    fetch(`${window.DM.base}/assets/data/despacho.json`).then((r) => r.json()).catch(() => null),
   ]);
+  // comunas con despacho: lista cerrada en «Mis datos» (así el nombre siempre calza con la tabla de despacho)
+  const OTRA = 'Otra (fuera de Santiago)';
+  const comunasDesp = [...(despacho?.comunas || [])].map((c) => c.nombre).sort((a, b) => a.localeCompare(b, 'es'));
+  $('#pf-comuna').insertAdjacentHTML('beforeend', comunasDesp.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('') + `<option value="${OTRA}">${OTRA} · despacho a coordinar</option>`);
+  // una comuna guardada antes (escrita a mano) se lleva a la de la lista, o a «Otra»
+  const normCom = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const comunaDeLista = (v) => (!String(v || '').trim() ? '' : comunasDesp.find((n) => normCom(n) === normCom(v)) || OTRA);
 
   // ----- opciones disponibles
   const permitidas = proyecto.opciones?.melaminas?.length ? new Set(proyecto.opciones.melaminas) : null;
@@ -184,6 +192,7 @@ export async function startApp(api) {
       $('#panticipo').textContent = clp(lastQuote.anticipo);
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
+      pintarDespacho(lastQuote);
     } catch (e) {
       $('#ptotal').textContent = '—';
       status(e.message);
@@ -221,6 +230,17 @@ export async function startApp(api) {
     if (!e.target.closest('[data-todos]')) return;
     sel.modulos = []; schedule();
   });
+  // Despacho a la comuna del cliente (calculado en el Worker con la tabla de despacho; va incluido en el total)
+  function pintarDespacho(q) {
+    const box = $('#pdespacho'), d = q?.despacho;
+    box.hidden = !d;
+    if (!d) return;
+    const irDatos = '<button type="button" data-ir-datos>Mis datos</button>';
+    box.innerHTML = d.estado === 'ok' ? `<span>Despacho a <b>${esc(d.comuna)}</b> <small>(incluido)</small></span><span>${clp(d.monto)}</span>`
+      : d.estado === 'coordinar' ? `<span>Despacho ${/^otra/i.test(d.comuna) ? 'fuera de Santiago' : `a ${esc(d.comuna)}`}: <b>a coordinar</b></span><span></span>`
+        : `<span>${isOwner ? 'El cliente aún no indica su comuna: despacho sin calcular.' : `Indica tu comuna en ${irDatos} para sumar el despacho.`}</span><span></span>`;
+  }
+  $('#pdespacho').addEventListener('click', (e) => { if (e.target.closest('[data-ir-datos]')) document.querySelector('.ptabs [data-tab="perfil"]')?.click(); });
   // Solo el estudio: gasto en materiales y ganancia en mano de obra de lo elegido (el Worker no lo envía al cliente)
   function pintarCostos(q) {
     const box = $('#pcostos'), e = q?.estudio;
@@ -231,6 +251,7 @@ export async function startApp(api) {
       <div class="row"><span>Luz (${Math.round(e.luz_pct * 100)}%)</span><span>${clp(e.luz)}</span></div>
       <div class="row"><span>Subtotal</span><span>${clp(e.subtotal)}</span></div>
       <div class="row fuerte"><span>Mano de obra (ganancia)</span><span>${clp(e.mano_obra)}</span></div>
+      ${e.despacho ? `<div class="row"><span>Despacho (sin factor)</span><span>${clp(e.despacho)}</span></div>` : ''}
       <div class="row"><span class="muted">Total al cliente (×${e.factor})</span><span>${clp(q.total)}</span></div>`;
   }
   quote();
@@ -312,7 +333,8 @@ export async function startApp(api) {
   let perfil = null;
   function pintarPerfil() {
     const d = perfil || { nombre: proyecto.cliente?.nombre || '', avisos_correo: true, avisos_whatsapp: true };
-    for (const k of ['nombre', 'email', 'telefono', 'comuna', 'direccion']) pform.elements[k].value = d[k] || '';
+    for (const k of ['nombre', 'email', 'telefono', 'direccion']) pform.elements[k].value = d[k] || '';
+    pform.elements.comuna.value = comunaDeLista(d.comuna);
     pform.elements.avisos_correo.checked = d.avisos_correo !== false;
     pform.elements.avisos_whatsapp.checked = d.avisos_whatsapp !== false;
     // punto rojo en la pestaña mientras falte el correo (para que el cliente reciba los avisos)
@@ -330,6 +352,7 @@ export async function startApp(api) {
     try {
       const r = await api.guardarPerfil(datos);
       perfil = r.perfil || datos; pintarPerfil();
+      quote(); // la comuna cambia el despacho
       pstat(datos.email && datos.avisos_correo ? 'Listo. Te avisaremos por correo cuando haya novedades.' : 'Listo, tus datos quedaron guardados.', 'ok');
     } catch (err) { pstat(err.message, 'error'); }
   });
@@ -619,6 +642,7 @@ export async function startApp(api) {
         <tr><th>Borde</th><td>${esc(r.borde?.nombre || '—')}</td></tr>
         ${Object.keys(sel.materiales).length ? `<tr><th>Colores por pieza</th><td>${Object.entries(sel.materiales).map(([ref, id]) => `${esc(nombrePieza(ref))}: ${esc(byId(catalogo, id)?.nombre || id)}`).join('<br>')}</td></tr>` : ''}
         ${lastQuote?.modulos?.length > 1 ? `<tr><th>Muebles</th><td>${lastQuote.parcial ? lastQuote.modulos.filter((m) => m.incluido).map((m) => `${esc(m.nombre)} · ${clp(m.precio)}`).join('<br>') : 'Todo el proyecto'}</td></tr>` : ''}
+        ${lastQuote?.despacho ? `<tr><th>Despacho</th><td>${lastQuote.despacho.estado === 'ok' ? `${esc(lastQuote.despacho.comuna)} · ${clp(lastQuote.despacho.monto)}` : lastQuote.despacho.estado === 'coordinar' ? `${esc(lastQuote.despacho.comuna)} · a coordinar` : 'Sin comuna (se coordina después)'}</td></tr>` : ''}
         <tr><th>Total</th><td><b>${lastQuote ? clp(lastQuote.total) : '—'}</b></td></tr>
         <tr><th>Anticipo 50%</th><td>${lastQuote ? clp(lastQuote.anticipo) : '—'}</td></tr>
       </table>`;

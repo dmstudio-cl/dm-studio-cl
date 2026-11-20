@@ -112,6 +112,11 @@
 .pbordes-tit { margin-top: 18px; }
 .opt-borde .borde-ico { display: grid; place-items: center; width: 44px; height: 26px; background: transparent !important; color: var(--bone); }
 .opt-borde .borde-ico svg { width: 44px; height: 18px; }
+/* Despacho a la comuna del cliente (incluido en el total) */
+.pdespacho { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 8px; color: var(--muted); }
+.pdespacho b { color: var(--bone); font-weight: 500; }
+.pdespacho span:last-child { font-family: var(--mono, monospace); color: var(--bone); white-space: nowrap; }
+.pdespacho button { background: none; border: 0; padding: 0; color: var(--bone); font: inherit; text-decoration: underline; cursor: pointer; }
 /* Muebles a cotizar: casilla, nombre y precio de cada uno (el cliente elige cuáles aprueba) */
 .pmuebles { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .pmuebles-tit { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 2px; }

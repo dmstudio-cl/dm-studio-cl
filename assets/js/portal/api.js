@@ -51,7 +51,7 @@ const dread = () => { try { return JSON.parse(localStorage.getItem(DKEY)) || {};
 const dwrite = (v) => { try { localStorage.setItem(DKEY, JSON.stringify(v)); } catch { /* sin almacenamiento */ } };
 
 export function demoApi() {
-  let demoP = null; // proyecto de ejemplo (para los nombres de los muebles)
+  let demoP = null, demoD = null; // proyecto de ejemplo (nombres de los muebles) y tabla de despacho
   return {
     mode: 'demo',
     async proyecto() {
@@ -74,8 +74,15 @@ export function demoApi() {
         const incluido = elegidos.includes(m.id);
         return { id: m.id, nombre: m.nombre, incluido, precio: Math.round((base - extras) * m.peso / pt * (incluido && parcial ? 1.15 : 1) / 10) * 10 };
       });
-      const total = modulos.filter((m) => m.incluido).reduce((s, m) => s + m.precio, 0) + extras;
-      return { total, anticipo: Math.round(total * .5), extras, modulos, parcial, demo: true };
+      // despacho a la comuna de «Mis datos» con la tabla pública (igual que el Worker)
+      demoD ||= fetch(`${window.DM.base}/assets/data/despacho.json`).then((r) => r.json()).catch(() => null);
+      const tabla = await demoD, comuna = String(dread().perfil?.comuna || '').trim();
+      const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+      const c = comuna && (tabla?.comunas || []).find((x) => norm(x.nombre) === norm(comuna));
+      const despacho = !comuna ? { estado: 'sin_comuna' } : !c ? { estado: 'coordinar', comuna }
+        : { estado: 'ok', comuna: c.nombre, km: +c.km, monto: Math.round(+tabla.tarifa_base + +c.km * 2 * +tabla.valor_km + (+c.tag || 0)) };
+      const total = modulos.filter((m) => m.incluido).reduce((s, m) => s + m.precio, 0) + extras + (despacho.monto || 0);
+      return { total, anticipo: Math.round(total * .5), extras, modulos, parcial, despacho, demo: true };
     },
     async guardar(sel) { dwrite({ ...dread(), seleccion: sel }); return { ok: true }; },
     async mensajes() { return { mensajes: dread().mensajes || [] }; },
