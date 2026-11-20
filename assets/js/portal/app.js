@@ -44,7 +44,8 @@ export async function startApp(api) {
     // muebles que el cliente quiere cotizar (vacío = todos); si ya aprobó, los aprobados
     modulos: [...(proyecto.aprobacion?.modulos || proyecto.seleccion?.modulos || [])],
   };
-  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales });
+  // modulos: los muebles elegidos para cotizar (vacío = todos); los demás no se dibujan
+  const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales, modulos: sel.modulos });
   const aprobado = () => !!proyecto.aprobacion;
 
   // ----- cabecera
@@ -129,7 +130,7 @@ export async function startApp(api) {
   const refPintable = (ref) => /^[^|]+\|(f\|\d+\|\d+(\|rep\|\d+|\|div)?|cuerpo\|(izq|der|piso|techo|fondo)|zocalo)$/.test(ref || '');
   function elegirPieza(ref) {
     piezaSel = ref; scene.seleccionar(ref);
-    document.querySelector('.ptabs [data-tab="melamina"]')?.click();
+    irA('personalizar', 'melamina');
     pintarPiezas();
   }
   function aplicarPieza(ref, id) {
@@ -189,12 +190,14 @@ export async function startApp(api) {
     try {
       lastQuote = await api.cotizar(sel);
       $('#ptotal').textContent = clp(lastQuote.total);
+      $('#ptotal2').textContent = clp(lastQuote.total);
       $('#panticipo').textContent = clp(lastQuote.anticipo);
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
       pintarDespacho(lastQuote);
     } catch (e) {
       $('#ptotal').textContent = '—';
+      $('#ptotal2').textContent = '—';
       status(e.message);
     } finally { $('#ptotal').classList.remove('loading'); }
   }
@@ -213,7 +216,7 @@ export async function startApp(api) {
         <span class="pm-nombre">${esc(m.nombre)}</span><span class="pm-precio">${clp(m.precio)}</span>
         ${isOwner && m.materiales != null ? `<small>Materiales ${clp(m.materiales)} · mano de obra ${clp(m.mano_obra)}</small>` : ''}</label>`).join('')}
       ${q.extras ? `<div class="pmueble extra"><span></span><span class="pm-nombre">Gastos generales del proyecto</span><span class="pm-precio">${clp(q.extras)}</span><small>Transporte, instalación e insumos: se cobran completos.</small></div>` : ''}
-      <p class="pmuebles-nota">${q.parcial ? 'Los muebles tachados no se incluyen (su precio es el que tienen dentro del proyecto completo). Al cotizar solo algunos, las planchas se compran enteras para ellos, por eso cada uno puede costar un poco más.' : 'Desmarca los muebles que no quieras y el total se recalcula. Puedes aprobar solo los que elijas.'}</p>`;
+      <p class="pmuebles-nota">${q.parcial ? 'Los muebles tachados no se incluyen y se ocultan del modelo (su precio es el que tienen dentro del proyecto completo). Al cotizar solo algunos, las planchas se compran enteras para ellos, por eso cada uno puede costar un poco más.' : 'Desmarca los muebles que no quieras: desaparecen del modelo y el total se recalcula. Puedes aprobar solo los que elijas.'}</p>`;
   }
   $('#pmuebles').addEventListener('change', (e) => {
     const id = e.target.dataset?.mod; if (!id || !lastQuote) return;
@@ -224,11 +227,12 @@ export async function startApp(api) {
     if (!elegidos.length) { e.target.checked = true; status('Elige al menos un mueble para cotizar.'); return; }
     sel.modulos = elegidos.length === todos.length ? [] : elegidos;
     e.target.closest('.pmueble')?.classList.toggle('fuera', !e.target.checked);
+    scene.update(resolved()); // el mueble desmarcado desaparece del modelo
     schedule();
   });
   $('#pmuebles').addEventListener('click', (e) => {
     if (!e.target.closest('[data-todos]')) return;
-    sel.modulos = []; schedule();
+    sel.modulos = []; scene.update(resolved()); schedule();
   });
   // Despacho a la comuna del cliente (calculado en el Worker con la tabla de despacho; va incluido en el total)
   function pintarDespacho(q) {
@@ -240,7 +244,7 @@ export async function startApp(api) {
       : d.estado === 'coordinar' ? `<span>Despacho ${/^otra/i.test(d.comuna) ? 'fuera de Santiago' : `a ${esc(d.comuna)}`}: <b>a coordinar</b></span><span></span>`
         : `<span>${isOwner ? 'El cliente aún no indica su comuna: despacho sin calcular.' : `Indica tu comuna en ${irDatos} para sumar el despacho.`}</span><span></span>`;
   }
-  $('#pdespacho').addEventListener('click', (e) => { if (e.target.closest('[data-ir-datos]')) document.querySelector('.ptabs [data-tab="perfil"]')?.click(); });
+  $('#pdespacho').addEventListener('click', (e) => { if (e.target.closest('[data-ir-datos]')) irA('datos'); });
   // Solo el estudio: gasto en materiales y ganancia en mano de obra de lo elegido (el Worker no lo envía al cliente)
   function pintarCostos(q) {
     const box = $('#pcostos'), e = q?.estudio;
@@ -294,12 +298,26 @@ export async function startApp(api) {
     const b = e.target.closest('.opt[data-kind]'); if (b) choose(b.dataset.kind, b.dataset.id);
   }));
 
-  // ----- pestañas
+  // ----- pestañas: tres vistas (1 Muebles · 2 Personalizar · 3 Mis datos) y, dentro de Personalizar, las de terminaciones
+  function irA(vista, tab) {
+    document.querySelectorAll('.pvistas [data-vista]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.vista === vista)));
+    document.querySelectorAll('.pvista').forEach((p) => { p.hidden = p.dataset.vista !== vista; });
+    document.querySelector('.papp-side').dataset.vista = vista;
+    if (tab) document.querySelector(`.ptabs [data-tab="${tab}"]`)?.click();
+    else if (vista === 'personalizar' && !$('#pelectro').hidden) { scene.seleccionar(null); document.querySelector('.ptabs [data-tab="melamina"]')?.click(); }
+  }
+  document.querySelector('.pvistas').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-vista]'); if (!b) return;
+    irA(b.dataset.vista);
+    document.querySelector('.papp-side').scrollTop = 0;
+  });
+  document.querySelectorAll('[data-ir]').forEach((b) => b.addEventListener('click', () => { irA(b.dataset.ir); document.querySelector('.papp-side').scrollTop = 0; }));
   document.querySelector('.ptabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]'); if (!b) return;
     document.querySelectorAll('.ptabs [data-tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
     document.querySelectorAll('.ppanel').forEach((p) => { p.hidden = p.dataset.panel !== b.dataset.tab; });
   });
+  irA('productos');
 
   // ----- electrodoméstico tocado en el modelo: muestra a la derecha los productos que el estudio recomienda
   // (links que se agregan en el editor; se compran aparte y no suman al precio)
@@ -307,6 +325,7 @@ export async function startApp(api) {
   function mostrarElectro(id) {
     const o = (proyecto.objetos || []).find((x) => x.id === id); if (!o) return;
     if (piezaSel) { piezaSel = null; pintarPiezas(); }
+    irA('personalizar');
     scene.seleccionar(`obj|${id}`);
     const links = o.links || [];
     $('#pelectro').innerHTML = `
@@ -439,7 +458,7 @@ export async function startApp(api) {
       if (/^obj\|/.test(ref || '')) { mostrarElectro(ref.slice(4)); return; } // un electrodoméstico: sus productos recomendados
       if (refPintable(ref)) { elegirPieza(ref); return; } // una pieza: se le cambia el color
       if (!/\|cubierta$/.test(ref || '')) { if (piezaSel) { piezaSel = null; scene.seleccionar(null); pintarPiezas(); } return; } // fondo: suelta la pieza
-      document.querySelector('.ptabs [data-tab="cubierta"]')?.click(); // la cubierta: su material y su borde
+      irA('personalizar', 'cubierta'); // la cubierta: su material y su borde
       const lista = $('#bordelist');
       lista.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       lista.classList.remove('flash'); void lista.offsetWidth; lista.classList.add('flash');

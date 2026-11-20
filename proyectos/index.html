@@ -67,6 +67,16 @@ body_class: portal-page
       <p class="muted small" id="pclient"></p>
     </header>
 
+    <p class="plock" id="plock" hidden>Propuesta aprobada: las terminaciones quedaron fijas. Si quieres cambiar algo, escríbenos en la conversación.</p>
+
+    <!-- Tres vistas: los muebles y su precio, la personalización y los datos del cliente -->
+    <nav class="pvistas" role="tablist" aria-label="Secciones del proyecto">
+      <button role="tab" aria-selected="true" data-vista="productos" aria-controls="pv-productos"><b>1</b> Muebles</button>
+      <button role="tab" aria-selected="false" data-vista="personalizar" aria-controls="pv-personalizar"><b>2</b> Personalizar</button>
+      <button role="tab" aria-selected="false" data-vista="datos" aria-controls="pv-datos"><b>3</b> Mis datos<i class="ptab-dot" id="perfildot" hidden></i></button>
+    </nav>
+
+    <section class="pvista" id="pv-productos" data-vista="productos" role="tabpanel">
     <div class="pprice panel">
       <div class="row"><span class="muted">Total</span><span class="ptotal" id="ptotal">—</span></div>
       <div class="row"><span class="muted">Anticipo 50%</span><span class="mono" id="panticipo">—</span></div>
@@ -76,14 +86,15 @@ body_class: portal-page
       <p class="small muted" id="pvalid"></p>
       <p class="small note note-red" id="pdemo" hidden>Proyecto de ejemplo: el precio es ficticio. En tu proyecto real el precio se calcula con tus medidas y terminaciones.</p>
     </div>
+    <button type="button" class="btn btn-block pvista-sig" data-ir="personalizar">Siguiente: elegir colores y terminaciones →</button>
+    </section>
 
-    <p class="plock" id="plock" hidden>Propuesta aprobada: las terminaciones quedaron fijas. Si quieres cambiar algo, escríbenos en la conversación.</p>
+    <section class="pvista" id="pv-personalizar" data-vista="personalizar" role="tabpanel" hidden>
     <div class="ptabs" role="tablist">
       <button role="tab" aria-selected="true" data-tab="melamina">Melamina</button>
       <button role="tab" aria-selected="false" data-tab="tirador">Tiradores</button>
       <button role="tab" aria-selected="false" data-tab="cubierta">Cubierta</button>
       <button role="tab" aria-selected="false" data-tab="detalle">Detalle</button>
-      <button role="tab" aria-selected="false" data-tab="perfil" id="tabperfil">Mis datos<i class="ptab-dot" id="perfildot" hidden></i></button>
     </div>
     <div class="ppanel" data-panel="melamina">
       <div class="ppieza" id="ppieza"></div>
@@ -104,7 +115,11 @@ body_class: portal-page
       <p class="small muted" id="pcond"></p>
     </div>
     <div class="ppanel pelectro" data-panel="electro" hidden id="pelectro"></div>
-    <div class="ppanel" data-panel="perfil" hidden>
+    <div class="pselected small mono" id="psel"></div>
+    <button type="button" class="btn btn-block pvista-sig" data-ir="datos">Siguiente: mis datos y aprobar →</button>
+    </section>
+
+    <section class="pvista" id="pv-datos" data-vista="datos" role="tabpanel" hidden>
       <form class="form pperfil" id="perfilform" novalidate>
         <p class="small muted" id="perfilintro">Déjanos tus datos para avisarte cuando haya novedades en tu proyecto. Solo DM Studio los ve.</p>
         <div class="field"><label for="pf-nombre">Nombre</label><input id="pf-nombre" name="nombre" autocomplete="name" maxlength="80"></div>
@@ -117,15 +132,15 @@ body_class: portal-page
         <button class="btn btn-block" type="submit">Guardar mis datos</button>
         <p class="small form-status" id="perfilstatus" role="status" aria-live="polite"></p>
       </form>
-    </div>
+    </section>
 
-    <div class="pselected small mono" id="psel"></div>
-
-    <div class="pactions">
+    <!-- Siempre a la vista: el total de lo elegido y aprobar -->
+    <footer class="pactions">
+      <div class="ppie-total"><span class="muted">Total</span><span class="mono" id="ptotal2">—</span></div>
       <button class="btn btn-red btn-block" id="papprove">Aprobar propuesta</button>
       <button class="btn btn-block" id="pchanges">Pedir cambios</button>
       <p class="small muted" id="pstatus" role="status" aria-live="polite"></p>
-    </div>
+    </footer>
   </aside>
 </div>
 

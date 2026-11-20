@@ -36,10 +36,13 @@ export function createScene(el) {
     return { ...matsColores(proyecto?.colores, frente), cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto', material: fondoMaterial };
   }
   function modelo(s) {
+    // muebles que el cliente desmarcó en «Muebles a cotizar»: desaparecen (las cocinas de piso no se cotizan y quedan)
+    const elegidos = Array.isArray(s.modulos) && s.modulos.length ? new Set(s.modulos) : null;
+    const visible = (m, i) => !elegidos || m.artefacto || elegidos.has(m.id || `m${i}`);
     return {
       espacio: espacioPortal(proyecto.espacio),
       objetos: soloMuebles ? [] : proyecto.objetos || [], // «Solo muebles»: sin electrodomésticos ni referencias
-      modulos: (proyecto.modulos || []).filter((m) => !(soloMuebles && m.artefacto)).map((m, i) => ({
+      modulos: (proyecto.modulos || []).map((m, i) => ({ m, i })).filter(({ m, i }) => !(soloMuebles && m.artefacto) && visible(m, i)).map(({ m, i }) => ({
         ...m, id: m.id || `m${i}`,
         ...(soloMuebles ? { artefactos: [] } : {}), // sin encimeras ni lavaplatos de referencia
         // materiales por pieza: los del estudio y encima los que eligió el cliente ("idMódulo|pieza")
