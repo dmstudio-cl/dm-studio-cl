@@ -35,7 +35,25 @@
 .plock { margin: 0; padding: 10px 14px; border: 1px solid rgba(127, 179, 138, .45); border-radius: 10px; background: rgba(127, 179, 138, .08); font-size: .85rem; }
 .is-locked #mellist, .is-locked #tirlist, .is-locked #cublist, .is-locked #melfilters { opacity: .45; cursor: not-allowed; }
 .is-locked #mellist *, .is-locked #tirlist *, .is-locked #cublist * { cursor: not-allowed; }
-.pactions { margin-top: auto; display: grid; gap: 10px; }
+/* Tres vistas de la barra lateral: 1 Muebles · 2 Personalizar · 3 Mis datos */
+.pvistas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-bottom: 1px solid var(--line); margin: -4px 0 0; }
+.pvistas button { position: relative; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: var(--muted); font: 500 .8rem var(--sans); padding: 10px 2px 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.pvistas .ptab-dot { margin-left: 0; }
+.pvistas button b { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line-2); font: 600 .68rem var(--mono); }
+.pvistas button:hover { color: var(--bone); }
+.pvistas button[aria-selected="true"] { color: var(--bone); border-bottom-color: var(--red-accent); }
+.pvistas button[aria-selected="true"] b { background: var(--bone); color: var(--ink); border-color: var(--bone); }
+.pvista { display: flex; flex-direction: column; gap: 16px; }
+.pvista[hidden] { display: none; }
+.pvista-sig { font-size: .84rem; }
+/* pie fijo: total de lo elegido y aprobar, en cualquier vista */
+.pactions { margin-top: auto; display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; position: sticky; bottom: -28px; padding: 14px 0 28px; margin-bottom: -28px; background: linear-gradient(transparent, var(--ink) 14px); z-index: 2; }
+.pactions #papprove { grid-column: 1; } .pactions #pchanges { grid-column: 2; }
+.pactions .ppie-total, .pactions #pstatus, .pactions > a, .pactions > .link-btn { grid-column: 1 / -1; }
+.pactions .btn { padding: 12px 10px; font-size: .85rem; }
+.ppie-total { display: flex; justify-content: space-between; align-items: baseline; font-size: .9rem; padding-top: 10px; border-top: 1px solid var(--line); }
+.ppie-total .mono { font-size: 1.05rem; color: var(--bone); }
+.papp-side[data-vista="productos"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
 
 .ptools { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 5; pointer-events: none; }
 .ptool { pointer-events: auto; font: 500 .75rem var(--sans); color: var(--bone); background: rgba(11, 11, 13, .72); backdrop-filter: blur(8px); border: 1px solid var(--line-2); border-radius: 999px; padding: 8px 12px; cursor: pointer; }
@@ -96,7 +114,8 @@
   .papp { grid-template-columns: 1fr; grid-template-rows: auto auto; height: auto; }
   .papp-stage { position: sticky; top: 64px; z-index: 10; height: 46vh; height: 46svh; min-height: 280px; border-bottom: 1px solid var(--line-2); }
   .chat-list { max-height: max(120px, calc(46svh - 170px)); }
-  .papp-side { border-left: 0; border-top: 1px solid var(--line); }
+  .papp-side { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .pactions { bottom: 0; margin-bottom: 0; padding-bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 11; }
   .chat { max-width: none; }
   .swgrid { max-height: none; }
   .pin-hint { white-space: normal; width: 80%; text-align: center; }

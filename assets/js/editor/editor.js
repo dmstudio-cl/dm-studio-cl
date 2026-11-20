@@ -13,7 +13,7 @@ import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios } from './proyecto.js';
-import { optimizarDespiece, svgPlancha, vetaLibre } from './optimizador.js';
+import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
 
@@ -2146,6 +2146,7 @@ function abrirDespiece() {
         <details><summary>Ver el esquema de corte</summary>${grupos.map((g) => g.tableros.map((t, j) => `<p class="ed-ayuda">${esc(nombreMat(g.material))} · plancha ${j + 1} de ${g.planchas}</p>${svgPlancha(t)}`).join('')).join('')}</details>
         <p class="ed-ayuda" id="imperial-msg"></p>`;
     })()}
+    <div id="cholguan-planchas"></div>
     <div class="ed-tiendas" id="tiendas"><p class="sub">Precios y stock de las tiendas</p><p class="ed-ayuda">${tokenGitHub() ? 'Cargando…' : 'Entra a /admin/proyectos/ con GitHub para ver los precios de Imperial y Homecenter.'}</p></div>
     <details><summary>Ver las ${d.piezas.length} piezas (medida final y de corte)</summary><table class="ed-tabla"><thead><tr><th>Mueble</th><th>Pieza</th><th class="num">Final</th><th class="num">Corte</th><th>Tapacanto</th><th>Material</th></tr></thead><tbody>${d.piezas.map((p) => {
       const tc = p.cantos ? [p.cantos.ancho && `${p.cantos.ancho} × ${cm(p.ancho)}`, p.cantos.alto && `${p.cantos.alto} × ${cm(p.alto)}`].filter(Boolean).join(' + ') : '';
@@ -2153,7 +2154,23 @@ function abrirDespiece() {
       return `<tr><td>${esc(p.mueble)}</td><td>${esc(p.nombre)}${p.nota ? `<br><small>${esc(p.nota)}</small>` : ''}</td><td class="num">${p.tipo === 'pino' ? `${cm(p.ancho)} cm` : `${cm(p.ancho)} × ${cm(p.alto)}`}</td><td class="num">${p.corte ? `${cm(p.corte.ancho)} × ${cm(p.corte.alto)}` : '—'}</td><td>${tc || '—'}</td><td>${esc(mat)}</td></tr>`;
     }).join('')}</tbody></table></details>`;
   dlg.showModal();
-  if (tokenGitHub()) pintarTiendas();
+  pintarCholguan(d);
+  if (tokenGitHub()) { pintarTiendas(); leerPrecios().then((cfg) => pintarCholguan(d, cfg)).catch(() => {}); }
+}
+// Cholguán por plancha entera (no se vende por m²), con el formato de cada cholguán en la Configuración de precios
+function pintarCholguan(d, cfg = null) {
+  const box = $('#cholguan-planchas'); if (!box) return;
+  const formato = (c) => ((cfg?.cholguan || []).find((x) => x.codigo === c) || (cfg?.cholguan || []).find((x) => x.codigo === '*'))?.formato;
+  const grupos = optimizarCholguan(d, formato);
+  if (!grupos.length) { box.innerHTML = ''; return; }
+  const nom = (c) => (c === 'blanco' ? 'Blanco' : nombreMaterial(c) || c);
+  const trozos = grupos.flatMap((g) => g.piezas.filter((p) => p.trozos > 1)).filter((p, i, l) => l.findIndex((x) => x.mueble === p.mueble && x.nombre === p.nombre) === i);
+  box.innerHTML = `<p class="sub" style="margin-top:14px">Cholguán (se compra por plancha entera)</p>
+    <table class="ed-tabla"><thead><tr><th>Cholguán</th><th class="num">Formato</th><th class="num">Piezas</th><th class="num">Planchas</th><th class="num">Aprovechamiento</th></tr></thead><tbody>
+    ${grupos.map((g) => `<tr><td>${esc(nom(g.material))}</td><td class="num">${g.plancha.altura} × ${g.plancha.base}</td><td class="num">${g.piezas.length}</td><td class="num">${g.planchas}</td><td class="num">${(g.aprovechamiento * 100).toFixed(0)} %</td></tr>`).join('')}</tbody></table>
+    ${trozos.length ? `<p class="ed-ayuda">Más grandes que la plancha (se arman con trozos iguales): ${trozos.map((p) => esc(`${p.mueble} · ${p.nombre} (${p.trozos} trozos)`)).join('; ')}.</p>` : ''}
+    ${cfg ? '' : '<p class="ed-ayuda">Formato supuesto 1520 × 2440 mientras no se lea la Configuración de precios.</p>'}
+    <details><summary>Ver el acomodo del cholguán</summary>${grupos.map((g) => g.tableros.map((t, j) => `<p class="ed-ayuda">Cholguán ${esc(nom(g.material))} · plancha ${j + 1} de ${g.planchas}</p>${svgPlancha(t, g.plancha)}`).join('')).join('')}</details>`;
 }
 // Excel para Imperial de una melamina: el SKU de la plancha y del tapacanto salen de la Configuración de precios
 let ultimaOptimizacion = [];

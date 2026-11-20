@@ -105,6 +105,27 @@ export function optimizarDespiece(d, { frente } = {}) {
   return Object.values(grupos).map((g) => ({ ...g, ...optimizar(g.piezas) }));
 }
 
+// Cholguán (2026-11-20): no se vende por m², se compra la plancha entera. Formato según la Configuración de precios
+// (ej. «1520x2440» o «1830x2500»; el lado largo va como base), sin veta. Una trasera más grande que la plancha
+// se arma con trozos iguales. El Worker cobra lo mismo: planchas × precio.
+export function optimizarCholguan(d, formatoDe = () => '') {
+  const grupos = {};
+  for (const p of d.piezas) {
+    if (p.tipo !== 'cholguan') continue;
+    const c = String(p.material || '').replace(/^cholguan:/, '') || 'blanco';
+    if (!grupos[c]) {
+      const f = String(formatoDe(c) || '1520x2440').split('x').map(Number);
+      const [L, A] = f[0] > 0 && f[1] > 0 ? [Math.max(...f), Math.min(...f)] : [2440, 1520];
+      grupos[c] = { material: c, plancha: { base: L, altura: A, refilado: 10, sierra: 3.2 }, piezas: [] };
+    }
+    const g = grupos[c], L = g.plancha.base - 10, A = g.plancha.altura - 10;
+    const a = Math.round(Math.max(p.ancho, p.alto) * 10), b = Math.round(Math.min(p.ancho, p.alto) * 10);
+    const na = Math.ceil(a / L), nb = Math.ceil(b / A);
+    for (let i = 0; i < na * nb; i++) g.piezas.push({ ...p, ancho: a / na, alto: b / nb, libre: true, trozos: na * nb });
+  }
+  return Object.values(grupos).map((g) => ({ ...g, ...optimizar(g.piezas, { plancha: g.plancha }) }));
+}
+
 // Dibujo SVG de una plancha (para revisar el esquema): piezas con su nombre y medidas en mm
 export function svgPlancha(t, plancha = PLANCHA) {
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -113,6 +134,6 @@ export function svgPlancha(t, plancha = PLANCHA) {
     <rect x="0" y="0" width="${W}" height="${H}" fill="rgba(236,231,221,.05)" stroke="rgba(236,231,221,.5)" stroke-width="4"/>
     ${t.piezas.map((p) => `<g><rect x="${r + p.x}" y="${r + p.y}" width="${p.w}" height="${p.h}" fill="rgba(169,125,77,.28)" stroke="#ece7dd" stroke-width="3"/>
       ${p.w > 160 && p.h > 70 ? `<text x="${r + p.x + p.w / 2}" y="${r + p.y + p.h / 2}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.min(46, p.h / 3)}" fill="#ece7dd">${esc(p.nombre.replace(/ \(.*\)$/, ''))}</text>
-      <text x="${r + p.x + p.w / 2}" y="${r + p.y + p.h / 2 + Math.min(46, p.h / 3) + 6}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.min(40, p.h / 3.4)}" fill="#bdb6a8">${p.w} × ${p.h}${p.girada ? ' ↻' : ''}</text>` : ''}</g>`).join('')}
+      <text x="${r + p.x + p.w / 2}" y="${r + p.y + p.h / 2 + Math.min(46, p.h / 3) + 6}" text-anchor="middle" dominant-baseline="middle" font-size="${Math.min(40, p.h / 3.4)}" fill="#bdb6a8">${Math.round(p.w)} × ${Math.round(p.h)}${p.girada ? ' ↻' : ''}</text>` : ''}</g>`).join('')}
   </svg>`;
 }
