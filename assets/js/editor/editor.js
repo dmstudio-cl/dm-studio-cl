@@ -818,7 +818,13 @@ function dibujarPlano() {
     // celdas (frentes)
     for (const c of celdas(m)) {
       const s = esSel && sel.tipo === 'frente' && sel.col === c.col && sel.fila === c.fila;
-      el('rect', { x: M.X(ox + c.x0), y: M.Y(oy + c.y1), width: c.w * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}${c.tipo === 'abierto' ? ' abierta' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      // los frentes con su ancho real: entre dos puertas queda la luz de 3 mm (ahí, al centro, va la división)
+      const F = c.tipo === 'abierto' ? null : medidaFrente(m, c), fx0 = F ? F.x0 : c.x0, fx1 = F ? F.x1 : c.x1;
+      el('rect', { x: M.X(ox + fx0), y: M.Y(oy + c.y1), width: (fx1 - fx0) * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}${c.tipo === 'abierto' ? ' abierta' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      if (F && F.hojas > 1) for (let i = 1; i < F.hojas; i++) { // luz entre las hojas de la sección
+        const x = F.x0 + i * (F.hoja + GAP) - GAP / 2;
+        el('line', { x1: M.X(ox + x), y1: M.Y(oy + c.y1), x2: M.X(ox + x), y2: M.Y(oy + c.y0), class: 'junta' }, plano);
+      }
       aperturaFrente(m, c, M, ox, oy);
       // repisas: con puerta se ven punteadas (detrás de la puerta); sin puerta, llenas
       if (capas.repisas && c.tipo !== 'cajon') for (const y of nivelesRepisa(c)) {
@@ -916,7 +922,15 @@ function aperturaFrente(m, c, M, ox, oy) {
   for (let i = 0; i < n; i++) hoja(c.x0 + i * (lw + GAP), c.x0 + i * (lw + GAP) + lw, i <= (n - 1) / 2 ? 'izquierda' : 'derecha');
 }
 
-// Cotas del módulo seleccionado: ancho total, alto total, ancho de columnas y medidas de cada frente.
+// Frente de más abajo de una columna (el que define la cota de abajo)
+const frenteAbajo = (cs, ci) => cs.filter((k) => k.col === ci).sort((a, b) => a.y0 - b.y0)[0];
+// Ancho de columna para que su puerta (o cada hoja) mida «puerta» cm: + 3 mm entre hojas y 1,5 mm hacia cada vecino
+function anchoColumnaPara(m, c, puerta) {
+  const n = c.tipo === 'puerta_doble' ? c.hojas : 1, W = +m.ancho;
+  return n * puerta + (n - 1) * GAP + (c.x0 > .05 ? GAP / 2 : 0) + (c.x1 < W - .05 ? GAP / 2 : 0);
+}
+
+// Cotas del módulo seleccionado: ancho total, alto total, medida de las puertas y de cada frente.
 function cotas(m, M) {
   const g = el('g', { class: 'cota' }, plano);
   const ox = xF(m), oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
@@ -934,9 +948,19 @@ function cotas(m, M) {
   if (Z > 0) linea(der + 54, M.Y(oy + Z), der + 54, M.Y(oy), `zócalo ${cm(Z)}`, true, { k: 'zocalo' });
   if (oy > 0) linea(M.X(ox) - 22, M.Y(oy), M.X(ox) - 22, M.Y(0), `↑ ${cm(oy)} del piso`, true, { k: 'elevacion' }); // altura desde el piso
   const cs = celdas(m);
-  if (m.columnas.length > 1) {
+  if (m.columnas.length > 1 || cs.some((k) => k.hojas > 1)) {
     const yb = M.Y(oy) + 20;
-    m.columnas.forEach((_, ci) => { const c = cs.find((k) => k.col === ci); linea(M.X(ox + c.x0), yb, M.X(ox + c.x1), yb, cm(c.w), false, { k: 'col', col: ci }); });
+    // medida de las puertas (lo que se corta), una por hoja; se escribe el ancho de la puerta y la columna se ajusta
+    // (la división queda siempre al centro de la luz de 3 mm entre dos puertas). Sin frente: el ancho del hueco.
+    m.columnas.forEach((_, ci) => {
+      const c = frenteAbajo(cs, ci);
+      if (c.tipo === 'abierto') return linea(M.X(ox + c.x0), yb, M.X(ox + c.x1), yb, cm(c.w), false, { k: 'col', col: ci });
+      const F = medidaFrente(m, c);
+      for (let i = 0; i < F.hojas; i++) {
+        const a = F.x0 + i * (F.hoja + GAP);
+        linea(M.X(ox + a), yb, M.X(ox + a + F.hoja), yb, cm(F.hoja), false, { k: 'col-puerta', col: ci, fila: c.fila });
+      }
+    });
   }
   // medidas dentro de cada frente
   for (const c of cs) {
@@ -1178,6 +1202,7 @@ function editarCota(t) {
   const V = vecinosFrente(m);
   const mz = marcoZocalo(m);
   const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho,
+    'col-puerta': c ? medidaFrente(m, c).hoja : 0,
     zocalo_retiro: mz.frente, zocalo_atras: mz.atras, zocalo_izq: mz.izq, zocalo_der: mz.der,
     'dist-izq': V.izq ? V.x0 - V.izq.x : 0, 'dist-der': V.der ? V.der.x - V.x1 : 0 }[k];
   const inp = document.createElement('input');
@@ -1205,6 +1230,7 @@ function editarCota(t) {
         const alto = nums.length > 1 ? nums[1] : nums[0];
         if (Math.abs(alto - c.h) > .05) aplicarCampo(m, 'f.alto', alto, { col, fila });
       } else if (k === 'col') aplicarCampo(m, 'c.ancho', nums[0], { col });
+      else if (k === 'col-puerta') aplicarCampo(m, 'c.ancho', Math.round(anchoColumnaPara(m, c, nums[0]) * 1000) / 1000, { col });
       else aplicarCampo(m, k, nums[0]);
     });
   };
@@ -1468,9 +1494,14 @@ function arbol() {
     if (m.artefacto) return h;
     if (Z > 0) h += btn({ tipo: 'zocalo', m: m.id }, 'n1', `Zócalo <small>${cm(Z)}</small>`);
     h += btn({ tipo: 'cuerpo', m: m.id }, 'n1', 'Cuerpo');
+    const csA = celdas(m); // cada frente con su medida final (la del corte); las puertas dobles, por hoja
     m.columnas.forEach((c, ci) => {
-      h += `<div class="n2" style="padding:4px 0 2px 30px;font-size:.72rem">Columna ${ci + 1} <small>${cm(c.ancho)}</small></div>`;
-      c.frentes.forEach((f, fi) => { h += btn({ tipo: 'frente', m: m.id, col: ci, fila: fi }, 'n3', `${tipoN(f)} <small>${cm(f.alto)}</small>`); });
+      h += `<div class="n2" style="padding:4px 0 2px 30px;font-size:.72rem">Columna ${ci + 1}</div>`;
+      c.frentes.forEach((f, fi) => {
+        const k = csA.find((x) => x.col === ci && x.fila === fi), F = k && k.tipo !== 'abierto' ? medidaFrente(m, k) : null;
+        const med = F ? `${F.hojas > 1 ? `${F.hojas} × ` : ''}${cm(F.hoja)}×${cm(F.h)}` : k ? `${cm(k.w)}×${cm(k.h)}` : cm(f.alto);
+        h += btn({ tipo: 'frente', m: m.id, col: ci, fila: fi }, 'n3', `${tipoN(f)} <small>${med}</small>`);
+      });
     });
     (m.tiradores || []).forEach((t) => { h += btn({ tipo: 'tirador', m: m.id, t: t.id }, 'n1', `↳ ${esc(t.nombre || tiradorDef(t.modelo)?.nombre || t.modelo)} <small>c${t.col + 1}·f${t.fila + 1}</small>`); });
     if (m.cubierta) h += btn({ tipo: 'cubierta', m: m.id }, 'n1', 'Cubierta');
