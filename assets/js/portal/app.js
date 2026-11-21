@@ -36,7 +36,10 @@ export async function startApp(api) {
   const byId = (list, id) => list.find((x) => x.id === id);
 
   const sel = {
-    melamina: proyecto.seleccion?.melamina || proyecto.opciones?.melamina_inicial || melaminas.find((m) => m.tipo === 'madera')?.id || melaminas[0]?.id || '',
+    // la melamina sigue a la del editor (melamina_inicial) salvo que el cliente haya elegido otra después de la
+    // última publicación (melamina_propia); mover un mueble o elegir la cubierta no la fija
+    melamina: (proyecto.seleccion?.melamina_propia && proyecto.seleccion.melamina) || proyecto.opciones?.melamina_inicial || proyecto.seleccion?.melamina || melaminas.find((m) => m.tipo === 'madera')?.id || melaminas[0]?.id || '',
+    ...(proyecto.seleccion?.melamina_propia ? { melamina_propia: true } : {}),
     tirador: proyecto.seleccion?.tirador || tiradores[0]?.id || '',
     cubierta: proyecto.seleccion?.cubierta || (cubiertas.find((c) => !c.no_disponible) || cubiertas[0])?.id || '',
     borde: proyecto.seleccion?.borde || bordes[0]?.id || '',
@@ -291,7 +294,7 @@ export async function startApp(api) {
   }
   function choose(kind, id) {
     if (aprobado() && !isOwner) { status('La propuesta ya fue aprobada. Para cambios, escríbenos en la conversación.'); return; }
-    if (kind === 'melamina') recolorear(id);
+    if (kind === 'melamina') { recolorear(id); sel.melamina_propia = true; } // elegida por el cliente: se respeta hasta la próxima publicación
     sel[kind] = id;
     paintSelection();
     scene.update(resolved());

@@ -290,9 +290,11 @@ export function iniciarProyectos(ed) {
       info = { ...info, raw, sha: nuevo };
       ed.abrir(raw, info, { conservarVista: true });
       pintarBarra();
-      if (silencio) { // 2') sin mensaje en el chat ni aviso
+      if (silencio) { // 2') sin mensaje en el chat ni aviso; el portal del cliente vuelve a la melamina del editor
+        let sync = true;
+        try { await api('sincronizar', { method: 'POST', p: info.id, body: { melamina: modelo.frente || '' } }); } catch (e) { sync = false; }
         btn.textContent = 'Modelo actualizado';
-        out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}), sin avisar al cliente. Lo verá en su portal en alrededor de un minuto.${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
+        out.innerHTML = `<p class="ed-ok">Guardado en el repositorio (commit ${commit}), sin avisar al cliente. Lo verá en su portal en alrededor de un minuto.${sync ? '' : ' No se pudo actualizar la melamina del cliente (¿Worker sin desplegar?): la verá cuando publiques una versión.'}${raw.estado === 'borrador' ? ' Ojo: el proyecto sigue en «Borrador», el cliente aún no puede entrar.' : ''}</p>`;
         return;
       }
       // 2) Registro en el chat del proyecto + aviso por correo (lo envía el Worker)
