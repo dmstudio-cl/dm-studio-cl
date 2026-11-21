@@ -360,3 +360,4 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 /* Vista Frente: marca de apertura de las puertas (se juntan en el lado de las bisagras) y su medida final */
 .ed-plano .apertura { fill: none; stroke: rgba(236, 231, 221, .35); stroke-width: 1; stroke-dasharray: 5 4; pointer-events: none; }
 .ed-plano .medida-puerta { pointer-events: none; }
+.ed-plano .junta { stroke: rgba(10, 10, 10, .55); stroke-width: 1.2; pointer-events: none; }
