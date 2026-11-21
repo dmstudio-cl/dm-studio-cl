@@ -29,6 +29,27 @@ export const MAX_HOJA = 45; // ancho máximo de una hoja de puerta (cm): más an
 export const hojasMin = (w) => Math.max(2, Math.ceil(w / MAX_HOJA - 1e-6));
 export const hojasDe = (fr, w) => Math.max(hojasMin(w), Math.round(+fr?.hojas || 0));
 export const GAP = .3;    // luz entre frentes
+// Reparte el ancho del mueble en n puertas de la MISMA medida final. Cada puerta pierde 1,5 mm hacia cada vecino
+// (3 mm de luz entre hojas) y nada hacia afuera, así que las columnas de los extremos quedan 1,5 mm más angostas que
+// las del medio. divisiones: 'cada' (una división entre cada puerta) o 'pares' (una división cada 2 puertas: cada
+// par es una sección de 2 hojas que abren hacia afuera; con 2 puertas, sin división). Las puertas sueltas abren hacia
+// el centro del mueble; después se cambia con «Bisagra» en cada una. Devuelve la medida final de cada puerta (cm).
+export function repartirPuertas(m, n, divisiones = 'cada') {
+  const W = +m.ancho, H = +m.alto, Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
+  n = Math.max(1, Math.round(n));
+  const d = (W - (n - 1) * GAP) / n;
+  const grupos = divisiones === 'pares' ? [...Array(Math.floor(n / 2)).fill(2), ...(n % 2 ? [1] : [])] : Array(n).fill(1);
+  const repisas = m.columnas?.[0]?.frentes?.find((f) => f.tipo !== 'cajon')?.repisas;
+  let i0 = 0; // índice de la primera puerta del grupo
+  m.columnas = grupos.map((k, gi) => {
+    const ancho = k * d + (k - 1) * GAP + (gi > 0 ? GAP / 2 : 0) + (gi < grupos.length - 1 ? GAP / 2 : 0);
+    const fr = k === 1 ? { tipo: 'puerta', alto: H - Z, bisagra: i0 + .5 <= n / 2 ? 'izquierda' : 'derecha' } : { tipo: 'puerta_doble', alto: H - Z, hojas: k };
+    if (repisas != null) fr.repisas = repisas;
+    i0 += k;
+    return { ancho: Math.round(ancho * 1000) / 1000, frentes: [fr] };
+  });
+  return d;
+}
 export const CT = 3.8;    // espesor de cubierta
 export const OVER = 6;    // vuelo frontal de la cubierta desde la cara de las puertas (regla del estudio: cubierta = cuerpo + 7,8 cm)
 export const CHOLGUAN = .3; // trasera de cholguán (3 mm), dentro de la profundidad del módulo
