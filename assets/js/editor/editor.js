@@ -13,6 +13,7 @@ import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios } from './proyecto.js';
+import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
@@ -37,6 +38,7 @@ let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
+let materialesCub = [];    // materiales de cubierta de la Configuración de precios (reglas físicas: vuelo, largo, lavaplatos bajo cubierta)
 let catalogoTir = [];      // tiradores de la Configuración de precios (nombre, forma, color, largo, grosor, precio)
 let pines = [];            // comentarios del cliente con posición en el modelo
 let pinFoco = null;
@@ -1337,6 +1339,19 @@ function desdeRef(ref) {
 
 // ===================== biblioteca de tiradores (arrastrar y soltar) =====================
 const biblio = $('#biblio');
+// Qué materiales de cubierta sirven para esta cubierta según sus reglas físicas (las mismas del Worker: el cliente
+// no puede elegir los que no sirven). Postformado y los que se tratan como él siguen las reglas de siempre.
+function bloqueMaterialesCub(m) {
+  if (!materialesCub.length) return `<p class="ed-ayuda">${tokenGitHub() ? 'Cargando los materiales de cubierta…' : 'Entra a /admin/proyectos/ con GitHub para ver qué materiales de cubierta sirven con estos vuelos.'}</p>`;
+  const cb = cubiertaDe(m), arts = artefactosDe(m);
+  const c = { largo: cb.x1 - cb.x0, vuelo_max: Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der), bajo: arts.filter((a) => String(a.tipo).startsWith('lavaplatos') && a.montaje === 'bajo').length };
+  const ev = materialesCub.map((mt) => ({ mt, ...evaluarCubierta(c, mt) }));
+  const fila = (e) => `<li class="ed-cub-${e.estado}"><b>${esc(e.mt.nombre)}</b>${e.motivos.length ? ` <small>${esc(e.motivos.join(' · '))}</small>` : ''}</li>`;
+  const grupo = (est, tit) => { const l = ev.filter((e) => e.estado === est); return l.length ? `<p class="ed-ayuda" style="margin:8px 0 2px"><b>${tit}</b></p><ul class="ed-cub-lista">${l.map(fila).join('')}</ul>` : ''; };
+  return `<details class="ed-cub-mats"${ev.some((e) => e.estado !== 'ok') ? ' open' : ''}><summary>Materiales de cubierta para este diseño</summary>
+    ${grupo('ok', 'Sirven')}${grupo('refuerzo', 'Sirven con refuerzo')}${grupo('no', 'No sirven (el cliente no los puede elegir)')}
+    <p class="ed-ayuda">Según las reglas de cada material en Configuración de precios. Solo avisa: el mueble no cambia.</p></details>`;
+}
 // Tiradores del catálogo de precios (Configuración de precios): se dibujan a escala con su medida y color reales
 function botonTirador(id, def, nombre, color = null) {
   const b = document.createElement('button');
@@ -1358,7 +1373,7 @@ function pintarBiblio() {
   for (const [id, def] of Object.entries(TIRADORES)) biblio.append(botonTirador(id, def, def.nombre));
 }
 pintarBiblio();
-leerPrecios().then((cfg) => { catalogoTir = (cfg?.tiradores || []).filter((t) => t?.nombre); pintarBiblio(); }).catch(() => {});
+leerPrecios().then((cfg) => { catalogoTir = (cfg?.tiradores || []).filter((t) => t?.nombre); materialesCub = (cfg?.cubiertas_materiales || []).filter((x) => x?.id); pintarBiblio(); if (sel?.tipo === 'cubierta') props(); }).catch(() => {});
 biblio.addEventListener('pointerdown', (e) => {
   const b = e.target.closest('[data-tirador]'); if (!b) return;
   e.preventDefault();
@@ -1645,6 +1660,7 @@ function props() {
       <p class="sub" style="margin-top:10px">Vuelos: cuánto sobresale del mueble${sel.cara ? ` · cara elegida: ${lados[sel.cara].toLowerCase()}` : ''}</p>
       <div class="ed-campos">${Object.entries(lados).map(([k, n]) => num(`v.${k}`, n, cb.v[k], { cls: sel.cara === k ? 'resaltado' : '' })).join('')}</div>
       <label class="ed-check"><input type="checkbox" data-k="cubierta_respaldo"${m.cubierta_respaldo ? ' checked' : ''}> Lleva zócalo de cubierta (respaldo contra el muro)</label>
+      ${bloqueMaterialesCub(m)}
       <div class="ed-botones"><button data-a="barra-desayuno" class="ed-primario">Barra de desayuno (${sel.cara && sel.cara !== 'frente' ? lados[sel.cara].toLowerCase() : 'atrás'}: 60 cm)</button></div>
       <p class="ed-ayuda">Toca el canto de la cubierta en 3D: la vista gira hacia ese lado y aparece la manija ⇆ para extruirla. En Planta también puedes arrastrar sus bordes.</p>
       <p class="sub" style="margin-top:10px">Agregar sobre la cubierta</p>
@@ -2127,7 +2143,7 @@ function abrirDespiece() {
       <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m${d.tapacanto_blanco_m != null ? ` (${d.tapacanto_blanco_m.toFixed(1)} blanco · ${d.tapacanto_color_m.toFixed(1)} color)` : ''}</td></tr>
     </tbody></table>
     ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
-      <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (postformado, granito, cuarzo o mármol), con su merma, sacados y respaldo.</p>` : ''}
+      <p class="ed-ayuda">La cubierta se cotiza por m² según el material que elija el cliente (Configuración de precios → Materiales de cubierta): merma, instalación estimada, sacados, respaldo y el margen de cada material.</p>` : ''}
     ${(() => { // planchas por melamina (optimizador propio, igual que el de Imperial) y Excel para pedir el corte
       const grupos = optimizarDespiece(d, { frente: modelo.frente });
       ultimaOptimizacion = grupos;

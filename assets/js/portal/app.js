@@ -38,7 +38,7 @@ export async function startApp(api) {
   const sel = {
     melamina: proyecto.seleccion?.melamina || proyecto.opciones?.melamina_inicial || melaminas.find((m) => m.tipo === 'madera')?.id || melaminas[0]?.id || '',
     tirador: proyecto.seleccion?.tirador || tiradores[0]?.id || '',
-    cubierta: proyecto.seleccion?.cubierta || cubiertas[0]?.id || '',
+    cubierta: proyecto.seleccion?.cubierta || (cubiertas.find((c) => !c.no_disponible) || cubiertas[0])?.id || '',
     borde: proyecto.seleccion?.borde || bordes[0]?.id || '',
     materiales: { ...(proyecto.seleccion?.materiales || {}) }, // color propio por pieza: { "idMódulo|pieza": idMelamina }
     // muebles que el cliente quiere cotizar (vacío = todos); si ya aprobó, los aprobados
@@ -84,7 +84,17 @@ export async function startApp(api) {
       <i style="background:${esc(o.color || '#333')}">${o.forma === 'sin' ? '∅' : ''}</i><span>${esc(o.nombre)}</span>
     </button>`;
   $('#tirlist').innerHTML = tiradores.map((t) => optRow(t, 'tirador')).join('');
-  $('#cublist').innerHTML = cubiertas.map((c) => optRow(c, 'cubierta')).join('');
+  // Cubiertas: material, resistencia al calor y a manchas y sus características; las que el diseño no permite
+  // (vuelo o lavaplatos bajo cubierta, según las reglas del material) se ven pero no se pueden elegir
+  const NIVEL = { baja: 'baja', media: 'media', alta: 'alta' };
+  $('#cublist').innerHTML = cubiertas.map((c) => `
+    <button type="button" class="opt opt-cub${c.no_disponible ? ' no-disp' : ''}" data-id="${esc(c.id)}" data-kind="cubierta" aria-pressed="false"${c.no_disponible ? ' aria-disabled="true"' : ''}>
+      <i style="background:${esc(c.color || '#333')}"></i>
+      <span><b>${esc(c.nombre)}</b>${c.material ? `<small class="muted">${esc(c.material)}</small>` : ''}
+        ${c.calor || c.manchas ? `<small class="cub-nivel">${c.calor ? `Calor: ${NIVEL[c.calor] || esc(c.calor)}` : ''}${c.calor && c.manchas ? ' · ' : ''}${c.manchas ? `Manchas: ${NIVEL[c.manchas] || esc(c.manchas)}` : ''}</small>` : ''}
+        ${c.caracteristicas ? `<small class="muted cub-carac">${esc(c.caracteristicas)}</small>` : ''}
+        ${c.no_disponible ? `<small class="cub-no">${esc(c.no_disponible)}</small>` : (c.avisos || []).map((a) => `<small class="cub-aviso">${esc(a)}</small>`).join('')}</span>
+    </button>`).join('');
   // Bordes de cubierta: foto si la hay; si no, el ícono del perfil
   $('#bordelist').innerHTML = bordes.map((b) => `
     <button type="button" class="opt opt-borde" data-id="${esc(b.id)}" data-kind="borde" aria-pressed="false">
@@ -294,7 +304,9 @@ export async function startApp(api) {
     if (piezaSel) aplicarPieza(piezaSel, b.dataset.id); else choose('melamina', b.dataset.id);
   });
   document.querySelectorAll('.optlist').forEach((l) => l.addEventListener('click', (e) => {
-    const b = e.target.closest('.opt[data-kind]'); if (b) choose(b.dataset.kind, b.dataset.id);
+    const b = e.target.closest('.opt[data-kind]'); if (!b) return;
+    if (b.getAttribute('aria-disabled') === 'true') { status(`${byId(cubiertas, b.dataset.id)?.no_disponible || 'Esta opción no está disponible.'} Elige otra o escríbenos.`); return; }
+    choose(b.dataset.kind, b.dataset.id);
   }));
 
   // ----- pestañas: tres vistas (1 Muebles · 2 Personalizar · 3 Mis datos) y, dentro de Personalizar, las de terminaciones

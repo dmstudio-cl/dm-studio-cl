@@ -371,16 +371,54 @@ collections:
               - { label: Grosor (cm), name: grosor, widget: number, value_type: float, required: false, hint: "Diámetro del tubo de la barra (ej. 1,2 para 12 mm). Vacío = 1 cm." }
               - { label: SKU Imperial, name: sku, widget: string, required: false }
               - { label: Precio unitario (CLP), name: precio, widget: number, value_type: int }
-          - label: Cubiertas
+          - label: Cubiertas (lo que elige el cliente)
             name: cubiertas
             widget: list
             required: false
+            summary: "{{fields.nombre}} · {{fields.material}}"
             fields:
-              - { label: Nombre, name: nombre, widget: string }
+              - { label: Nombre, name: nombre, widget: string, hint: "No cambies el nombre de una cubierta que ya eligió un cliente: su selección guarda el nombre." }
               - { label: Color, name: color, widget: color, default: "#cfc9bc" }
-              - { label: Precio por metro lineal (CLP), name: precio_ml, widget: number, value_type: int, required: false, hint: "Solo si no eliges un material: con material se calcula por m² con la tabla de abajo." }
-              - { label: Material (se cotiza por m²), name: material, widget: select, required: false, options: [postformado, granito, cuarzo, marmol] }
-          - label: Cubiertas · precio por m² y merma por material
+              - { label: Material, name: material, widget: relation, collection: configuracion, file: constantes, search_fields: ["cubiertas_materiales.*.nombre"], display_fields: ["cubiertas_materiales.*.nombre"], value_field: "cubiertas_materiales.*.id", required: false, hint: "El precio sale del material (m², merma, sacados, respaldo, instalación y margen). Sin material se cobra por metro lineal." }
+              - { label: Precio por metro lineal (CLP), name: precio_ml, widget: number, value_type: int, required: false, hint: "Solo si no eliges un material." }
+          - label: Materiales de cubierta (precio y reglas físicas)
+            name: cubiertas_materiales
+            widget: list
+            required: false
+            collapsed: true
+            summary: "{{fields.nombre}} · {{fields.precio_m2}}/m²"
+            hint: "Valores de referencia de Gemini (Región Metropolitana, nov. 2026, con IVA). Precio = (m² × merma × precio + m² × instalación + sacados + respaldo) × margen. Las cubiertas no llevan la luz ni el factor de los muebles: llevan su margen."
+            fields:
+              - { label: Identificador (no cambiar), name: id, widget: string, hint: "Minúsculas y guiones, ej: granito-natural-20mm. Las cubiertas lo usan para encontrar su material." }
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Categoría, name: categoria, widget: select, options: [postformado, laminado_hpl, madera_maciza, granito, cuarzo, marmol, piedra_sinterizada, superficie_solida, porcelanato, acero_inoxidable, concreto, otro] }
+              - { label: Quién la fabrica, name: fabricacion, widget: select, default: subcontrato, options: [{ label: "Mi taller", value: taller }, { label: "Marmolero / proveedor", value: subcontrato }] }
+              - { label: Espesor (mm), name: espesor_mm, widget: number, value_type: int, required: false }
+              - { label: Precio del material por m² (CLP), name: precio_m2, widget: number, value_type: int, hint: "Solo el material, sin instalación." }
+              - { label: Merma (ej. 1,18 = 18 %), name: merma, widget: number, value_type: float, default: 1.15 }
+              - { label: Instalación por m² (CLP), name: instalacion_m2, widget: number, value_type: int, default: 0, required: false, hint: "Estimado incluido en el precio (el cliente no la ve aparte)." }
+              - { label: Margen de venta, name: margen, widget: number, value_type: float, default: 1.25, hint: "Multiplica el costo total. Marmolero: 1,25 (+25 %). Taller: 1,8 a 2,0 (incluye tu mano de obra)." }
+              - { label: Sacado lavaplatos sobrepuesto (CLP), name: sacado_sobrepuesto, widget: number, value_type: int, default: 0, required: false }
+              - { label: Sacado lavaplatos bajo cubierta (CLP), name: sacado_bajo, widget: number, value_type: int, default: 0, required: false }
+              - { label: Sacado encimera (CLP), name: sacado_encimera, widget: number, value_type: int, default: 0, required: false }
+              - { label: Permite lavaplatos bajo cubierta, name: permite_bajo, widget: boolean, default: true, required: false, hint: "Desactivado: si el proyecto tiene un lavaplatos bajo cubierta, el cliente no puede elegir este material." }
+              - { label: Trasera integrada (no cobra respaldo), name: trasera_integrada, widget: boolean, default: false, required: false }
+              - { label: Respaldo por metro lineal (CLP), name: respaldo_ml, widget: number, value_type: int, default: 0, required: false, hint: "Zócalo contra el muro. Vacío o 0 = 15 % del precio por m² por metro." }
+              - { label: Costo por unión (CLP), name: costo_union, widget: number, value_type: int, default: 0, required: false, hint: "Se cobra por cada unión que obliga el largo máximo." }
+              - { label: Largo máximo sin unión (cm), name: largo_max_sin_union, widget: number, value_type: int, required: false }
+              - { label: Vuelo máximo sin apoyo (cm), name: vuelo_max_sin_apoyo, widget: number, value_type: int, required: false, hint: "Sobre esto el editor avisa que necesita refuerzo." }
+              - { label: Vuelo máximo con refuerzo (cm), name: vuelo_max_con_refuerzo, widget: number, value_type: int, required: false, hint: "Sobre esto el cliente no puede elegir el material." }
+              - { label: Distancia máxima entre apoyos (cm), name: distancia_max_apoyos, widget: number, value_type: int, required: false }
+              - { label: Requiere base continua, name: requiere_base_continua, widget: boolean, default: false, required: false }
+              - { label: Se trata como postformado, name: similar_postformado, widget: boolean, default: false, required: false, hint: "Trasera y borde como el postformado: usa las reglas que ya tiene el cotizador." }
+              - { label: Resistencia al calor, name: resiste_calor, widget: select, required: false, options: [baja, media, alta] }
+              - { label: Resistencia a manchas, name: resiste_manchas, widget: select, required: false, options: [baja, media, alta] }
+              - { label: Características (las ve el cliente), name: caracteristicas, widget: text, required: false, hint: "Frases cortas separadas por ·" }
+              - { label: Reglas de instalación (internas), name: reglas_instalacion, widget: text, required: false }
+              - { label: Formato de plancha (largo x ancho, mm), name: formato, widget: string, required: false }
+              - { label: Confianza del dato, name: confianza, widget: select, required: false, options: [alta, media, baja] }
+              - { label: Fuentes, name: fuentes, widget: text, required: false }
+          - label: Cubiertas · tabla antigua por tipo (solo si no hay materiales)
             name: cubiertas_tabla
             widget: object
             required: false
