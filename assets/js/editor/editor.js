@@ -1,10 +1,10 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { nivelesRepisa, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
+import { nivelesRepisa, repartirPuertas, GAP, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
-import { despiece } from './despiece.js';
+import { despiece, medidaFrente } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo } from './modelo.js';
@@ -124,7 +124,7 @@ function normalizar(m) {
   if (!m.columnas?.length) m.columnas = [{ ancho: W, frentes: [{ tipo: 'puerta', alto: HU }] }];
   const sw = m.columnas.reduce((a, c) => a + +c.ancho, 0) || 1;
   m.columnas.forEach((c) => {
-    c.ancho = r1(+c.ancho * W / sw);
+    c.ancho = Math.round(+c.ancho * W / sw * 1000) / 1000; // 3 decimales: «Repartir en puertas iguales» necesita columnas exactas
     if (!c.frentes?.length) c.frentes = [{ tipo: 'puerta', alto: HU }];
     const sh = c.frentes.reduce((a, f) => a + +f.alto, 0) || 1;
     c.frentes.forEach((f) => { f.alto = r1(+f.alto * HU / sh); });
@@ -145,6 +145,34 @@ function normalizar(m) {
   }
 }
 
+// Repartir el mueble en n puertas de la misma medida final (cantidad y divisiones elegidas en el panel del mueble)
+function bloquePuertas(m) {
+  if (m.artefacto) return '';
+  const actuales = celdas(m).reduce((s, c) => s + (c.tipo === 'puerta' ? 1 : c.tipo === 'puerta_doble' ? c.hojas : 0), 0);
+  const n = actuales || hojasMin(+m.ancho);
+  return `<div class="ed-plantilla"><p class="sub">Puertas iguales</p>
+    <div class="ed-campos">
+      <label class="ed-campo">Cantidad<span class="u" data-u="un."><input type="number" id="rp-n" min="1" max="12" step="1" value="${n}"></span></label>
+      <label class="ed-campo ancho2">Divisiones<select id="rp-div"><option value="cada">Una entre cada puerta</option><option value="pares">Cada 2 puertas (abren de a pares)</option></select></label>
+    </div>
+    <div class="ed-botones"><button data-a="repartir-puertas" class="ed-primario">Repartir en puertas iguales</button></div>
+    <p class="ed-ayuda">Todas quedan con la misma medida final: descuenta 3 mm de luz entre hojas (a ras en los costados) y el tapacanto en el corte. Después elige hacia dónde abre cada puerta seleccionándola.</p></div>`;
+}
+// Tiradores después de repartir: uno por puerta, del mismo modelo y color que el primero que tenía el mueble
+function tiradoresPuertas(m, t0) {
+  const out = [];
+  for (const c of celdas(m)) {
+    if (c.tipo === 'puerta') { out.push({ ...ubicarTirador(m, c.col, c.fila, t0.modelo), color: t0.color }); continue; }
+    if (c.tipo !== 'puerta_doble') continue;
+    const base = ubicarTirador(m, c.col, c.fila, t0.modelo), n = c.hojas, lw = (c.w - (n - 1) * GAP) / n;
+    for (let i = 0; i < n; i++) { // cada hoja con su tirador en el canto que abre (hacia el centro de la sección)
+      const cx = -c.w / 2 + lw / 2 + i * (lw + GAP), s = i <= (n - 1) / 2 ? 1 : -1;
+      out.push({ ...base, id: uid('t'), color: t0.color, dx: snap(cx + s * (lw / 2 - 4), .5) });
+    }
+  }
+  return out;
+}
+
 // Puertas: una hoja no pasa de 45 cm. Una puerta más ancha pasa a una sección de varias hojas
 // (puerta_doble con f.hojas): 2 hasta 90 cm, 3 hasta 135 cm, etc. La sección no se divide, así se
 // pueden borrar divisiones y repartir las puertas como se quiera.
@@ -153,7 +181,8 @@ function limitarPuertas(m) {
   for (const c of m.columnas) {
     const w = +c.ancho, min = hojasMin(w);
     for (const f of c.frentes) {
-      if (f.tipo === 'puerta' && w > MAX_HOJA + .05) { f.tipo = 'puerta_doble'; f.hojas = min; out.push(`la puerta de ${cm(w)} cm pasó a ${min} hojas`); }
+      // la puerta mide la columna menos hasta 3 mm de luz: se pasa a varias hojas solo si la puerta supera los 45 cm
+      if (f.tipo === 'puerta' && w > MAX_HOJA + .35) { f.tipo = 'puerta_doble'; f.hojas = min; out.push(`la puerta de ${cm(w)} cm pasó a ${min} hojas`); }
       else if (f.tipo === 'puerta_doble') {
         const n = Math.round(+f.hojas || 0);
         if (n < min) { if (n >= 2) out.push(`la sección de ${cm(w)} cm pasó a ${min} hojas`); f.hojas = min; }
@@ -790,6 +819,7 @@ function dibujarPlano() {
     for (const c of celdas(m)) {
       const s = esSel && sel.tipo === 'frente' && sel.col === c.col && sel.fila === c.fila;
       el('rect', { x: M.X(ox + c.x0), y: M.Y(oy + c.y1), width: c.w * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}${c.tipo === 'abierto' ? ' abierta' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      aperturaFrente(m, c, M, ox, oy);
       // repisas: con puerta se ven punteadas (detrás de la puerta); sin puerta, llenas
       if (capas.repisas && c.tipo !== 'cajon') for (const y of nivelesRepisa(c)) {
         el('line', { x1: M.X(ox + c.x0 + 1.5), y1: M.Y(oy + y), x2: M.X(ox + c.x1 - 1.5), y2: M.Y(oy + y), class: `repisa${c.tipo === 'abierto' ? '' : ' oculta'}` }, plano);
@@ -871,6 +901,21 @@ function cotasLaterales(m, M) {
   if (V.der) lado(V.x1, V.der.x, 'dist-der', V.der.nombre);
 }
 
+// Marca de apertura de las puertas en Frente (como en los planos): dos líneas que se juntan en el lado de las
+// bisagras. Una sección de varias hojas abre hacia afuera desde el centro (la primera mitad con bisagra a la izquierda).
+function aperturaFrente(m, c, M, ox, oy) {
+  if (c.tipo !== 'puerta' && c.tipo !== 'puerta_doble') return;
+  const f = m.columnas?.[c.col]?.frentes?.[c.fila] || {};
+  const hoja = (x0, x1, lado) => {
+    const y0 = oy + c.y0 + 2, y1 = oy + c.y1 - 2, a = x0 + 1.5, b = x1 - 1.5, ym = (y0 + y1) / 2, xm = (a + b) / 2;
+    const p = lado === 'derecha' ? [[a, y1], [b, ym], [a, y0]] : lado === 'arriba' ? [[a, y0], [xm, y1], [b, y0]] : lado === 'abajo' ? [[a, y1], [xm, y0], [b, y1]] : [[b, y1], [a, ym], [b, y0]];
+    el('polyline', { points: p.map(([x, y]) => `${M.X(ox + x)},${M.Y(y)}`).join(' '), class: 'apertura' }, plano);
+  };
+  if (c.tipo === 'puerta') return hoja(c.x0, c.x1, f.bisagra || 'izquierda');
+  const n = c.hojas, lw = (c.w - (n - 1) * GAP) / n;
+  for (let i = 0; i < n; i++) hoja(c.x0 + i * (lw + GAP), c.x0 + i * (lw + GAP) + lw, i <= (n - 1) / 2 ? 'izquierda' : 'derecha');
+}
+
 // Cotas del módulo seleccionado: ancho total, alto total, ancho de columnas y medidas de cada frente.
 function cotas(m, M) {
   const g = el('g', { class: 'cota' }, plano);
@@ -896,7 +941,11 @@ function cotas(m, M) {
   // medidas dentro de cada frente
   for (const c of cs) {
     if (c.h * M.s < 18 || c.w * M.s < 40) continue;
-    el('text', { x: M.X(ox + c.x), y: M.Y(oy + c.y) + 4, 'text-anchor': 'middle', ...editable({ k: 'cel', col: c.col, fila: c.fila }) }, g).textContent = `${cm(c.w)} × ${cm(c.h)}`;
+    // puertas: su medida final (la que se corta, con la luz de 3 mm); el resto: la medida de la sección (editable)
+    if (c.tipo === 'puerta' || c.tipo === 'puerta_doble') {
+      const F = medidaFrente(m, c);
+      el('text', { x: M.X(ox + c.x), y: M.Y(oy + c.y) + 4, 'text-anchor': 'middle', class: 'medida-puerta' }, g).textContent = F.hojas > 1 ? `${F.hojas} × ${cm(F.hoja)} × ${cm(F.h)}` : `${cm(F.w)} × ${cm(F.h)}`;
+    } else el('text', { x: M.X(ox + c.x), y: M.Y(oy + c.y) + 4, 'text-anchor': 'middle', ...editable({ k: 'cel', col: c.col, fila: c.fila }) }, g).textContent = `${cm(c.w)} × ${cm(c.h)}`;
   }
 }
 
@@ -1585,6 +1634,7 @@ function props() {
         ${opciones('costados', 'Costados visibles', m.costados || '', { '': `Como el general (${PALETA.costados.opciones[colorDe(modelo.colores, 'costados')][0].toLowerCase()})`, frente: 'Igual a la melamina', cuerpo: 'Como el cuerpo' }, 'ancho2')}
       </div>
       ${bloqueTechoSoportes(m)}
+      ${bloquePuertas(m)}
       ${bloqueRepisas(m)}
       <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta</label>
       <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="duplicar">Duplicar →</button><button data-a="borrar-modulo" class="peligro">Eliminar módulo</button></div>`;
@@ -1618,7 +1668,7 @@ function props() {
       })() : ''}
       ${f.tipo === 'puerta_doble' ? (() => {
         const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.hojas || 2;
-        return `<div class="ed-repisas"><span>Puertas (hojas)</span><button data-a="hoja-" title="Una hoja menos">−</button><b>${n}</b><button data-a="hoja+" title="Una hoja más">+</button><small>${cm((+col.ancho) / n)} cm c/u</small></div>
+        return `<div class="ed-repisas"><span>Puertas (hojas)</span><button data-a="hoja-" title="Una hoja menos">−</button><b>${n}</b><button data-a="hoja+" title="Una hoja más">+</button><small>${cm(medidaFrente(m, celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)).hoja)} cm c/u</small></div>
           <p class="ed-ayuda">Máximo ${MAX_HOJA} cm por hoja: con ${cm(col.ancho)} cm van al menos ${hojasMin(+col.ancho)}.</p>`;
       })() : ''}
       <div class="ed-botones">
@@ -1691,7 +1741,10 @@ function aplicarCampo(m, k, v, s = {}) {
   if (k.startsWith('f.') || k.startsWith('c.')) {
     const col = m.columnas[s.col], fr = col.frentes;
     if (k === 'f.tipo') { fr[s.fila].tipo = v; if (v === 'abierto') m.tiradores = m.tiradores.filter((t) => !(t.col === s.col && t.fila === s.fila)); }
-    if (k === 'f.bisagra') fr[s.fila].bisagra = v;
+    if (k === 'f.bisagra') { // el tirador se pasa al canto que abre (el contrario a las bisagras)
+      fr[s.fila].bisagra = v;
+      for (const t of m.tiradores || []) if (t.col === s.col && t.fila === s.fila && ((v === 'izquierda' && +t.dx < 0) || (v === 'derecha' && +t.dx > 0))) t.dx = -t.dx;
+    }
     if (k === 'f.montaje') { if (v === 'dentro') fr[s.fila].montaje = 'dentro'; else delete fr[s.fila].montaje; }
     if (k === 'f.alto') { // el vecino de abajo (o de arriba si es el último) absorbe la diferencia
       const j = s.fila < fr.length - 1 ? s.fila + 1 : s.fila - 1;
@@ -1951,6 +2004,23 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (a === 'quitar-puerta') { cambiar(() => aplicarCampo(m, 'f.tipo', 'abierto', sel)); return; }
+  if (a === 'repartir-puertas') {
+    const n = Math.round(+$('#rp-n')?.value || 0), div = $('#rp-div')?.value || 'cada';
+    if (n < 1) { aviso('Escribe cuántas puertas quieres.'); return; }
+    const d = (+m.ancho - (n - 1) * GAP) / n;
+    if (d > MAX_HOJA + .05) { aviso(`Con ${n} puertas cada una mediría ${cm(d)} cm: más de ${MAX_HOJA} cm daña las bisagras. Pon al menos ${Math.ceil((+m.ancho + GAP) / (MAX_HOJA + GAP))}.`); return; }
+    if (d < 15) { aviso(`Con ${n} puertas cada una mediría ${cm(d)} cm: muy angostas (mínimo 15 cm).`); return; }
+    const otros = m.columnas.some((c) => c.frentes.length > 1 || c.frentes.some((f) => f.tipo !== 'puerta' && f.tipo !== 'puerta_doble'));
+    if (otros && !confirm(`«${m.nombre}» tiene cajones, secciones abiertas o varias filas. Al repartir en ${n} puertas iguales se reemplazan todos sus frentes. ¿Seguir? (Ctrl+Z deshace)`)) return;
+    cambiar(() => {
+      const t0 = (m.tiradores || [])[0];
+      repartirPuertas(m, n, div);
+      m.tiradores = t0 ? tiradoresPuertas(m, t0) : [];
+    });
+    const F = celdas(m).map((c) => medidaFrente(m, c)), w = F[0].hojas > 1 ? F[0].hoja : F[0].w;
+    aviso(`${n} puertas iguales de ${cm(w)} × ${cm(F[0].h)} cm (medida final, con 3 mm de luz entre hojas). Cambia hacia dónde abre cada una con «Bisagra» al seleccionarla.`);
+    return;
+  }
   if (a === 'poner-puerta') { cambiar(() => aplicarCampo(m, 'f.tipo', +m.columnas[sel.col].ancho > MAX_HOJA ? 'puerta_doble' : 'puerta', sel)); return; }
   if (a === 'tirador') { const t = ubicarTirador(m, sel.col, sel.fila, 'barra-128'); cambiar(() => m.tiradores.push(t)); sel = { tipo: 'tirador', m: m.id, t: t.id }; render(); return; }
   if (a === 'quitar-cubierta') { cambiar(() => { m.cubierta = false; }); sel = { tipo: 'modulo', m: m.id }; render(); return; }

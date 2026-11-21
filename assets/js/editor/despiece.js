@@ -53,6 +53,20 @@ const vetaDe = (ancho, alto) => (alto >= ancho ? 'v' : 'h');
 export const vetaLargo = (p) => (+p.alto >= +p.ancho ? 'v' : 'h');
 
 // Clase de construcción del módulo
+const mmAbajo = (v) => Math.floor(v * 10 + 1e-2) / 10; // los frentes se redondean al mm hacia abajo (nunca suman de más; tolera 0,01 mm de redondeo)
+// Medida final de un frente (cm): a ras afuera, 1,5 mm hacia cada vecino (3 mm de luz) y el descuento de arriba
+// (7 cm con cubierta, 1 cm sin). En una sección de varias hojas, cada hoja = (ancho − 3 mm entre hojas) / n.
+// La usan el despiece y las medidas de la vista Frente (así lo que se ve es lo que se corta).
+export function medidaFrente(m, c) {
+  const W = +m.ancho, H = +m.alto, E = estructura(m), Z = E.Z;
+  const conBase = E.base && !(Array.isArray(m.quitar) && m.quitar.includes('piso'));
+  const arriba = m.cubierta ? 7 : 1, yBase = conBase || Z ? Z : 0;
+  const x0 = c.x0 + (c.x0 > .05 ? LUZ / 2 : 0), x1 = c.x1 - (c.x1 < W - .05 ? LUZ / 2 : 0);
+  const y0 = c.y0 <= Z + .05 ? yBase : c.y0 + LUZ / 2, y1 = c.y1 >= H - .05 ? H - arriba : c.y1 - LUZ / 2;
+  const w = mmAbajo(x1 - x0), h = mmAbajo(y1 - y0);
+  const n = c.tipo === 'puerta_doble' ? hojasDe(m.columnas?.[c.col]?.frentes?.[c.fila], c.w) : 1;
+  return { x0, x1, y0, y1, w, h, hojas: n, hoja: n > 1 ? mmAbajo((w - (n - 1) * LUZ) / n) : w };
+}
 export function estructura(m) {
   const Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
   let E;
@@ -154,11 +168,7 @@ export function despiece(modelo) {
     for (const c of cs) {
       const k = `f|${c.col}|${c.fila}`;
       const frente = mat(k, mat('frentes', 'frente'));
-      // medida final del frente: a ras afuera, 1,5 mm hacia cada vecino (3 mm de luz), y el descuento de arriba
-      const fx0 = c.x0 + (c.x0 > .05 ? LUZ / 2 : 0), fx1 = c.x1 - (c.x1 < W - .05 ? LUZ / 2 : 0);
-      const fy0 = c.y0 <= Z + .05 ? yBase : c.y0 + LUZ / 2, fy1 = c.y1 >= H - .05 ? H - arriba : c.y1 - LUZ / 2;
-      const mm = (v) => Math.floor(v * 10 + 1e-6) / 10; // los frentes se redondean al mm hacia abajo (nunca suman de más)
-      const fw = mm(fx1 - fx0), fh = mm(fy1 - fy0);
+      const { y0: fy0, y1: fy1, w: fw, h: fh } = medidaFrente(m, c);
       // ancho interior de la sección (entre costados o divisiones)
       const wi = (c.x1 - c.x0) - (c.x0 < .05 ? T : T / 2) - (c.x1 > W - .05 ? T : T / 2);
       const fija = E.clase.startsWith('torre');
@@ -174,7 +184,7 @@ export function despiece(modelo) {
         bisagras(c, f.bisagra === 'derecha' ? c.x1 : c.x0);
       }
       if (c.tipo === 'puerta_doble') {
-        const n = hojasDe(m.columnas?.[c.col]?.frentes?.[c.fila], c.w), hw = mm((fw - (n - 1) * LUZ) / n);
+        const { hojas: n, hoja: hw } = medidaFrente(m, c);
         for (let i = 0; i < n; i++) {
           add(k, `Puerta (hoja ${i + 1} de ${n})`, frente, hw, fh, c4);
           if (i === 0) bisagras(c, c.x0); else if (i === n - 1) bisagras(c, c.x1);
