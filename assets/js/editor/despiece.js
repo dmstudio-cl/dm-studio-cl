@@ -209,7 +209,10 @@ export function despiece(modelo) {
     if (m.cubierta) {
       const cb = cubiertaDe(m), arts = Array.isArray(m.artefactos) ? m.artefactos : [];
       const bajo = arts.filter((a) => String(a.tipo).startsWith('lavaplatos') && a.montaje === 'bajo').length;
-      cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(cb.x1 - cb.x0), ancho: r1(cb.z1 - cb.z0), sobrepuestos: arts.length - bajo, bajo, respaldo: !!m.cubierta_respaldo });
+      const encimeras = arts.filter((a) => !String(a.tipo).startsWith('lavaplatos')).length;
+      // vuelo_max: el mayor vuelo (cm) para las reglas físicas de cada material (sobre su máximo pide refuerzo o no sirve)
+      cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(cb.x1 - cb.x0), ancho: r1(cb.z1 - cb.z0), sobrepuestos: arts.length - bajo, bajo, encimeras,
+        respaldo: !!m.cubierta_respaldo, vuelo_max: r1(Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der)) });
     }
     // ---- zócalo: marco de pino bajo la base (frente y atrás de largo completo; costados entre ambos)
     if (Z > 0 && conBase) {

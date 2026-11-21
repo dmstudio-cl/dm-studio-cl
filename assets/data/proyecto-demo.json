@@ -69,10 +69,10 @@
       { "id": "sin", "nombre": "Sin tirador (apertura push)", "forma": "sin" }
     ],
     "cubiertas": [
-      { "id": "cuarzo-blanco", "nombre": "Cuarzo blanco", "color": "#e8e5df" },
-      { "id": "piedra-gris", "nombre": "Piedra gris", "color": "#8d8a85" },
-      { "id": "granito-negro", "nombre": "Granito negro", "color": "#1d1d1f" },
-      { "id": "roble", "nombre": "Madera roble", "color": "#a07446" }
+      { "id": "cuarzo-blanco", "nombre": "Cuarzo blanco", "color": "#e8e5df", "material": "Cuarzo estándar 20 mm", "calor": "media", "manchas": "alta", "caracteristicas": "No poroso · Muy resistente a rayas · Fácil de limpiar" },
+      { "id": "piedra-gris", "nombre": "Piedra gris", "color": "#8d8a85", "material": "Postformado HPL 30 mm", "calor": "baja", "manchas": "media", "caracteristicas": "Económico y liviano · Bordes redondeados de fábrica", "no_disponible": "No admite lavaplatos bajo cubierta." },
+      { "id": "granito-negro", "nombre": "Granito negro", "color": "#1d1d1f", "material": "Granito natural 20 mm", "calor": "alta", "manchas": "media", "caracteristicas": "Piedra natural · Muy resistente al calor", "avisos": ["Por el largo lleva 1 unión."] },
+      { "id": "roble", "nombre": "Madera roble", "color": "#a07446", "material": "Madera maciza 30 mm", "calor": "baja", "manchas": "baja", "caracteristicas": "Cálida y natural · Requiere aceitado periódico" }
     ]
   },
   "seleccion": { "melamina": "", "tirador": "barra-negra", "cubierta": "cuarzo-blanco" },
