@@ -17,8 +17,22 @@ permalink: /admin/editor/
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="{{ '/assets/css/main.css' | relative_url }}">
 <link rel="stylesheet" href="{{ '/assets/css/editor.css' | relative_url }}">
+<script>
+  // Editor privado: sin sesión de GitHub se oculta antes de dibujarse (assets/js/editor/acceso.js verifica el permiso)
+  try { if (!JSON.parse(localStorage.getItem('decap-cms-user') || 'null')?.token) document.documentElement.classList.add('ed-bloqueado'); }
+  catch (e) { document.documentElement.classList.add('ed-bloqueado'); }
+</script>
 </head>
 <body class="ed">
+<div class="ed-acceso" id="ed-acceso" hidden>
+  <div class="ed-acceso-caja">
+    <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="" width="56" height="56">
+    <h1>Editor de modelos</h1>
+    <p>Es privado del estudio. Entra con tu cuenta de GitHub (la misma de «Proyectos de clientes»).</p>
+    <button class="ed-primario" id="ed-acceso-entrar">Entrar con GitHub</button>
+    <p class="ed-ayuda" id="ed-acceso-msg" aria-live="polite"></p>
+  </div>
+</div>
 <header class="ed-top">
   <a class="ed-marca" href="{{ '/admin/' | relative_url }}" title="Volver al administrador">
     <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="" width="28" height="28"><span>Editor de modelos</span>
@@ -198,6 +212,7 @@ permalink: /admin/editor/
   window.DM = { base: "{{ site.baseurl }}", worker: "{{ site.data.sitio.worker_url }}", build: "{{ site.time | date: '%s' }}" };
   window.MELAMINAS = {{ site.data.melaminas | jsonify }};
 </script>
+<script type="module" src="{{ '/assets/js/editor/acceso.js' | relative_url }}"></script>
 <script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>
 </body>
 </html>

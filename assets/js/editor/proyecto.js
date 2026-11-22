@@ -27,6 +27,35 @@ async function gh(path, opts = {}) {
 const b64dec = (b) => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 const b64enc = (s) => { let bin = ''; new TextEncoder().encode(s).forEach((b) => { bin += String.fromCharCode(b); }); return btoa(bin); };
 
+// ----- proyecto nuevo (mismo archivo que crea Decap en /admin/proyectos/) -----
+// Nombre del archivo como el «slug» de Decap: año + título en minúsculas, sin tildes y con guiones
+const slugTitulo = (t) => String(t).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+// Clave de acceso del cliente: DM-XXXX-XXXX sin O/0 ni I/1 (igual que el botón «Generar» de Decap)
+function nuevaClave() {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint32Array(8));
+  const s = [...r].map((n) => abc[n % abc.length]).join('');
+  return `DM-${s.slice(0, 4)}-${s.slice(4)}`;
+}
+async function existeProyecto(id) {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/contents/proyectos/${encodeURIComponent(id)}.json?ref=main`, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${tokenGitHub()}` } });
+  if (res.status === 404) return false;
+  if (res.status === 401) throw new Error('Tu sesión de GitHub expiró. Vuelve a entrar.');
+  return true;
+}
+// Crea el proyecto en Borrador (el cliente aún no puede entrar). Devuelve { id, raw }.
+export async function crearProyecto({ titulo, nombre, email, telefono, comuna }) {
+  const base = `${new Date().getFullYear()}-${slugTitulo(titulo) || 'proyecto'}`;
+  let id = base;
+  for (let i = 2; await existeProyecto(id); i++) id = `${base}-${i}`; // nunca pisa un proyecto existente
+  const cliente = { nombre, ...(email ? { email } : {}), ...(telefono ? { telefono: telefono.replace(/[^\d+]/g, '') } : {}), ...(comuna ? { comuna } : {}) };
+  const raw = { titulo, access_key: nuevaClave(), estado: 'borrador', version: 1, cliente, tipo: 'melamina', modulos: [] };
+  await gh(`contents/proyectos/${encodeURIComponent(id)}.json`, {
+    method: 'PUT',
+    body: JSON.stringify({ message: `Proyecto: crear «proyectos/${id}.json»`, content: b64enc(JSON.stringify(raw, null, 2) + '\n'), branch: 'main' }),
+  });
+  return { id, raw };
+}
+
 export async function leerProyecto(id) {
   const f = await gh(`contents/proyectos/${encodeURIComponent(id)}.json?ref=main`);
   return { raw: JSON.parse(b64dec(f.content)), sha: f.sha };
@@ -114,7 +143,7 @@ export function iniciarProyectos(ed) {
   // --- elegir proyecto
   btnProy.addEventListener('click', async () => {
     const cuerpo = $('.ed-dlg-cuerpo', dlgP);
-    dlgP.showModal();
+    if (!dlgP.open) dlgP.showModal();
     if (!tokenGitHub()) {
       cuerpo.innerHTML = `<p>Para abrir proyectos de clientes, primero entra en <a href="${window.DM.base}/admin/proyectos/">Proyectos de clientes</a> con tu cuenta de GitHub y vuelve aquí.</p>`;
       return;
@@ -122,13 +151,46 @@ export function iniciarProyectos(ed) {
     cuerpo.innerHTML = '<p class="ed-ayuda">Cargando proyectos…</p>';
     try {
       const { proyectos } = await api('admin/proyectos');
-      cuerpo.innerHTML = `<div class="ed-lista">${proyectos.map((p) => `
+      cuerpo.innerHTML = `<p class="ed-nuevo-fila"><button class="ed-primario" data-nuevo>+ Nuevo proyecto</button></p>
+        <div class="ed-lista">${proyectos.map((p) => `
         <button data-id="${esc(p.id)}"><b>${esc(p.titulo)}</b><small>${esc(p.cliente)} · ${esc(p.estado)} · v${p.version}</small>${p.pendientes ? `<i>${p.pendientes}</i>` : ''}</button>`).join('') || '<p class="ed-ayuda">No hay proyectos. Créalos en «Proyectos de clientes».</p>'}</div>
         ${info ? '<p><button data-local>Volver al modelo local</button></p>' : ''}`;
     } catch (e) { cuerpo.innerHTML = `<p class="ed-error">${esc(e.message)}</p>`; }
   });
+  // --- proyecto nuevo: datos básicos obligatorios (lo demás se completa en Decap o en el editor)
+  function formNuevo() {
+    $('.ed-dlg-cuerpo', dlgP).innerHTML = `<form class="ed-nuevo" id="form-nuevo">
+      <p class="sub">Proyecto nuevo</p>
+      <div class="ed-campos">
+        <label class="ed-campo ancho2">Título del proyecto *<input name="titulo" required maxlength="80" placeholder="Ej: Cocina departamento Ñuñoa"></label>
+        <label class="ed-campo ancho2">Nombre del cliente *<input name="nombre" required maxlength="80"></label>
+        <label class="ed-campo ancho2">Email del cliente<input name="email" type="email" maxlength="120" placeholder="Recibe los avisos de cada versión"></label>
+        <label class="ed-campo">WhatsApp<input name="telefono" inputmode="tel" maxlength="20" placeholder="56912345678"></label>
+        <label class="ed-campo">Comuna<input name="comuna" maxlength="60"></label>
+      </div>
+      <p class="ed-ayuda">Se crea en <b>Borrador</b> (el cliente aún no puede entrar) con su clave de acceso, y se abre aquí para dibujar el mueble. Cuando lo publiques como propuesta, el cliente podrá entrar. Lo demás (vigencia, opciones, costos) se edita en «Proyectos de clientes».</p>
+      <div class="ed-botones"><button type="button" data-volver>Volver</button><button type="submit" class="ed-primario">Crear y abrir</button></div>
+      <p class="ed-error" id="nuevo-msg" aria-live="polite"></p>
+    </form>`;
+    $('#form-nuevo input', dlgP).focus();
+  }
+  dlgP.addEventListener('submit', async (e) => {
+    if (e.target.id !== 'form-nuevo') return;
+    e.preventDefault();
+    const f = Object.fromEntries([...new FormData(e.target)].map(([k, v]) => [k, String(v).trim()]));
+    if (!f.titulo || !f.nombre) return;
+    const b = e.submitter; b.disabled = true; b.textContent = 'Creando…';
+    try {
+      const { id, raw } = await crearProyecto(f);
+      await abrir(id);
+      dlgP.close();
+      ed.aviso(`Proyecto «${raw.titulo}» creado en Borrador. Clave de acceso del cliente: ${raw.access_key}. Dibuja el mueble y publica la primera versión.`);
+    } catch (err) { $('#nuevo-msg', dlgP).textContent = err.message; b.disabled = false; b.textContent = 'Crear y abrir'; }
+  });
   dlgP.addEventListener('click', async (e) => {
     if (e.target.closest('[data-cerrar]')) return dlgP.close();
+    if (e.target.closest('[data-nuevo]')) return formNuevo();
+    if (e.target.closest('[data-volver]')) return btnProy.click();
     if (e.target.closest('[data-local]')) { info = null; mensajes = []; clearInterval(sondeo); ed.abrir(null, null); pintarBarra(); pintarComentarios(); pintarContacto(); return dlgP.close(); }
     const b = e.target.closest('[data-id]'); if (!b) return;
     b.disabled = true;
