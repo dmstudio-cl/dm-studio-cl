@@ -7,12 +7,12 @@ import { OBJETOS } from './objetos.js';
 import { despiece, medidaFrente } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, girar } from './modelo.js';
-import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo } from './modelo.js';
+import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo, tiradoresCliente } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
-import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios } from './proyecto.js';
+import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios, aplicarCliente, textoCambios } from './proyecto.js';
 import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
@@ -36,7 +36,7 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false, cliente: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let materialesCub = [];    // materiales de cubierta de la Configuración de precios (reglas físicas: vuelo, largo, lavaplatos bajo cubierta)
 let catalogoTir = [];      // tiradores de la Configuración de precios (nombre, forma, color, largo, grosor, precio)
@@ -83,7 +83,7 @@ function respaldar(id, m, motivo) {
 }
 function guardar() {
   try {
-    if (proyActual) localStorage.setItem(claveProy(proyActual.id), JSON.stringify({ sha: proyActual.sha, modelo }));
+    if (proyActual) localStorage.setItem(claveProy(proyActual.id), JSON.stringify({ sha: proyActual.sha, modelo, cliente: proyActual.cliente?.firma })); // cliente: su elección ya incluida
     else localStorage.setItem(CLAVE, JSON.stringify(modelo));
   } catch (e) {}
 }
@@ -198,7 +198,34 @@ const MEL = window.MELAMINAS || [];
 function mats() {
   const f = MEL.find((x) => x.id === modelo.frente);
   const frente = f ? (f.imagen ? `url(${window.DM.base}${f.imagen}) center / 60em 60em, ${f.hex}` : f.hex) : '#cfc6b8';
-  return { ...matsColores(modelo.colores, frente), cubierta: '#cfc9bc', material: fondoMaterial };
+  const cli = capas.cliente ? proyActual?.cliente : null, s = cli?.sel; // cubierta y borde que eligió el cliente
+  return { ...matsColores(modelo.colores, frente), cubierta: (s && cli.cubiertas.find((c) => c.id === s.cubierta)?.color) || '#cfc9bc',
+    ...(s?.borde ? { borde: cli.bordes.find((b) => b.id === s.borde)?.perfil || 'recto' } : {}), material: fondoMaterial };
+}
+// ===================== elección del cliente (portal) =====================
+// Muebles que el cliente no cotiza (desmarcados en su portal): se ven atenuados
+function fueraCliente() {
+  const s = capas.cliente ? proyActual?.cliente?.sel : null;
+  if (!Array.isArray(s?.modulos) || !s.modulos.length) return new Set();
+  return new Set(modelo.modulos.filter((m) => !m.artefacto && !s.modulos.includes(m.id)).map((m) => m.id));
+}
+// Tiradores con el modelo y color que eligió el cliente (en las mismas posiciones; «sin tirador» los oculta)
+function conCliente(mv) {
+  const cli = capas.cliente ? proyActual?.cliente : null, tir = cli?.sel?.tirador && cli.tiradores.find((t) => t.id === cli.sel.tirador);
+  if (!tir) return mv;
+  return { ...mv, modulos: mv.modulos.map((m) => (m.artefacto || !m.tiradores?.length ? m : { ...m, tiradores: tiradoresCliente(m, tir) })) };
+}
+// Aviso con botón cuando el cliente cambia materiales con el editor abierto
+function avisoCliente(c, s) {
+  document.querySelector('.ed-cliente-aviso')?.remove();
+  const b = document.createElement('div');
+  b.className = 'ed-version ed-cliente-aviso';
+  b.innerHTML = `El cliente cambió en su portal: ${esc(textoCambios(c))}. <button data-si>Aplicar</button><button data-no class="sec">Ahora no</button>`;
+  b.addEventListener('click', (e) => {
+    if (e.target.closest('[data-si]')) { cambiar((d) => aplicarCliente(d, s)); aviso('Apliqué lo que eligió el cliente (Ctrl+Z deshace).'); }
+    if (e.target.closest('button')) b.remove();
+  });
+  document.body.append(b);
 }
 // ===================== materiales por pieza (como Shapr3D: arrastrar una esfera sobre la pieza) =====================
 // Un material es una melamina del catálogo (su id) o un color ('color:#rrggbb'). Se guarda en m.materiales[pieza].
@@ -661,7 +688,9 @@ $('#muro-frente').addEventListener('change', (e) => {
 });
 function render({ panel = true } = {}) {
   const mv = modeloVista();
-  dibujar(st, mv, { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef(), fabricacion: true });
+  dibujar(st, conCliente(mv), { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef(), fabricacion: true });
+  const fuera = fueraCliente(); // muebles que el cliente no cotiza: atenuados (siguen editables)
+  if (fuera.size) st.rig.querySelectorAll('[data-ref]').forEach((f) => { if (fuera.has(f.dataset.ref.split('|')[0])) f.classList.add('c3-fuera'); });
   if (vista !== 'inferior' && (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros)) pisoGrilla(mv); // desde abajo el piso taparía el mueble
   if (vista !== 'frente' && vista !== 'inferior') dibujarPines();
   encuadrar(false);
@@ -1482,6 +1511,7 @@ biblio.addEventListener('pointerdown', (e) => {
 
 // ===================== panel de capas (árbol) =====================
 function arbol() {
+  const fuera = fueraCliente();
   const tipoN = (f) => TIPOS_FRENTE[f.tipo] || f.tipo;
   const act = (s) => (sel && JSON.stringify(s) === JSON.stringify(sel) ? ' aria-current="true"' : '');
   const btn = (s, cls, html) => `<button class="${cls}" data-sel='${esc(JSON.stringify(s))}'${act(s)}>${html}</button>`;
@@ -1490,7 +1520,7 @@ function arbol() {
   const hObj = (modelo.objetos || []).length ? `<div class="n0" style="padding:4px 6px;font-size:.78rem;color:var(--muted)">Electrodomésticos</div>${modelo.objetos.map((o) => btn({ tipo: 'objeto', o: o.id }, 'n1', `${esc(o.nombre)} <small>${cm(o.ancho)}×${cm(o.alto)}</small>`)).join('')}<hr style="border:0;border-top:1px solid var(--line);margin:8px 0">` : '';
   $('#arbol').innerHTML = hEsp + hObj + modelo.modulos.map((m) => {
     const Z = Zde(m);
-    let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>${m.grupo ? `<span class="ed-tag">${esc(m.grupo_nombre || 'agrupado')}</span>` : ''}`);
+    let h = btn({ tipo: 'modulo', m: m.id }, 'n0', `<b>${esc(m.nombre)}</b> <small>${cm(m.ancho)}×${cm(m.alto)}×${cm(m.profundidad)}</small>${m.grupo ? `<span class="ed-tag">${esc(m.grupo_nombre || 'agrupado')}</span>` : ''}${fuera.has(m.id) ? '<span class="ed-tag ed-tag-fuera" title="El cliente lo desmarcó en «Muebles a cotizar»">no lo cotiza</span>' : ''}`);
     if (m.artefacto) return h;
     if (Z > 0) h += btn({ tipo: 'zocalo', m: m.id }, 'n1', `Zócalo <small>${cm(Z)}</small>`);
     h += btn({ tipo: 'cuerpo', m: m.id }, 'n1', 'Cuerpo');
@@ -2516,6 +2546,8 @@ iniciarProyectos({
     if (!raw) { modelo = cargar() || ejemplo(); pines = []; }
     else {
       modelo = aModelo(raw, uid);
+      const cli = info.cliente; // lo que eligió el cliente en su portal: su melamina y colores por pieza pasan al modelo
+      let deCliente = cli?.sel ? aplicarCliente(modelo, cli.sel) : null;
       if (!conservarVista) { // ¿quedó un borrador sin publicar? (aunque el proyecto haya cambiado después en el administrador)
         let b = null; try { b = JSON.parse(localStorage.getItem(claveProy(info.id))); } catch (e) {}
         if (b?.modelo?.modulos && JSON.stringify(b.modelo.modulos) !== JSON.stringify(modelo.modulos)) {
@@ -2523,12 +2555,18 @@ iniciarProyectos({
           const msg = b.sha === info.sha
             ? `Tienes cambios sin publicar en este proyecto (${b.modelo.modulos.length} muebles). ¿Recuperarlos?`
             : `Tienes cambios sin publicar en este proyecto (${b.modelo.modulos.length} muebles), hechos antes de que el proyecto se modificara en el administrador.\n\n¿Recuperarlos? (Si no, quedan guardados en «Respaldos».)`;
-          if (confirm(msg)) modelo = { ...b.modelo, nombre: modelo.nombre || b.modelo.nombre };
+          if (confirm(msg)) {
+            modelo = { ...b.modelo, nombre: modelo.nombre || b.modelo.nombre };
+            // el borrador ya trae la elección del cliente de ese momento; si cambió después, se aplica encima
+            deCliente = cli?.sel && b.cliente !== cli.firma ? aplicarCliente(modelo, cli.sel) : null;
+          }
           else aviso('Tu borrador quedó guardado en «Respaldos» (barra superior) por si lo necesitas.');
         }
       }
       if (modelo.modulos.some((m) => +m.rotacion)) aviso('Ojo: hay módulos girados (muro izquierdo); el editor los muestra sin girar.');
+      if (deCliente && (deCliente.melamina || deCliente.piezas)) aviso(`Cargué lo que eligió el cliente en su portal: ${textoCambios(deCliente)}. Queda como base al publicar.`);
     }
+    document.querySelector('.ed-cliente-aviso')?.remove();
     if (!modelo.frente) modelo.frente = MEL[0]?.id || '';
     modelo.modulos.forEach(normalizar);
     selMel.value = modelo.frente || ''; pintarColores();
@@ -2537,6 +2575,20 @@ iniciarProyectos({
     if (raw && modelo.modulos.length === 0) { setVista('frente'); setHerr('dibujar'); aviso('Proyecto vacío: dibuja el primer módulo arrastrando.'); }
   },
   pines(lista) { pines = lista; render({ panel: false }); },
+  // Nueva lectura de la elección del cliente: tirador, cubierta, borde y muebles se ven al tiro; los materiales, con aviso.
+  // Devuelve true si hay materiales nuevos por aplicar.
+  clienteNuevo(cli) {
+    if (!proyActual) return false;
+    const visto = proyActual.cliente?.visto;
+    proyActual.cliente = cli;
+    cli.visto = cli.firma;
+    render();
+    if (!cli?.sel || cli.firma === visto) return !!document.querySelector('.ed-cliente-aviso');
+    const c = aplicarCliente(JSON.parse(JSON.stringify(modelo)), cli.sel);
+    if (!c.melamina && !c.piezas) return false;
+    avisoCliente(c, cli.sel);
+    return true;
+  },
   enfocarPin(p) {
     setVista('3d');
     pinFoco = p.n; render({ panel: false });
