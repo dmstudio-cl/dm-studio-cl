@@ -122,6 +122,38 @@ export function aModelo(raw, uid) {
   };
 }
 
+// ----- elección del cliente en su portal (2026-11-22) -----
+// El cliente manda en los materiales que el portal le deja elegir: al abrir el proyecto, el editor pasa al modelo su
+// melamina (si la eligió él) y sus colores por pieza; tirador, cubierta, borde y muebles a cotizar se muestran encima
+// (capa «Elección del cliente»). Lo último que se cambia manda: lo que publicas queda como base y el cliente puede volver a
+// cambiarlo. Si el cliente cambia algo con el editor abierto, aparece un aviso para aplicarlo.
+export const firmaMat = (s) => JSON.stringify({ m: s?.melamina_propia ? s.melamina || '' : '', x: s?.materiales || {} });
+// Pasa al modelo la melamina y los colores por pieza del cliente. Devuelve qué cambió: { melamina, piezas }.
+export function aplicarCliente(mod, s) {
+  const out = { melamina: '', piezas: 0 };
+  if (!s) return out;
+  if (s.melamina_propia && s.melamina && s.melamina !== mod.frente) { mod.frente = s.melamina; out.melamina = s.melamina; }
+  for (const [k, v] of Object.entries(s.materiales || {})) {
+    const i = k.indexOf('|'), m = (mod.modulos || []).find((x) => x.id === k.slice(0, i));
+    if (!m || i < 1) continue;
+    const pieza = k.slice(i + 1);
+    if ((m.materiales || {})[pieza] === v) continue;
+    m.materiales = { ...(m.materiales || {}), [pieza]: v };
+    out.piezas++;
+  }
+  return out;
+}
+const nombreMel = (id) => (window.MELAMINAS || []).find((x) => x.id === id)?.nombre || id;
+export const textoCambios = (c) => [c.melamina && `melamina ${nombreMel(c.melamina)}`, c.piezas && `${c.piezas} color${c.piezas > 1 ? 'es' : ''} por pieza`].filter(Boolean).join(' y ');
+let bordesSitio = null;
+// Lo que eligió el cliente (Worker, como estudio) y los catálogos para dibujarlo
+async function leerCliente(id) {
+  const d = await api('proyecto', { p: id });
+  if (!bordesSitio) bordesSitio = await fetch(`${window.DM.base}/assets/data/bordes.json`).then((r) => r.json()).catch(() => []);
+  const sel = d.seleccion || null;
+  return { sel, tiradores: d.opciones?.tiradores || [], cubiertas: d.opciones?.cubiertas || [], bordes: Array.isArray(bordesSitio) ? bordesSitio : [], aprobacion: d.aprobacion || null, firma: firmaMat(sel) };
+}
+
 /**
  * Conecta la interfaz de proyectos con el editor.
  * ed: { modelo(): modelo actual, abrir(modelo, info), aviso(texto), pines(lista), enfocarPin(pin) }
@@ -201,12 +233,21 @@ export function iniciarProyectos(ed) {
     const { raw, sha } = await leerProyecto(id);
     info = { id, sha, raw, perfil: null };
     try { info.perfil = (await api('perfil', { p: id })).perfil; } catch { /* sin perfil */ }
+    try { info.cliente = await leerCliente(id); info.cliente.visto = info.cliente.firma; } catch { info.cliente = null; } // lo que eligió en su portal
     pintarContacto();
     ed.abrir(raw, info);
     pintarBarra();
     await cargarComentarios();
     clearInterval(sondeo);
-    sondeo = setInterval(() => { if (!document.hidden) cargarComentarios().catch(() => {}); }, 30000);
+    sondeo = setInterval(() => { if (!document.hidden) { cargarComentarios().catch(() => {}); revisarCliente(); } }, 30000);
+  }
+  // ¿El cliente cambió algo en su portal? (true si hay materiales nuevos por aplicar: el editor muestra el aviso)
+  async function revisarCliente() {
+    if (!info) return false;
+    let cli; try { cli = await leerCliente(info.id); } catch { return false; }
+    const hay = ed.clienteNuevo(cli);
+    pintarContacto();
+    return hay;
   }
 
   // --- ficha de contacto del cliente (arriba de los comentarios)
@@ -217,7 +258,23 @@ export function iniciarProyectos(ed) {
     const fila = (k, v) => (v ? `<div><span>${k}</span><b>${esc(v)}</b></div>` : '');
     el.innerHTML = `<p class="sub">Cliente</p>
       ${fila('Nombre', c.nombre)}${fila('Correo', c.email)}${fila('WhatsApp', c.telefono)}${fila('Comuna', c.comuna)}${fila('Dirección', c.direccion)}
-      <p class="ed-ayuda">${c.completo ? `Avisos por correo: ${c.avisos_correo ? 'sí' : 'no'} · WhatsApp: ${c.avisos_whatsapp ? 'sí' : 'no'}` : 'El cliente aún no completa «Mis datos» en el portal.'}</p>`;
+      <p class="ed-ayuda">${c.completo ? `Avisos por correo: ${c.avisos_correo ? 'sí' : 'no'} · WhatsApp: ${c.avisos_whatsapp ? 'sí' : 'no'}` : 'El cliente aún no completa «Mis datos» en el portal.'}</p>
+      ${eleccionCliente()}`;
+  }
+  // Resumen de lo que eligió el cliente en su portal
+  function eleccionCliente() {
+    const cli = info?.cliente, s = cli?.sel;
+    if (!s) return '<p class="sub">Elección del cliente</p><p class="ed-ayuda">El cliente aún no elige nada en su portal.</p>';
+    const fila = (k, v) => (v ? `<div><span>${k}</span><b>${esc(v)}</b></div>` : '');
+    const mods = (info.raw.modulos || []).filter((m) => !m.artefacto);
+    const elegidos = Array.isArray(s.modulos) && s.modulos.length ? mods.filter((m) => s.modulos.includes(m.id)) : mods;
+    const piezas = Object.keys(s.materiales || {}).length, ap = cli.aprobacion;
+    return `<p class="sub">Elección del cliente</p>
+      ${fila('Melamina', `${nombreMel(s.melamina)}${s.melamina_propia ? '' : ' (la tuya)'}`)}${fila('Colores por pieza', piezas ? `${piezas}` : '')}
+      ${fila('Tirador', cli.tiradores.find((t) => t.id === s.tirador)?.nombre || s.tirador)}${fila('Cubierta', cli.cubiertas.find((c) => c.id === s.cubierta)?.nombre || s.cubierta)}
+      ${fila('Borde', cli.bordes.find((b) => b.id === s.borde)?.nombre || s.borde)}${fila('Cotiza', elegidos.length < mods.length ? `${elegidos.length} de ${mods.length} muebles` : 'todos los muebles')}
+      ${ap ? fila('Aprobó', `${new Date(ap.fecha).toLocaleDateString('es-CL')} · $${Math.round(ap.total).toLocaleString('es-CL')}`) : ''}
+      <p class="ed-ayuda">Se ve en el modelo con la capa «Elección del cliente». Su melamina y sus colores por pieza ya están en el modelo: lo que publiques queda como base y el cliente puede volver a cambiarlo.</p>`;
   }
 
   // --- comentarios
@@ -295,8 +352,10 @@ export function iniciarProyectos(ed) {
   }
 
   // --- publicar versión (como un commit)
-  btnPub.addEventListener('click', () => {
+  btnPub.addEventListener('click', async () => {
     if (!info) return;
+    // antes de publicar: si el cliente cambió materiales recién, primero se decide si aplicarlos (si no, se perderían)
+    if (await revisarCliente()) { ed.aviso('El cliente cambió materiales en su portal recién: revisa el aviso de abajo antes de publicar.'); return; }
     const v = (+info.raw.version || 1) + 1;
     $('.ed-dlg-cuerpo', dlgV).innerHTML = `
       <form id="form-version" class="ed-form">
