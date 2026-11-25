@@ -304,7 +304,6 @@ collections:
           - { label: Factor de precio, name: factor, widget: number, value_type: float, default: 2.3 }
           - { label: Anticipo, name: anticipo, widget: number, value_type: float, default: 0.5, hint: "0.5 = 50%" }
           - { label: Mano de obra mínima por cajón (CLP), name: cajon_mano_obra_minima, widget: number, value_type: int, required: false, default: 15000, hint: "Si la fórmula deja menos ganancia en un cajón, se cobra este mínimo (sin luz ni factor). Vacío = 15.000" }
-          - { label: Factor de los esquineros especiales, name: esquinero_factor, widget: number, value_type: float, required: false, default: 2.5, hint: "Puerta giratoria, cajón space corner y cajones pivotantes llevan más trabajo: este factor reemplaza al normal sobre sus materiales" }
           - { label: Condiciones generales, name: condiciones, widget: text, required: false, default: "Precio en CLP. Anticipo del 50% para iniciar la fabricación; saldo contra entrega e instalación." }
           - label: Precio por plancha de melamina
             name: planchas
