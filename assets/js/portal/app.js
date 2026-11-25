@@ -272,7 +272,11 @@ export async function startApp(api) {
       <div class="row"><span>Subtotal</span><span>${clp(e.subtotal)}</span></div>
       <div class="row fuerte"><span>Mano de obra (ganancia)</span><span>${clp(e.mano_obra)}</span></div>
       ${e.despacho ? `<div class="row"><span>Despacho (sin factor)</span><span>${clp(e.despacho)}</span></div>` : ''}
-      <div class="row"><span class="muted">Total al cliente (×${e.factor})</span><span>${clp(q.total)}</span></div>`;
+      <div class="row"><span class="muted">Total al cliente (factor ${String(e.factor).replace(/\./g, ',')})</span><span>${clp(q.total)}</span></div>
+      ${e.queda_anticipo != null ? `<p class="eyebrow" style="margin:10px 0 4px">Flujo del proyecto</p>
+      <div class="row"><span>Anticipo (50 %) − compras del inicio <small class="muted">(materiales y luz: ${clp(e.inicio)})</small></span><span${e.queda_anticipo < 0 ? ' style="color:#e0605a"' : ''}>${clp(e.queda_anticipo)}</span></div>
+      <div class="row"><span>Saldo − pagos al instalar <small class="muted">(cubierta, terceros y despacho: ${clp(e.al_final)})</small></span><span${e.queda_saldo < 0 ? ' style="color:#e0605a"' : ''}>${clp(e.queda_saldo)}</span></div>
+      <div class="row fuerte"><span>Te queda para vivir mientras se fabrica</span><span${e.queda_anticipo < 0 ? ' style="color:#e0605a"' : ''}>${clp(e.queda_anticipo)}</span></div>` : ''}`;
   }
   quote();
 
