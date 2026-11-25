@@ -1,7 +1,7 @@
 // Vista Planta del editor: dibujar los muros del espacio, etiquetarlos y ubicar los muebles
 // (mover, girar) con cotas de distancia a los muros. Coordenadas en cm: x a lo largo del muro
 // principal, z hacia la habitación. En pantalla, z crece hacia abajo (el muro del fondo queda arriba).
-import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar } from './modelo.js';
+import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar, metaMuro, murosContorno, uid } from './modelo.js';
 import { ARTEFACTOS } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { cubiertaDe, tablero, celdas, fondoTotal, GAP } from './modelo.js';
@@ -30,6 +30,7 @@ export function crearPlanta(ctx) {
   let gesto = null;
   let dib = null; // muros en dibujo: { puntos: [{x,z}] }
   let cursor = null;
+  let med = null; // huincha: primer punto { x, z } mientras se mide
 
   function mapa() {
     const { s, c, Wp, Hp } = ctx.escala();
@@ -100,6 +101,7 @@ export function crearPlanta(ctx) {
     }
     // vértices (arrastrables)
     (esp?.puntos || []).forEach((p, i) => el('circle', { cx: M.X(+p.x), cy: M.Y(+p.z), r: 5, class: 'vertice', 'data-tipo': 'vertice', 'data-i': i }, plano));
+    (esp?.tramos || []).forEach((t, j) => { for (const k of ['a', 'b']) if (t?.[k]) el('circle', { cx: M.X(+t[k].x), cy: M.Y(+t[k].z), r: 5, class: 'vertice', 'data-tipo': 'tvertice', 'data-j': j, 'data-k': k }, plano); });
 
     // muebles: huella, frente marcado y nombre
     for (const m of modelo.modulos) {
@@ -180,6 +182,9 @@ export function crearPlanta(ctx) {
         el('text', { x: M.X((a[0] + b[0]) / 2) + 6, y: M.Y((a[1] + b[1]) / 2) - 6, class: 'editable', 'data-pcota': 'dist', 'data-lado': lado, 'data-m': ms.id }, dg).textContent = `${cm(Math.max(0, v.d))}`;
       }
     }
+    // medidas de la huincha (Planta)
+    for (const md of (modelo.medidas || []).filter((x) => x?.vista === 'planta')) cotaMedida(md.a, md.b, M, { id: md.id, sel: sel?.tipo === 'medida' && sel.id === md.id });
+    if (med) { cotaMedida([med.x, med.z], cursor ? [cursor.x, cursor.z] : [med.x, med.z], M, { vivo: true }); }
     // muros en dibujo
     if (dib?.puntos.length) {
       const pts = [...dib.puntos, ...(cursor ? [cursor] : [])];
@@ -231,29 +236,82 @@ export function crearPlanta(ctx) {
     }
   }
 
-  // ---------- muros: dibujar una planta nueva ----------
+  // ---------- huincha de medir (dueño, 2026-11-25) ----------
+  // Cota entre 2 puntos (cm). Se guarda en modelo.medidas = [{ id, vista: 'planta', a:[x,z], b:[x,z] }].
+  function cotaMedida(a, b, M, { id, sel, vivo } = {}) {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]), g = el('g', { class: `medida${sel ? ' sel' : ''}${vivo ? ' viva' : ''}`, ...(id ? { 'data-tipo': 'medida', 'data-id': id } : {}) }, plano);
+    const x1 = M.X(a[0]), y1 = M.Y(a[1]), x2 = M.X(b[0]), y2 = M.Y(b[1]);
+    el('line', { x1, y1, x2, y2, class: 'toque' }, g); el('line', { x1, y1, x2, y2 }, g);
+    const ang = Math.atan2(y2 - y1, x2 - x1), nx = -Math.sin(ang) * 6, ny = Math.cos(ang) * 6;
+    for (const [x, y] of [[x1, y1], [x2, y2]]) el('line', { x1: x - nx, y1: y - ny, x2: x + nx, y2: y + ny }, g); // remates
+    let rot = ang * 180 / Math.PI; if (rot > 90) rot -= 180; if (rot < -90) rot += 180;
+    const tx = (x1 + x2) / 2, ty = (y1 + y2) / 2;
+    if (L > .05) el('text', { x: tx, y: ty - 7, 'text-anchor': 'middle', transform: `rotate(${rot} ${tx} ${ty})` }, g).textContent = `${cm(L)} cm`;
+  }
+  // Punto de la huincha: se pega a la punta de un muro o a la esquina de un mueble (10 px) o a la línea más cercana
+  // de un mueble o muro (12 px); si no hay nada cerca, queda donde está el mouse.
+  function imanHuincha(p) {
+    const M = mapa(), modelo = ctx.modelo(), segs = [], pts = [];
+    for (const w of muros(modelo.espacio)) if (!w.oculto) { segs.push([w.a, w.b]); pts.push(w.a, w.b); }
+    for (const m of modelo.modulos) {
+      let h = huella(m);
+      if (m.tipo === 'esquinero') { const r = +m.rotacion || 0; h = huellaEsquinero(m).map(([x, z]) => { const [dx, dz] = girar(x, z, r); return [+m.x + dx, +m.z + dz]; }); }
+      h.forEach((q, i) => { segs.push([q, h[(i + 1) % h.length]]); pts.push(q); });
+    }
+    const px = (q) => [M.X(q[0]), M.Y(q[1])], P = [M.X(p.x), M.Y(p.z)];
+    let best = null, dmin = 10;
+    for (const q of pts) { const [a, b] = px(q), d = Math.hypot(a - P[0], b - P[1]); if (d < dmin) { dmin = d; best = { x: q[0], z: q[1] }; } }
+    if (best) return best;
+    dmin = 12;
+    for (const [a, b] of segs) {
+      const dx = b[0] - a[0], dz = b[1] - a[1], L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a[0]) * dx + (p.z - a[1]) * dz) / L2));
+      const q = [a[0] + t * dx, a[1] + t * dz], [qx, qy] = px(q), d = Math.hypot(qx - P[0], qy - P[1]);
+      if (d < dmin) { dmin = d; best = { x: r1(q[0]), z: r1(q[1]) }; }
+    }
+    return best || { x: r1(p.x), z: r1(p.z) };
+  }
+
+  // ---------- muros: 2 clics = un muro (dueño, 2026-11-25) ----------
+  // Puntas de todos los muros (contorno y sueltos) para el imán
+  function puntas(esp) {
+    const out = [];
+    (esp?.puntos || []).forEach((p, i) => out.push({ x: +p.x, z: +p.z, c: 'p', i }));
+    (esp?.tramos || []).forEach((t, j) => { if (t?.a) out.push({ x: +t.a.x, z: +t.a.z, c: 't', j, k: 'a' }); if (t?.b) out.push({ x: +t.b.x, z: +t.b.z, c: 't', j, k: 'b' }); });
+    return out;
+  }
+  function imanPunta(p, esp, fuera = () => false) {
+    const M = mapa(); let best = null, dmin = 14;
+    for (const v of puntas(esp)) { if (fuera(v)) continue; const d = Math.hypot(M.X(v.x) - M.X(p.x), M.Y(v.z) - M.Y(p.z)); if (d < dmin) { dmin = d; best = v; } }
+    return best;
+  }
+  // ¿la punta v es un extremo del contorno abierto? 'ini' | 'fin' | null
+  const extremo = (esp, v) => { const P = esp?.puntos || []; if (!v || v.c !== 'p' || esp.cerrado || P.length < 2) return null; return v.i === 0 ? 'ini' : v.i === P.length - 1 ? 'fin' : null; };
+  // Agrega el muro a→b: si es el primero, arranca el contorno; si parte o termina en un extremo del contorno, lo alarga
+  // (o lo cierra); si no, queda como muro suelto.
+  function agregarMuro(d, a, b, v0, v1) {
+    const E = (d.espacio ||= {}); E.puntos ||= []; E.muros = Array.isArray(E.muros) ? E.muros : []; E.alto ||= 240;
+    const P = E.puntos, e0 = extremo(E, v0), e1 = extremo(E, v1);
+    if (P.length < 2 && !(E.tramos || []).length) { E.puntos = [a, b]; E.cerrado = false; E.muros = [{ etiqueta: '', espesor: 15 }]; return 'contorno'; }
+    if (P.length > 2 && e0 && e1 && e0 !== e1) { E.cerrado = true; return 'cerrado'; }
+    if (e0 === 'fin' || e1 === 'fin') { P.push(e0 === 'fin' ? b : a); return 'contorno'; }
+    if (e0 === 'ini' || e1 === 'ini') { P.unshift(e0 === 'ini' ? b : a); E.muros.unshift({ etiqueta: '', espesor: 15 }); return 'contorno'; }
+    (E.tramos ||= []).push({ a, b, espesor: 15 });
+    return 'suelto';
+  }
   function siguiente(p, libre) {
     const u = dib.puntos.at(-1);
     let x = snap(p.x), z = snap(p.z);
     if (!libre) { if (Math.abs(x - u.x) >= Math.abs(z - u.z)) z = u.z; else x = u.x; } // 90°
     return { x, z };
   }
-  function terminarMuros(cerrado) {
-    const pts = dib.puntos; dib = null; cursor = null;
-    if (pts.length < 2) { ctx.render({ panel: false }); return; }
-    ctx.cambiar((d) => {
-      const alto = d.espacio?.alto || 240;
-      d.espacio = { ...(d.espacio || {}), alto, cerrado: !!cerrado, puntos: pts, muros: (cerrado ? pts : pts.slice(1)).map(() => ({ etiqueta: '', espesor: 15 })) }; // un registro por muro
-    });
-    ctx.setHerr('sel');
-    ctx.aviso('Muros listos. Haz clic en un largo para corregirlo o en «+ etiqueta» para nombrar el muro.');
-  }
+
 
   // Cambiar el largo del muro i: corre el extremo final y los muros perpendiculares que le siguen,
   // hasta el próximo muro paralelo (que absorbe la diferencia). Así una habitación sigue en escuadra.
   function cambiarLargo(esp, i, nuevo) {
     const P = esp.puntos, N = P.length, W = muros(esp)[i];
     if (!W || nuevo < 5) return;
+    if (W.tramo != null) { const t = esp.tramos[W.tramo], k = nuevo / W.largo; t.b = { x: r1(W.a[0] + (W.b[0] - W.a[0]) * k), z: r1(W.a[1] + (W.b[1] - W.a[1]) * k) }; return; } // muro suelto: se corre su punta final
     const d = [(W.b[0] - W.a[0]) / W.largo, (W.b[1] - W.a[1]) / W.largo], delta = nuevo - W.largo;
     const mover = (k) => { P[k].x = r1(+P[k].x + d[0] * delta); P[k].z = r1(+P[k].z + d[1] * delta); };
     let j = (i + 1) % N;
@@ -290,7 +348,7 @@ export function crearPlanta(ctx) {
       if (hecho) return; hecho = true;
       const txt = inp.value.trim(); inp.remove();
       if (!ok) return;
-      if (k === 'etiqueta') { ctx.cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), etiqueta: txt.slice(0, 80) }; }); return; }
+      if (k === 'etiqueta') { ctx.cambiar((d) => { metaMuro(d.espacio, i).etiqueta = txt.slice(0, 80); }); return; }
       const v = parseFloat(txt.replace(',', '.')); if (!isFinite(v)) return;
       if (k === 'largo') ctx.cambiar((d) => cambiarLargo(d.espacio, i, v));
       if (k === 'dist') {
@@ -318,17 +376,26 @@ export function crearPlanta(ctx) {
     const cota = e.target.closest('[data-pcota]');
     if (cota) { e.preventDefault(); editar(cota); return; }
     plano.setPointerCapture(e.pointerId);
-    if (herr === 'muros') {
-      if (!dib) {
-        if (modelo.espacio?.puntos?.length && !confirm('¿Reemplazar los muros actuales por unos nuevos?')) return;
-        dib = { puntos: [{ x: snap(p.x), z: snap(p.z) }] };
-      } else {
-        const q = siguiente(p, e.shiftKey), f = dib.puntos[0], M = mapa();
-        if (dib.puntos.length > 2 && Math.hypot(M.X(q.x) - M.X(f.x), M.Y(q.z) - M.Y(f.z)) < 14) return terminarMuros(true); // cerrar
-        const u = dib.puntos.at(-1);
-        if (q.x !== u.x || q.z !== u.z) dib.puntos.push(q);
-      }
-      dibujar(); return;
+    if (herr === 'muros') { // 2 clics = un muro; las puntas se pegan a las de otros muros
+      const esp = modelo.espacio || {};
+      if (!dib) { const v = imanPunta(p, esp); dib = { puntos: [v ? { x: v.x, z: v.z } : { x: snap(p.x), z: snap(p.z) }], v0: v }; dibujar(); return; }
+      const v1 = imanPunta(p, esp), q = v1 ? { x: v1.x, z: v1.z } : siguiente(p, e.shiftKey), a = dib.puntos[0], v0 = dib.v0;
+      if (Math.hypot(q.x - a.x, q.z - a.z) < 5) return; // muy corto
+      dib = null; cursor = null;
+      let como = '';
+      ctx.cambiar((d) => { como = agregarMuro(d, a, q, v0, v1); });
+      ctx.aviso({ contorno: 'Muro agregado al contorno.', cerrado: 'Contorno cerrado.', suelto: 'Muro suelto agregado: arrastra sus puntas para moverlo; acércalas a la punta de otro muro para pegarlas.' }[como] || '');
+      return;
+    }
+    if (herr === 'medir') { // huincha: 2 clics = una cota que queda en el proyecto
+      const q = imanHuincha(p);
+      if (!med) { med = q; cursor = q; dibujar(); return; }
+      const a = [med.x, med.z], b = [q.x, q.z]; med = null; cursor = null;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < .5) { dibujar(); return; }
+      const id = uid('med');
+      ctx.cambiar((d) => { d.medidas = [...(d.medidas || []), { id, vista: 'planta', a, b }]; });
+      ctx.aviso(`Medida: ${cm(Math.hypot(b[0] - a[0], b[1] - a[1]))} cm. Clic derecho sobre ella y Supr para borrarla.`);
+      return;
     }
     if (herr === 'dibujar') { gesto = { tipo: 'nuevo', a: { x: snap(p.x), z: snap(p.z) }, b: null }; return; }
     const t = e.target.closest('[data-tipo]');
@@ -369,11 +436,14 @@ export function crearPlanta(ctx) {
       ctx.render(); return;
     }
     if (d.tipo === 'vertice') { gesto = { tipo: 'vertice', i: +d.i, antes: JSON.stringify(modelo) }; return; }
+    if (d.tipo === 'tvertice') { gesto = { tipo: 'tvertice', j: +d.j, k: d.k, antes: JSON.stringify(modelo) }; return; }
+    if (d.tipo === 'medida') { ctx.setSel({ tipo: 'medida', id: d.id }); ctx.render(); return; }
   }
   function move(e) {
     const p = punto(e), modelo = ctx.modelo();
     ctx.estado(`x ${cm(p.x)} · z ${cm(p.z)} cm`);
-    if (dib) { cursor = siguiente(p, e.shiftKey); dibujar(); return; }
+    if (dib) { const v = imanPunta(p, modelo.espacio || {}); cursor = v ? { x: v.x, z: v.z } : siguiente(p, e.shiftKey); dibujar(); return; }
+    if (med) { cursor = imanHuincha(p); dibujar(); return; }
     if (!gesto) return;
     if (gesto.tipo === 'nuevo') { gesto.b = { x: snap(p.x), z: snap(p.z) }; dibujar(); return; }
     if (gesto.tipo === 'marco') {
@@ -422,7 +492,16 @@ export function crearPlanta(ctx) {
         if (Math.abs(x - +P[k].x) < 4) x = +P[k].x;
         if (Math.abs(z - +P[k].z) < 4) z = +P[k].z;
       }
+      const v = imanPunta(p, modelo.espacio, (w) => w.c === 'p' && w.i === i); // se pega a la punta de otro muro
+      if (v) { x = v.x; z = v.z; }
+      gesto.v = v;
       P[i] = { x, z };
+      ctx.render({ panel: false });
+    }
+    if (gesto.tipo === 'tvertice') { // punta de un muro suelto
+      const t = modelo.espacio.tramos[gesto.j], v = imanPunta(p, modelo.espacio, (w) => w.c === 't' && w.j === gesto.j);
+      t[gesto.k] = v ? { x: v.x, z: v.z } : { x: snap(p.x), z: snap(p.z) };
+      gesto.v = v;
       ctx.render({ panel: false });
     }
   }
@@ -449,21 +528,37 @@ export function crearPlanta(ctx) {
       ctx.setSel({ tipo: 'modulo', m: m.id }); ctx.setHerr('sel'); ctx.render();
       return;
     }
+    if (g.tipo === 'vertice' || g.tipo === 'tvertice') unirPuntas(ctx.modelo().espacio, g);
     ctx.registrar(g.antes);
   }
+  // Al soltar una punta sobre otra: si es el extremo del contorno sobre su otro extremo, el contorno se cierra; si es
+  // un muro suelto sobre un extremo del contorno, el muro pasa a ser parte del contorno. Si no, solo quedan pegadas.
+  function unirPuntas(E, g) {
+    const v = g.v; if (!v) return;
+    const P = E.puntos || [];
+    if (g.tipo === 'vertice') {
+      const de = extremo(E, { c: 'p', i: g.i }), a = extremo(E, v);
+      if (de && a && de !== a && P.length > 3) { P.splice(g.i, 1); if (g.i === 0 && Array.isArray(E.muros)) { const m0 = E.muros.shift(); E.muros[P.length - 1] = m0 || {}; } E.cerrado = true; ctx.aviso('Contorno cerrado.'); }
+      return;
+    }
+    const e = extremo(E, v); if (!e) return;
+    const t = E.tramos[g.j], otra = g.k === 'a' ? t.b : t.a, meta = { etiqueta: t.etiqueta || '', espesor: +t.espesor || 15, ...(t.alto ? { alto: t.alto } : {}), ...(t.vanos?.length ? { vanos: t.vanos } : {}) };
+    E.tramos.splice(g.j, 1);
+    E.muros = Array.isArray(E.muros) ? E.muros : [];
+    if (e === 'fin') { E.muros[P.length - 1] = meta; P.push(otra); } else { P.unshift(otra); E.muros.unshift(meta); }
+    ctx.aviso('El muro quedó unido al contorno.');
+  }
   function teclado(e) {
+    if (med && e.key === 'Escape') { med = null; cursor = null; dibujar(); return true; }
     if (!dib) return false;
-    if (e.key === 'Enter') { terminarMuros(false); return true; }
-    if (e.key === 'Escape') { dib = null; cursor = null; dibujar(); return true; }
-    if (e.key === 'Backspace') { dib.puntos.pop(); if (!dib.puntos.length) dib = null; dibujar(); return true; }
+    if (e.key === 'Escape' || e.key === 'Backspace') { dib = null; cursor = null; dibujar(); return true; }
     return false;
   }
-  plano.addEventListener('dblclick', () => { if (dib && ctx.vista() === 'planta') terminarMuros(false); });
 
   return {
     dibujar, down, move, up, teclado,
     rotar(m, grados) { rotarEnCentro(m, (+m.rotacion || 0) + grados); },
-    cancelar() { dib = null; cursor = null; gesto = null; },
+    cancelar() { dib = null; cursor = null; gesto = null; med = null; },
     cambiarLargo,
   };
 }

@@ -16,7 +16,7 @@ const CORREDERAS_ESQ = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (
 // Las 5 soluciones de esquina (nombres del dueño). lado = largo sugerido de cada lado más allá del fondo del otro.
 // factor: los tipos 1, 3 y 4 usan factor 2,5 sobre los materiales (más trabajo); 2a y 2b, el normal.
 export const SOLUCIONES = {
-  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 32, factor: true, hojas: [30, 60], cuadrado: true },
+  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 34, factor: true, hojas: [30, 60], cuadrado: true },
   '2a': { nombre: 'Puertas con repisa fija en L', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y una repisa fija en L (se pide rectangular; el calado se corta en el taller). Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '2b': { nombre: 'Puertas con repisas intercaladas', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y 2 repisas rectas, una por muro, a distinta altura. Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '3': { nombre: 'Cajón space corner', ayuda: 'Cajones con frente en flecha que salen en diagonal y terminan en punta atrás. A los lados, compartimentos en trapecio rectángulo con puerta (bisagras semicurvas, de 35 a 60 cm) y repisa; sus lados en diagonal llevan, por el otro lado, las correderas.', lado: 82, factor: true, niveles: true, frenteCajon: true, hojas: [35, 60] },
@@ -43,7 +43,9 @@ export function geoEsquinero(m) {
   const izq = m.esquina === 'izq', sol = SOLUCIONES[m.solucion] ? m.solucion : '';
   const niveles = Math.max(2, Math.min(3, Math.round(+m.niveles || 3)));
   const ld = Math.max(20, Math.min(+m.frente_cajon || 40, W - fb - T - 5, L - fa - T - 5)); // ancho del frente del cajón space corner por lado
-  return { T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, arriba: m.cubierta ? 7 : 1, X: (x) => (izq ? W - x : x) };
+  // barra (soporte delantero): 7 cm en la puerta giratoria (dueño, 2026-11-25, editable), 10 cm en los demás
+  const sop = sol === '1' ? Math.max(3, Math.min(20, +m.soporte_alto || 7)) : SOPORTE;
+  return { T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, arriba: m.cubierta ? 7 : 1, X: (x) => (izq ? W - x : x) };
 }
 
 // Contorno en planta (cuerpo + frentes) en coordenadas locales del mueble
@@ -101,8 +103,12 @@ export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
   const hoja = (lado, [s0, s1], clase, nombre, tir, extra = {}, y0 = Z, ya = y1) => { if (s1 - s0 > 1) out.push({ lado, s0, s1, corte: s1 - s0, y0, y1: ya, clase, nombre, cantos: c4, tir, ...extra }); };
   const pisos = (fn) => { const h = (y1 - Z - (n - 1) * LUZ) / n; for (let i = 0; i < n; i++) fn(Z + i * (h + LUZ), Z + i * (h + LUZ) + h, i); };
   if (sol === '1') { // la puerta en L gira con las bandejas: 2 tiradores, en los bordes de afuera (lejos del rincón)
-    hoja('A', A, 'puerta', 'Puerta en L, hoja del lado 1 (va unida a las bandejas)', { en: 's0' });
-    hoja('B', B, 'puerta', 'Puerta en L, hoja del lado 2 (va unida a las bandejas)', { en: 's1' });
+    // (dueño, 2026-11-25) al girar, la puerta entra al mueble: va bajo la barra delantera (7 cm, editable) y sobre la
+    // base de 15 mm, entre los laterales, con 3 mm de aire arriba, abajo y a cada lado; si cambia la barra, la puerta
+    // se ajusta sola. Vale para las 2 hojas.
+    const yb = Z + T + LUZ, yt = H - g.sop - LUZ;
+    hoja('A', [T + LUZ, A[1]], 'puerta', 'Puerta en L, hoja del lado 1 (va unida a las bandejas)', { en: 's0' }, {}, yb, yt);
+    hoja('B', [B[0], L - T - LUZ], 'puerta', 'Puerta en L, hoja del lado 2 (va unida a las bandejas)', { en: 's1' }, {}, yb, yt);
   }
   if (sol === '2a' || sol === '2b') { hoja('A', A, 'puerta', 'Puerta del lado 1', { en: 's1' }); hoja('B', B, 'puerta', 'Puerta del lado 2', { en: 's0' }); }
   if (sol === '4') pisos((y0, ya, i) => { // cada fila gira en su eje del rincón: el tirador va en el extremo de afuera
@@ -132,7 +138,7 @@ export function hojasEditables(m, g = geoEsquinero(m)) {
   const fr = frentesEsquinero(m, g).filter((f) => f.clase === 'puerta'), A = fr.find((f) => f.lado === 'A'), Bf = fr.find((f) => f.lado === 'B');
   const extra = g.sol === '3' ? g.ld + LUZ / 2 : g.T + luzRincon(g); // lo que va entre el fondo del otro lado y la hoja
   const iA = m.vecino_a ? LUZ : 0, iB = m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado)
-  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + extra + Math.max(iA, iB); return { rango: s.hojas, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
+  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + extra + g.T + LUZ; /* la hoja va entre los laterales, con 3 mm de aire */ return { rango: s.hojas, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
   return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v + g.fb + extra + iA, profundidadPara: (v) => v + g.fa + extra + iB };
 }
 
@@ -196,7 +202,7 @@ export function dibujarEsquinero(G, m, o) {
       gd.box({ w: d.largo, h: H - Z - T, d: T, x: 0, y: 0, z: 0, tex: propio('cuerpo') || MC, ref: `${id}|esq|div` });
     }
     if (fab) { // soportes de 10 cm: delanteros de melamina y traseros de pino, unidos a 45° (se dibujan sin encimarse)
-      B(T, xb, H - SOPORTE, H, fa - T, fa, propio('soporte') || MC, `${id}|soporte|frente`); B(xb, xb + T, H - SOPORTE, H, fa - T, L - T, propio('soporte') || MC, `${id}|soporte|frente`);
+      B(T, xb, H - g.sop, H, fa - T, fa, propio('soporte') || MC, `${id}|soporte|frente`); B(xb, xb + T, H - g.sop, H, fa - T, L - T, propio('soporte') || MC, `${id}|soporte|frente`);
       B(T, W - CHOL - PINO_E, H - SOPORTE, H, CHOL, CHOL + PINO_E, PINO, `${id}|soporte|atras`); B(W - CHOL - PINO_E, W - CHOL, H - SOPORTE, H, CHOL, L - T, PINO, `${id}|soporte|atras`);
     }
   }
@@ -246,8 +252,8 @@ export function despieceEsquinero(m, ctx) {
   add('cuerpo|fondo', 'Fondo del lado 2 (cholguán)', ch, r1(L - .3), Hc, undefined, 'cholguan');
   // soportes: delanteros desde el interior de cada lateral hasta la punta larga del inglete; traseros hasta la esquina del muro
   const sop = mat('soporte', cuerpo);
-  add('soporte|frente', 'Soporte delantero del lado 1 (corte a 45° en el rincón)', sop, r1(xb), SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
-  add('soporte|frente', 'Soporte delantero del lado 2 (corte a 45° en el rincón)', sop, r1(L - fa), SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+  add('soporte|frente', 'Soporte delantero del lado 1 (corte a 45° en el rincón)', sop, r1(xb), g.sop, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+  add('soporte|frente', 'Soporte delantero del lado 2 (corte a 45° en el rincón)', sop, r1(L - fa), g.sop, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
   pino('Soporte trasero del lado 1 (pino, 45° en la esquina)', r1(W - T), 'soporte|atras');
   pino('Soporte trasero del lado 2 (pino, 45° en la esquina)', r1(L - T), 'soporte|atras');
   if (Z > 0) for (const t of zocaloEsquinero(g, PINO_E, m)) pino(`Zócalo en L, ${t.nombre} (pino)`, r1(t.largo), 'zocalo');

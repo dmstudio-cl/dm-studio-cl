@@ -370,7 +370,7 @@ export function tiradoresCliente(m, sel) {
 // como lo hacía el visor Three.js.
 export function espacioPortal(esp) {
   if (!esp) return null;
-  if (esp.puntos?.length >= 2) return esp;
+  if (esp.puntos?.length >= 2 || esp.tramos?.length) return esp;
   const L = +esp.largo, A = +esp.ancho;
   if (!L && !A) return null;
   return { alto: +esp.alto || 240, cerrado: false, puntos: [{ x: 0, z: A || 260 }, { x: 0, z: 0 }, { x: L || 360, z: 0 }], muros: [{ espesor: 15 }, { espesor: 15 }] };
@@ -415,11 +415,22 @@ export function rotarEnCentro(m, deg) {
 }
 
 // Segmentos de muro (cara interior) del espacio: [{ i, a:[x,z], b:[x,z], largo, n:[nx,nz] hacia adentro, espesor, alto, etiqueta }]
+// Muros sueltos (dueño, 2026-11-25): esp.tramos = [{ a:{x,z}, b:{x,z}, espesor, alto, etiqueta, vanos, oculto, invertir }],
+// cada uno de 2 puntos, dibujado con 2 clics. Van después de los del contorno (i = n + j) y guardan sus datos en el tramo.
+export const murosContorno = (esp) => { const P = esp?.puntos || []; return P.length < 2 ? 0 : esp.cerrado && P.length > 2 ? P.length : P.length - 1; };
+// Datos (etiqueta, espesor, alto, vanos, oculto) del muro i, sea del contorno o suelto; se crean si faltan
+export function metaMuro(esp, i) {
+  const n = murosContorno(esp);
+  if (i >= n) return esp.tramos?.[i - n] || {};
+  esp.muros = Array.isArray(esp.muros) ? esp.muros : [];
+  return (esp.muros[i] ||= {});
+}
 export function muros(esp) {
-  const P = esp?.puntos || [];
-  if (P.length < 2) return [];
-  const n = esp.cerrado && P.length > 2 ? P.length : P.length - 1;
-  const cx = P.reduce((a, p) => a + +p.x, 0) / P.length, cz = P.reduce((a, p) => a + +p.z, 0) / P.length;
+  const P = esp?.puntos || [], T = (esp?.tramos || []).filter((t) => t?.a && t?.b);
+  if (P.length < 2 && !T.length) return [];
+  const n = murosContorno(esp);
+  const todos = [...P, ...T.flatMap((t) => [t.a, t.b])];
+  const cx = (P.length ? P : todos).reduce((a, p) => a + +p.x, 0) / (P.length || todos.length), cz = (P.length ? P : todos).reduce((a, p) => a + +p.z, 0) / (P.length || todos.length);
   const out = [];
   for (let i = 0; i < n; i++) {
     const a = [+P[i].x, +P[i].z], b = [+P[(i + 1) % P.length].x, +P[(i + 1) % P.length].z];
@@ -430,6 +441,14 @@ export function muros(esp) {
     const meta = esp.muros?.[i] || {};
     out.push({ i, a, b, largo: L, n: nn, espesor: +meta.espesor || 15, alto: +meta.alto || +esp.alto || 240, etiqueta: meta.etiqueta || '', oculto: !!meta.oculto, vanos: Array.isArray(meta.vanos) ? meta.vanos : [] });
   }
+  (esp.tramos || []).forEach((t, j) => { // muros sueltos: adentro = hacia el centro del espacio (se puede invertir)
+    if (!t?.a || !t?.b) return;
+    const a = [+t.a.x, +t.a.z], b = [+t.b.x, +t.b.z], dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz) || 1;
+    let nn = [-dz / L, dx / L];
+    if ((cx - (a[0] + b[0]) / 2) * nn[0] + (cz - (a[1] + b[1]) / 2) * nn[1] < -1e-6) nn = [-nn[0], -nn[1]];
+    if (t.invertir) nn = [-nn[0], -nn[1]];
+    out.push({ i: n + j, tramo: j, a, b, largo: L, n: nn, espesor: +t.espesor || 15, alto: +t.alto || +esp.alto || 240, etiqueta: t.etiqueta || '', oculto: !!t.oculto, vanos: Array.isArray(t.vanos) ? t.vanos : [] });
+  });
   return out;
 }
 
@@ -755,9 +774,9 @@ function dibujarVano(g, v, m, xl, k, M) {
 function dibujarEspacio(st, esp, M, { canto = true } = {}) {
   const W = muros(esp);
   if (!W.length) return;
-  const P = esp.puntos;
-  // piso
-  const xs = P.map((p) => +p.x), zs = P.map((p) => +p.z);
+  const P = esp.puntos || [];
+  // piso (con el contorno; los muros sueltos no cierran piso)
+  const xs = (P.length >= 2 ? P : W.flatMap((m) => [{ x: m.a[0] }, { x: m.b[0] }])).map((p) => +p.x), zs = (P.length >= 2 ? P : W.flatMap((m) => [{ z: m.a[1] }, { z: m.b[1] }])).map((p) => +p.z);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
   const f = document.createElement('div');
   f.className = 'c3-floor c3-piso';
@@ -767,7 +786,7 @@ function dibujarEspacio(st, esp, M, { canto = true } = {}) {
     transform: translate3d(${(x0 + x1) / 2}em, -.05em, ${(z0 + z1) / 2}em) rotateX(90deg) translate(-50%, -50%);`;
   st.rig.prepend(f);
   // muros
-  const conectado = (i, fin) => esp.cerrado || (fin ? i < W.length - 1 : i > 0);
+  const nC = murosContorno(esp), conectado = (i, fin) => i < nC && (esp.cerrado || (fin ? i < nC - 1 : i > 0)); // los sueltos no se unen
   for (const m of W) {
     if (m.oculto) continue; // muro eliminado en el editor
     const dx = m.b[0] - m.a[0], dz = m.b[1] - m.a[1];

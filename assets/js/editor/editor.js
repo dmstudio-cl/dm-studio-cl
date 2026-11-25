@@ -6,7 +6,7 @@ import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { despiece, medidaFrente } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
-import { huella, girar } from './modelo.js';
+import { huella, girar, metaMuro, murosContorno } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo, tiradoresCliente } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
@@ -36,7 +36,8 @@ const st = createStage(escena, { rx: -20, ry: -30, minRx: -70, maxRx: 0 });
 let modelo = cargar() || ejemplo();
 let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirador'|'cubierta', m, col, fila, t }
 let vista = '3d';          // '3d' | 'frente' | 'planta'
-let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros'
+let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros' | 'medir'
+let medF = null, cursorF = null; // huincha en Frente: primer punto y cursor
 let zoom = 1;
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false, cliente: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
@@ -106,6 +107,7 @@ function rehacer() { if (!fut.length) return; hist.push(JSON.stringify(modelo));
 function validarSel() {
   if (sel?.tipo === 'multi') { sel.ids = sel.ids.filter((id) => modulo(id)); if (sel.ids.length < 2) sel = sel.ids.length ? { tipo: 'modulo', m: sel.ids[0] } : null; }
   else if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
+  else if (sel?.tipo === 'medida') { if (!(modelo.medidas || []).some((x) => x.id === sel.id)) sel = null; }
   else if (sel?.tipo === 'vano') { if (!vanoSel()) sel = null; }
   else if (sel?.tipo === 'repisa') { const c = modulo(sel.m) && celdas(modulo(sel.m)).find((k) => k.col === sel.col && k.fila === sel.fila); if (!c || sel.i >= c.repisas) sel = c ? { tipo: 'frente', m: sel.m, col: sel.col, fila: sel.fila } : null; }
   else if (sel?.tipo === 'pieza') { if (!modulo(sel.m)) sel = null; }
@@ -304,7 +306,7 @@ function nombreClave(k) {
   return k;
 }
 // Registro guardado de una ventana o puerta (para leer o cambiar su material)
-const vanoRaw = (d, { i, v }) => d.espacio?.muros?.[i]?.vanos?.find((x) => x.id === v);
+const vanoRaw = (d, { i, v }) => (d.espacio ? metaMuro(d.espacio, i) : {}).vanos?.find((x) => x.id === v);
 function aplicarMaterial(dest, mid) {
   if (dest.vano) {
     const r = vanoRaw(modelo, dest.vano); if (!r) return;
@@ -321,7 +323,7 @@ function aplicarMaterial(dest, mid) {
 function pintarMateriales() {
   const usados = new Map();
   for (const m of modelo.modulos) for (const mid of Object.values(m.materiales || {})) usados.set(mid, (usados.get(mid) || 0) + 1);
-  for (const w of modelo.espacio?.muros || []) for (const v of w?.vanos || []) if (v.material) usados.set(v.material, (usados.get(v.material) || 0) + 1);
+  for (const w of [...(modelo.espacio?.muros || []), ...(modelo.espacio?.tramos || [])]) for (const v of w?.vanos || []) if (v.material) usados.set(v.material, (usados.get(v.material) || 0) + 1);
   const q = ($('#mat-buscar')?.value || '').toLowerCase();
   const tarjeta = (mid, nombre, linea = '') => `<div class="ed-mat" data-mat="${esc(mid)}" title="Arrastra sobre una pieza, o haz clic para aplicarlo a la pieza seleccionada"><i class="ed-esfera" style="${esfera(mid)}"></i><span>${esc(nombre)}${linea ? `<br><small>${esc(linea)}</small>` : ''}</span></div>`;
   const lineas = [...new Set(MEL.map((x) => x.linea || 'Melaminas'))];
@@ -351,7 +353,7 @@ $('#materiales').addEventListener('click', (e) => {
   if (q) {
     cambiar(() => {
       modelo.modulos.forEach((m) => { for (const [k, v] of Object.entries(m.materiales || {})) if (v === q) delete m.materiales[k]; });
-      for (const w of modelo.espacio?.muros || []) for (const v of w?.vanos || []) if (v.material === q) delete v.material;
+      for (const w of [...(modelo.espacio?.muros || []), ...(modelo.espacio?.tramos || [])]) for (const v of w?.vanos || []) if (v.material === q) delete v.material;
     });
     pintarMateriales();
   }
@@ -520,7 +522,7 @@ function vanoSel(d = modelo) {
   if (sel?.tipo !== 'vano') return null;
   const w = murosDe(d.espacio)[sel.i]; if (!w) return null;
   const v = vanosDe(w).find((x) => x.id === sel.v); if (!v) return null;
-  return { w, v, raw: d.espacio.muros[sel.i].vanos.find((x) => x.id === sel.v) };
+  return { w, v, raw: (metaMuro(d.espacio, sel.i).vanos || []).find((x) => x.id === sel.v) };
 }
 // Muro donde se inserta un vano: el que se ve de frente o el seleccionado
 function muroParaVano() {
@@ -535,7 +537,7 @@ $('#vanos').addEventListener('click', (e) => {
   const w = murosDe(modelo.espacio)[i], def = VANOS[t];
   const ancho = Math.min(def.ancho, w.largo), alto = Math.min(def.alto, w.alto);
   const v = { id: uid('v'), tipo: t, desde: Math.round((w.largo - ancho) / 2), ancho, alto, antepecho: def.puerta ? 0 : Math.min(def.antepecho, w.alto - alto) };
-  cambiar((d) => { const m = d.espacio.muros; while (m.length <= i) m.push({ espesor: 15 }); m[i] = { ...(m[i] || {}), vanos: [...(m[i]?.vanos || []), v] }; });
+  cambiar((d) => { const m = metaMuro(d.espacio, i); m.vanos = [...(m.vanos || []), v]; });
   sel = { tipo: 'vano', i, v: v.id };
   muroFrente = i;
   if (vista !== 'frente') setVista('frente');
@@ -750,6 +752,7 @@ function pisoGrilla(mv = modelo) {
 // Encuadre: en Frente cabe completo a escala; en 3D, con margen para girar.
 let encuadreHecho = '';
 function encuadrar(forzar = true) {
+  if (!forzar && encuadreHecho && (herr === 'muros' || herr === 'medir')) return; // dibujando muros o midiendo: la vista no se mueve
   const L = limites(modeloVista(), { conMuros: vista === 'frente' ? !!muroActivo() : capas.muros });
   const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
   if (!forzar && clave === encuadreHecho) return;
@@ -924,9 +927,46 @@ function dibujarPlano() {
       }
     }
   }
-  const ms = sel?.m && !['multi', 'vano', 'muro'].includes(sel.tipo) ? modulosFrente().find((m) => m.id === sel.m) : null;
+  const ms = sel?.m && !['multi', 'vano', 'muro', 'medida'].includes(sel.tipo) ? modulosFrente().find((m) => m.id === sel.m) : null;
   if (ms) { cotasLaterales(ms, M); cotasAltura(ms, M); }
+  // medidas de la huincha en Frente (las de este muro, o las de la vista general)
+  const mu = muroActivo()?.i ?? null;
+  for (const md of (modelo.medidas || []).filter((x) => x?.vista === 'frente' && (x.muro ?? null) === mu)) cotaMedidaF(md.a, md.b, M, { id: md.id, sel: sel?.tipo === 'medida' && sel.id === md.id });
+  if (medF) cotaMedidaF([medF.x, medF.y], cursorF ? [cursorF.x, cursorF.y] : [medF.x, medF.y], M, { vivo: true });
 }
+
+// ----- huincha en Frente (dueño, 2026-11-25): cotas guardadas en modelo.medidas = [{ id, vista: 'frente', muro, a:[x,y], b:[x,y] }]
+function cotaMedidaF(a, b, M, { id, sel: s, vivo } = {}) {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]), g = el('g', { class: `medida${s ? ' sel' : ''}${vivo ? ' viva' : ''}`, ...(id ? { 'data-tipo': 'medida', 'data-id': id } : {}) }, plano);
+  const x1 = M.X(a[0]), y1 = M.Y(a[1]), x2 = M.X(b[0]), y2 = M.Y(b[1]);
+  el('line', { x1, y1, x2, y2, class: 'toque' }, g); el('line', { x1, y1, x2, y2 }, g);
+  const ang = Math.atan2(y2 - y1, x2 - x1), nx = -Math.sin(ang) * 6, ny = Math.cos(ang) * 6;
+  for (const [x, y] of [[x1, y1], [x2, y2]]) el('line', { x1: x - nx, y1: y - ny, x2: x + nx, y2: y + ny }, g);
+  let rot = ang * 180 / Math.PI; if (rot > 90) rot -= 180; if (rot < -90) rot += 180;
+  const tx = (x1 + x2) / 2, ty = (y1 + y2) / 2;
+  if (L > .05) el('text', { x: tx, y: ty - 7, 'text-anchor': 'middle', transform: `rotate(${rot} ${tx} ${ty})` }, g).textContent = `${cm(L)} cm`;
+}
+// Punto de la huincha en Frente: esquina de un mueble, ventana o muro (10 px) o la línea más cercana (12 px)
+function imanFrente(p) {
+  const M = mapa(), rects = modulosFrente().map((m) => [xF(m), +m.elevacion, xF(m) + +m.ancho, +m.elevacion + +m.alto]);
+  const W = muroActivo();
+  if (W) { rects.push([0, 0, W.largo, W.alto]); for (const v of vanosDe(W)) rects.push([v.desde, v.antepecho, v.desde + v.ancho, v.antepecho + v.alto]); }
+  const P = [M.X(p.x), M.Y(p.y)];
+  let best = null, dmin = 10;
+  for (const [x0, y0, x1, y1] of rects) for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) { const d = Math.hypot(M.X(x) - P[0], M.Y(y) - P[1]); if (d < dmin) { dmin = d; best = { x, y }; } }
+  if (best) return best;
+  dmin = 12;
+  for (const [x0, y0, x1, y1] of rects) {
+    const cx = Math.max(x0, Math.min(x1, p.x)), cy = Math.max(y0, Math.min(y1, p.y));
+    for (const q of [{ x: x0, y: cy }, { x: x1, y: cy }, { x: cx, y: y0 }, { x: cx, y: y1 }]) { const d = Math.hypot(M.X(q.x) - P[0], M.Y(q.y) - P[1]); if (d < dmin) { dmin = d; best = { x: r1(q.x), y: r1(q.y) }; } }
+  }
+  return best || { x: r1(p.x), y: r1(p.y) };
+}
+// Clic derecho sobre una medida (Planta o Frente): queda elegida y Supr la borra
+plano.addEventListener('contextmenu', (e) => {
+  const t = e.target.closest?.('[data-tipo="medida"]'); if (!t) return;
+  e.preventDefault(); sel = { tipo: 'medida', id: t.dataset.id }; render(); aviso('Medida elegida: Supr la borra.');
+});
 
 // ----- distancias a los lados en Frente: al objeto más cercano (mueble, ventana o puerta, extremo del muro)
 // Cuentan solo los objetos que comparten altura con el mueble (un basal bajo una ventana no choca con ella).
@@ -1093,6 +1133,17 @@ plano.addEventListener('pointerdown', (e) => {
   const t = e.target.closest('[data-tipo]');
   plano.setPointerCapture(e.pointerId);
 
+  if (herr === 'medir') { // huincha en Frente: 2 clics = una cota guardada
+    const q = imanFrente(p);
+    if (!medF) { medF = q; cursorF = q; dibujarPlano(); return; }
+    const a = [medF.x, medF.y], b = [q.x, q.y]; medF = null; cursorF = null;
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < .5) { dibujarPlano(); return; }
+    const id = uid('med'), muro = muroActivo()?.i ?? null;
+    cambiar((d) => { d.medidas = [...(d.medidas || []), { id, vista: 'frente', muro, a, b }]; });
+    aviso(`Medida: ${cm(Math.hypot(b[0] - a[0], b[1] - a[1]))} cm. Clic derecho sobre ella y Supr para borrarla.`);
+    return;
+  }
+  if (t?.dataset.tipo === 'medida') { sel = { tipo: 'medida', id: t.dataset.id }; render(); return; }
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
   // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
   if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
@@ -1149,6 +1200,7 @@ plano.addEventListener('pointerdown', (e) => {
 
 plano.addEventListener('pointermove', (e) => {
   if (vista === 'planta') return planta.move(e);
+  if (vista === 'frente' && medF) { const M = mapa(), r = plano.getBoundingClientRect(); cursorF = imanFrente({ x: M.x(e.clientX - r.left), y: M.y(e.clientY - r.top) }); dibujarPlano(); return; }
   if (vista === 'inferior') {
     if (!gInf) return;
     const m = moduloInferior(); if (!m) return;
@@ -1712,6 +1764,14 @@ function props() {
       <p class="ed-ayuda">Medidas en cm. Arrástrala en la vista Frente del muro; las flechas la mueven (Mayús: 10 cm). Para cambiarle el color, arrastra un material de la pestaña «Materiales» sobre ella.</p></div>`;
     return;
   }
+  if (sel.tipo === 'medida') {
+    const md = (modelo.medidas || []).find((x) => x.id === sel.id); if (!md) { sel = null; return props(); }
+    const L = Math.hypot(md.b[0] - md.a[0], md.b[1] - md.a[1]);
+    P.innerHTML = `<div class="ed-props"><p class="tit">Medida · ${cm(L)} cm</p><p class="sub">Huincha · vista ${md.vista === 'planta' ? 'Planta' : 'Frente'}</p>
+      <div class="ed-botones"><button data-a="borrar-medida" class="peligro">Borrar medida (Supr)</button></div>
+      <p class="ed-ayuda">Las medidas quedan guardadas en el proyecto como cotas de referencia; no las ve el cliente.</p></div>`;
+    return;
+  }
   if (sel.tipo === 'multi') {
     const mods = sel.ids.map(modulo).filter(Boolean);
     P.innerHTML = `<div class="ed-props"><p class="tit">${mods.length} módulos</p><p class="sub">Selección múltiple</p>
@@ -1732,7 +1792,8 @@ function props() {
       <label class="ed-check"><input type="checkbox" data-k="e.cerrado"${modelo.espacio.cerrado ? ' checked' : ''}> Espacio cerrado (une el último muro con el primero)</label>
       <div class="ed-botones">${w.oculto
         ? '<button data-a="restaurar-muro" class="ed-primario">Restaurar este muro</button>'
-        : '<button data-a="ver-muro" class="ed-primario">Ver de frente</button><button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>'}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+        : `<button data-a="ver-muro" class="ed-primario">Ver de frente</button>${w.tramo != null ? '<button data-a="invertir-muro" title="Cambia hacia qué lado mira la cara interior">Invertir lado</button>' : ''}<button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>`}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
+      ${w.tramo != null ? '<p class="ed-ayuda">Muro suelto: arrastra sus puntas en Planta; si acercas una a la punta de otro muro, se pegan (y si es el extremo del contorno, se une a él).</p>' : ''}
       ${w.oculto ? '<p class="ed-ayuda">Muro eliminado: no se dibuja ni lo ve el cliente. Queda punteado en Planta para poder restaurarlo.</p>' : ''}
       <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p></div>`;
     return;
@@ -1905,6 +1966,7 @@ function panelEsquinero(m) {
       ${num('alto', 'Alto', m.alto)}${num('zocalo', 'Zócalo', m.zocalo)}
       ${opciones('esquina', 'Rincón del muro', m.esquina === 'izq' ? 'izq' : 'der', { der: 'A la derecha', izq: 'A la izquierda' }, 'ancho2')}
       ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.cuadrado) return num('esq_hoja_a', 'Hoja de la puerta en L', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
+      ${g.sol === '1' ? num('soporte_alto', 'Alto de la barra delantera', g.sop) : ''}
       ${S?.niveles ? opciones('niveles', 'Cajones por lado', String(g.niveles), { 2: '2 cajones', 3: '3 cajones' }, 'ancho2') : ''}
       ${S?.frenteCajon ? num('frente_cajon', 'Frente del cajón (por lado)', g.ld) : ''}
       ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
@@ -1913,6 +1975,7 @@ function panelEsquinero(m) {
     <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>
     <div class="ed-botones"><button data-a="esq-sugerido">Medidas sugeridas (${sug.ancho} × ${sug.profundidad})</button><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="borrar-modulo" class="peligro">Eliminar</button></div>
     ${S && !['1', '3'].includes(g.sol) || g.sol === '1' ? `<p class="ed-ayuda">Línea de aire en el rincón entre las dos hojas: ${cm(luzRincon(g) * 10)} mm (mínimo 3 mm; crece si el ancho de la hoja no la deja girar).</p>` : ''}
+    ${g.sol === '1' ? '<p class="ed-ayuda">La puerta pasa bajo la barra delantera (7 cm por defecto) y sobre la base, con 3 mm de aire arriba, abajo y a los lados: si cambias la barra, la puerta se ajusta sola.</p>' : ''}
     ${g.sol === '1' ? (() => { const b = bandejaGiratoria(g); return `<p class="ed-ayuda">Bandejas: Ø ${cm(2 * b.r)} cm, centradas (se piden cuadradas de ${cm(2 * b.r)} × ${cm(2 * b.r)}).${Math.abs(+m.ancho - +m.profundidad) > .5 ? ' Ojo: la puerta giratoria va en un módulo cuadrado; cambia la hoja para igualar los lados.' : ''}</p>`; })() : ''}
     ${g.sol === '3' ? (() => { const k = cajonSpaceCorner(g), c = CORREDERAS_LARGOS.filter((l) => l <= Math.min(k.latA, k.latB)).pop(); return `<p class="ed-ayuda">Cajón en diagonal: caja de ${cm(Math.min(k.latA, k.latB))} cm de largo, pasillo de ${cm(k.pasillo)} cm. Corredera: ${c ? `${c} cm` : 'ninguna cabe'}${c && Math.min(k.latA, k.latB) - c > 10 ? ' (la caja es bastante más larga: si quieres, busca una corredera más larga en Imperial)' : ''}.</p>`; })() : ''}
     ${(() => { const he = hojasEditables(m, g); if (!he) return ''; const fuera = [he.a, he.b].some((w) => w < he.rango[0] - .15 || w > he.rango[1] + .15); return `<p class="ed-ayuda${fuera ? ' ed-error' : ''}">${g.sol === '3' ? 'Puertas laterales' : 'Hojas'}: de ${he.rango[0]} a ${he.rango[1]} cm cada una${fuera ? ' · alguna está fuera de ese rango' : ''}. Al cambiar una, el lado se alarga o se acorta y el rincón queda en su lugar.</p>`; })()}
@@ -2118,9 +2181,9 @@ $('#props').addEventListener('change', (e) => {
   if (s.tipo === 'muro') {
     cambiar((d) => {
       const e = d.espacio;
-      if (k === 'w.etiqueta') e.muros[s.i] = { ...(e.muros[s.i] || {}), etiqueta: String(v).slice(0, 80) };
-      if (k === 'w.espesor' && v > 0) e.muros[s.i] = { ...(e.muros[s.i] || {}), espesor: v };
-      if (k === 'w.alto' && v > 0) e.muros[s.i] = { ...(e.muros[s.i] || {}), alto: v };
+      if (k === 'w.etiqueta') metaMuro(e, s.i).etiqueta = String(v).slice(0, 80);
+      if (k === 'w.espesor' && v > 0) metaMuro(e, s.i).espesor = v;
+      if (k === 'w.alto' && v > 0) metaMuro(e, s.i).alto = v;
       if (k === 'w.largo') planta.cambiarLargo(e, s.i, v);
       if (k === 'e.alto' && v > 0) e.alto = v;
       if (k === 'e.cerrado') e.cerrado = !!v;
@@ -2155,7 +2218,7 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'ver-materiales' && sel.tipo === 'vano') { $('.ed-tabs [data-tab="mat"]').click(); return; }
   if (b.dataset.a === 'borrar-vano' || b.dataset.a === 'centrar-vano') {
     const s = { ...sel };
-    if (b.dataset.a === 'borrar-vano') { cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); }
+    if (b.dataset.a === 'borrar-vano') { cambiar((d) => { const m = metaMuro(d.espacio, s.i); m.vanos = (m.vanos || []).filter((x) => x.id !== s.v); }); sel = null; render(); }
     else cambiarVano((r, w, def) => { r.desde = Math.round((w.largo - (+r.ancho || def.ancho)) / 2 * 10) / 10; });
     return;
   }
@@ -2188,12 +2251,15 @@ $('#props').addEventListener('click', (e) => {
   }
   if (b.dataset.a === 'borrar-multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
   if (b.dataset.a === 'eliminar-muro' || b.dataset.a === 'restaurar-muro') {
-    const i = sel.i, oculto = b.dataset.a === 'eliminar-muro';
-    cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto }; });
+    const i = sel.i, oculto = b.dataset.a === 'eliminar-muro', n = murosContorno(modelo.espacio);
+    if (oculto && i >= n) { cambiar((d) => { d.espacio.tramos.splice(i - n, 1); }); sel = null; render(); return; } // muro suelto: se borra (Ctrl+Z lo trae)
+    cambiar((d) => { metaMuro(d.espacio, i).oculto = oculto; });
     return;
   }
+  if (b.dataset.a === 'borrar-medida') { borrarSel(); return; }
+  if (b.dataset.a === 'invertir-muro') { const i = sel.i; cambiar((d) => { const t = metaMuro(d.espacio, i); t.invertir = !t.invertir; }); return; }
   if (b.dataset.a === 'borrar-muros') {
-    if (confirm('¿Borrar todos los muros del espacio?')) { cambiar((d) => { d.espacio = { ...(d.espacio || {}), puntos: [], muros: [], cerrado: false }; }); sel = null; render(); }
+    if (confirm('¿Borrar todos los muros del espacio?')) { cambiar((d) => { d.espacio = { ...(d.espacio || {}), puntos: [], muros: [], tramos: [], cerrado: false }; }); sel = null; render(); }
     return;
   }
   if (b.dataset.a === 'girar-' || b.dataset.a === 'girar+') { girarConAviso(modulo(sel.m), b.dataset.a === 'girar-' ? 90 : -90); return; }
@@ -2288,9 +2354,10 @@ $('#props').addEventListener('click', (e) => {
 
 function borrarSel() {
   if (!sel) return;
+  if (sel.tipo === 'medida') { const id = sel.id; cambiar((d) => { d.medidas = (d.medidas || []).filter((x) => x.id !== id); }); sel = null; render(); aviso('Medida borrada (Ctrl+Z la trae de vuelta).'); return; }
   if (sel.tipo === 'objeto') { const id = sel.o; cambiar((d) => { d.objetos = (d.objetos || []).filter((o) => o.id !== id); }); sel = null; render(); return; }
   if (sel.tipo === 'multi') { const ids = sel.ids; cambiar((d) => { d.modulos = d.modulos.filter((m) => !ids.includes(m.id)); }); sel = null; render(); return; }
-  if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = d.espacio.muros[s.i]; m.vanos = m.vanos.filter((x) => x.id !== s.v); }); sel = null; render(); return; }
+  if (sel.tipo === 'vano') { const s = { ...sel }; cambiar((d) => { const m = metaMuro(d.espacio, s.i); m.vanos = (m.vanos || []).filter((x) => x.id !== s.v); }); sel = null; render(); return; }
   if (sel.tipo === 'artefacto') { const s = { ...sel }; cambiar((d) => { const m = d.modulos.find((x) => x.id === s.m); m.artefactos = (m.artefactos || []).filter((x) => x.id !== s.a); }); sel = { tipo: 'cubierta', m: s.m }; render(); return; }
   if (sel.tipo === 'soporte') { // Supr sobre el soporte delantero: el mueble va sin él
     const m = modulo(sel.m); if (!m) return;
@@ -2315,9 +2382,10 @@ function borrarSel() {
     cambiar(() => (s.dir === 'v' ? unirDerecha(m, s.col) : unirAbajo(m, s.col, s.fila)));
     sel = { tipo: 'frente', m: m.id, col: s.col, fila: s.dir === 'v' ? 0 : s.fila }; render(); return;
   }
-  if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (se puede restaurar)
-    const i = sel.i;
-    cambiar((d) => { d.espacio.muros[i] = { ...(d.espacio.muros[i] || {}), oculto: true }; });
+  if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (del contorno se puede restaurar; el suelto se borra)
+    const i = sel.i, n = murosContorno(modelo.espacio);
+    if (i >= n) { cambiar((d) => { d.espacio.tramos.splice(i - n, 1); }); sel = null; render(); return; }
+    cambiar((d) => { metaMuro(d.espacio, i).oculto = true; });
     return;
   }
   const m = modulo(sel.m);
@@ -2351,7 +2419,8 @@ function setHerr(h) {
   $$('[data-herr]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.herr === h)));
   lienzo.className = lienzo.className.replace(/\bh-\S+/g, '').trim() + ` h-${h}`;
   // Cada herramienta trabaja en su vista: muros en Planta, divisiones en Frente; dibujar módulo en ambas.
-  const necesita = h === 'muros' ? 'planta' : h.startsWith('div') ? 'frente' : h === 'dibujar' && vista === '3d' ? 'frente' : null;
+  medF = null; cursorF = null; planta.cancelar?.();
+  const necesita = h === 'muros' ? 'planta' : h.startsWith('div') ? 'frente' : (h === 'dibujar' || h === 'medir') && vista === '3d' ? (h === 'medir' ? 'planta' : 'frente') : null;
   if (necesita && vista !== necesita) setVista(necesita);
   estadoEl.textContent = ayuda();
 }
@@ -2361,13 +2430,15 @@ function ayuda() {
   if (vista === 'planta') return {
     sel: 'Arrastra un mueble para moverlo (imán a los muros, Alt sin imán) · R gira · clic en una cota para escribirla',
     dibujar: 'Arrastra para dibujar la huella de un mueble (ancho × fondo)',
-    muros: 'Clic para cada esquina (90°, Mayús libre) · clic en el primer punto cierra · Enter o doble clic termina · Retroceso deshace',
+    muros: 'Clic en un punto y clic en otro: queda un muro (90°; Mayús libre). Si empiezas o terminas en la punta de otro muro, se unen · Esc cancela',
+    medir: 'Huincha: clic en un punto y clic en otro (se pega a la línea más cercana de un mueble o muro) · clic derecho sobre una medida y Supr la borra',
   }[herr] || '';
   return {
     sel: 'Clic selecciona · arrastra divisores y tiradores',
     dibujar: 'Arrastra para dibujar un módulo (se apoya en el piso si empiezas cerca)',
     'div-v': 'Clic en un frente para dividirlo en columnas (imán a la mitad)',
     'div-h': 'Clic en un frente para dividirlo en filas (imán a la mitad)',
+    medir: 'Huincha: clic en un punto y clic en otro (se pega a la línea más cercana de un mueble) · clic derecho sobre una medida y Supr la borra',
   }[herr];
 }
 function aviso(t) { estadoEl.textContent = t; }
@@ -2616,6 +2687,8 @@ window.addEventListener('keydown', (e) => {
   else if (k === '3') setVista('planta');
   else if (k === '4') setVista('inferior');
   else if (k === 'w') setHerr('muros');
+  else if (k === 'u') setHerr('medir');
+  else if (k === 'escape' && medF) { medF = null; cursorF = null; dibujarPlano(); }
   else if (k === 'v' || k === 'escape') { setHerr('sel'); if (k === 'escape') { sel = null; render(); } }
   else if (k === 'm') setHerr('dibujar');
   else if (k === 'd') setHerr('div-v');

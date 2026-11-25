@@ -187,6 +187,14 @@ body.ed { height: 100vh; height: 100dvh; display: grid; grid-template-rows: auto
 .ed-plano .huella.sel { stroke: var(--red-accent); stroke-dasharray: none; stroke-width: 1.5; fill: rgba(180, 50, 46, .12); }
 .ed-plano .frente-linea { stroke: var(--bone); stroke-width: 3; pointer-events: none; }
 .ed-plano .nombre { fill: var(--bone); font: 500 11px/1 var(--sans); pointer-events: none; paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
+/* huincha de medir */
+.ed-plano .medida line { stroke: #e0b25a; stroke-width: 1.5; }
+.ed-plano .medida line.toque { stroke: transparent; stroke-width: 12; cursor: pointer; }
+.ed-plano .medida text { fill: #e0b25a; font: 600 12px/1 var(--mono, monospace); paint-order: stroke; stroke: var(--ink); stroke-width: 3px; pointer-events: none; }
+.ed-plano .medida.viva line { stroke-dasharray: 5 4; pointer-events: none; }
+.ed-plano .medida.viva line.toque { display: none; }
+.ed-plano .medida.sel line:not(.toque) { stroke: var(--red-accent, #b4322e); stroke-width: 2.5; }
+.ed-plano .medida.sel text { fill: var(--red-accent, #b4322e); }
 .ed-plano .esq-div { stroke: var(--bone); stroke-width: 2; opacity: .75; pointer-events: none; }
 .ed-plano .esq-pregunta { fill: #b4322e; font: 700 22px/1 var(--sans); pointer-events: none; paint-order: stroke; stroke: var(--ink); stroke-width: 3px; }
 .ed-plano .borrador-muro { fill: none; stroke: var(--red-accent); stroke-width: 3; stroke-dasharray: 6 4; pointer-events: none; }
