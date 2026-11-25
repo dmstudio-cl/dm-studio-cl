@@ -5,6 +5,7 @@ import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro,
 import { ARTEFACTOS } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { cubiertaDe, tablero, celdas, fondoTotal, GAP } from './modelo.js';
+import { huellaEsquinero, frentesPlanta, geoEsquinero, divisionesEsquinero } from './esquinero.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -103,6 +104,17 @@ export function crearPlanta(ctx) {
     // muebles: huella, frente marcado y nombre
     for (const m of modelo.modulos) {
       const h = huella(m), esSel = sel?.m === m.id || !!sel?.ids?.includes(m.id);
+      if (m.tipo === 'esquinero') { // contorno en L, con sus dos frentes; «?» rojo hasta que se elija la solución
+        const aM = (lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
+        const hl = huellaEsquinero(m).map(([x, z]) => aM(x, z));
+        el('polygon', { points: hl.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `huella${esSel ? ' sel' : ''}`, 'data-tipo': 'huella', 'data-m': m.id }, plano);
+        for (const d of divisionesEsquinero(m)) { const p = aM(...d.a), q = aM(...d.b); el('line', { x1: M.X(p[0]), y1: M.Y(p[1]), x2: M.X(q[0]), y2: M.Y(q[1]), class: 'esq-div' }, plano); } // divisiones diagonales
+        for (const [a, b] of frentesPlanta(m)) { const p = aM(...a), q = aM(...b); el('line', { x1: M.X(p[0]), y1: M.Y(p[1]), x2: M.X(q[0]), y2: M.Y(q[1]), class: 'frente-linea' }, plano); }
+        const g = geoEsquinero(m), [qx, qz] = aM(g.X((g.xb + g.W) / 2), g.fa / 2);
+        el('text', { x: M.X(qx), y: M.Y(qz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
+        if (!g.sol) el('text', { x: M.X(qx), y: M.Y(qz) + 26, 'text-anchor': 'middle', class: 'esq-pregunta' }, plano).textContent = '?';
+        continue;
+      }
       el('polygon', { points: h.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `huella${esSel ? ' sel' : ''}`, 'data-tipo': 'huella', 'data-m': m.id }, plano);
       el('line', { x1: M.X(h[2][0]), y1: M.Y(h[2][1]), x2: M.X(h[3][0]), y2: M.Y(h[3][1]), class: 'frente-linea' }, plano);
       const [cx, cz] = centro(m);
@@ -188,7 +200,7 @@ export function crearPlanta(ctx) {
   // Arcos de apertura de las puertas de un mueble, en su frente. Por columna se dibuja la puerta elegida
   // (o la más alta de esa columna); una sección de varias hojas abre hacia afuera desde el centro.
   function aperturas(m, M, sel) {
-    if (m.artefacto) return;
+    if (m.artefacto || m.tipo === 'esquinero') return;
     const D = fondoTotal(m), r = +m.rotacion || 0;
     const P = (lx, lz) => { const [dx, dz] = girar(lx, lz, r); return [M.X(+m.x + dx), M.Y(+m.z + dz)]; };
     const cs = celdas(m).filter((c) => c.tipo === 'puerta' || c.tipo === 'puerta_doble');

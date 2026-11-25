@@ -17,6 +17,8 @@ import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
+import { SOLUCIONES, ORDEN_SOLUCIONES, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria } from './esquinero.js';
+const CORREDERAS_LARGOS = [25, 30, 35, 40, 45, 50, 55, 60];
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -120,6 +122,10 @@ function registrar(antes) {
 
 // Las columnas suman el ancho del módulo y los frentes de cada columna, su alto útil.
 function normalizar(m) {
+  if (m.tipo === 'esquinero') { // sus frentes salen de la solución elegida; los tiradores, con el modelo general
+    m.columnas = []; if (!(m.tiradores || []).some((t) => t?.esq && tiradorDef(t.modelo))) m.tiradores = [{ id: 'esq', esq: true, modelo: 'barra-128', color: 'negro' }];
+    return;
+  }
   const W = +m.ancho, HU = +m.alto - Zde(m);
   if (!m.columnas?.length) m.columnas = [{ ancho: W, frentes: [{ tipo: 'puerta', alto: HU }] }];
   const sw = m.columnas.reduce((a, c) => a + +c.ancho, 0) || 1;
@@ -857,6 +863,13 @@ function dibujarPlano() {
   for (const m of modulosFrente()) {
     const ox = xF(m), oy = +m.elevacion, W = +m.ancho, H = +m.alto, Z = Zde(m);
     const esSel = sel?.m === m.id, enMulti = !!sel?.ids?.includes(m.id);
+    if (m.tipo === 'esquinero') { // de frente se ve el lado 1; se elige y se mueve como un bloque
+      if (Z > 0) el('rect', { x: M.X(ox), y: M.Y(oy + Z), width: W * M.s, height: Z * M.s, class: 'zona-zocalo' }, plano);
+      el('rect', { x: M.X(ox), y: M.Y(oy + H), width: W * M.s, height: (H - Z) * M.s, class: `celda${esSel ? ' sel' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': 0, 'data-fila': 0 }, plano);
+      const S = SOLUCIONES[geoEsquinero(m).sol];
+      el('text', { x: M.X(ox + W / 2), y: M.Y(oy + H / 2) + 4, 'text-anchor': 'middle', class: 'vano-txt' }, plano).textContent = `${m.nombre} · ${S ? S.nombre : '?'}`;
+      continue;
+    }
     // zócalo
     if (Z > 0) el('rect', { x: M.X(ox), y: M.Y(oy + Z), width: W * M.s, height: Z * M.s, class: `zona-zocalo${esSel && sel.tipo === 'zocalo' ? ' sel' : ''}`, 'data-tipo': 'zocalo', 'data-m': m.id }, plano);
     // celdas (frentes)
@@ -1106,7 +1119,7 @@ plano.addEventListener('pointerdown', (e) => {
   // Mayús + clic sobre un mueble: lo agrega o lo quita de la selección múltiple
   if (e.shiftKey && herr === 'sel' && d.tipo !== 'div-v' && d.tipo !== 'div-h') { alternar(m.id); return; }
 
-  if (m.artefacto && d.tipo === 'celda') {
+  if ((m.artefacto || m.tipo === 'esquinero') && d.tipo === 'celda') {
     sel = { tipo: 'modulo', m: m.id };
     if (herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), e0: +m.elevacion || 0, movido: false, antes: JSON.stringify(modelo) };
     render(); return;
@@ -1607,7 +1620,7 @@ function arbol() {
         h += btn({ tipo: 'frente', m: m.id, col: ci, fila: fi }, 'n3', `${tipoN(f)} <small>${med}</small>`);
       });
     });
-    (m.tiradores || []).forEach((t) => { h += btn({ tipo: 'tirador', m: m.id, t: t.id }, 'n1', `↳ ${esc(t.nombre || tiradorDef(t.modelo)?.nombre || t.modelo)} <small>c${t.col + 1}·f${t.fila + 1}</small>`); });
+    (m.tiradores || []).filter((t) => !t.esq).forEach((t) => { h += btn({ tipo: 'tirador', m: m.id, t: t.id }, 'n1', `↳ ${esc(t.nombre || tiradorDef(t.modelo)?.nombre || t.modelo)} <small>c${t.col + 1}·f${t.fila + 1}</small>`); });
     if (m.cubierta) h += btn({ tipo: 'cubierta', m: m.id }, 'n1', 'Cubierta');
     for (const a of artefactosDe(m)) h += btn({ tipo: 'artefacto', m: m.id, a: a.id }, 'n3', `${ARTEFACTOS[a.tipo].nombre} <small>${cm(a.ancho)}×${cm(a.fondo)}</small>`);
     return h;
@@ -1725,6 +1738,7 @@ function props() {
     return;
   }
   const m = modulo(sel.m); if (!m) { sel = null; return props(); }
+  if (m.tipo === 'esquinero') { P.innerHTML = panelEsquinero(m); return; }
   let h = '';
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.artefacto) {
     P.innerHTML = `<div class="ed-props"><p class="tit">${esc(m.nombre)}</p><p class="sub">Artefacto de piso</p>
@@ -1876,6 +1890,87 @@ function props() {
   P.innerHTML = `<div class="ed-props">${h}</div>`;
 }
 
+// Panel del módulo esquinero: solución de esquina, medidas de cada lado y cajones
+function panelEsquinero(m) {
+  const g = geoEsquinero(m), S = SOLUCIONES[g.sol], sug = medidasSugeridas(m);
+  const bot = (k, n) => `<button data-a="esq-sol:${k}"${g.sol === k ? ' class="ed-primario"' : ''}>${n}</button>`;
+  return `<div class="ed-props"><p class="tit">${esc(m.nombre)}</p><p class="sub">Módulo esquinero · ${S ? esc(S.nombre) : 'sin solución elegida'}</p>
+    <p class="sub" style="margin-top:10px">Solución de esquina</p>
+    <div class="ed-botones">${ORDEN_SOLUCIONES.map((k) => bot(k, `${k} · ${SOLUCIONES[k].nombre}`)).join('')}${bot('', 'Sin elegir')}</div>
+    <p class="ed-ayuda">${S ? esc(S.ayuda) : 'Mientras no se elija, se ve un «?» rojo en el rincón y el cliente ve «precio por confirmar».'}</p>
+    <div class="ed-campos">
+      <label class="ed-campo ancho2">Nombre<input type="text" data-k="nombre" value="${esc(m.nombre)}"></label>
+      ${num('ancho', 'Largo lado 1 (muro de atrás)', m.ancho)}${num('profundidad', 'Largo lado 2 (muro del costado)', m.profundidad)}
+      ${num('fondo_a', 'Fondo del lado 1', g.fa)}${num('fondo_b', 'Fondo del lado 2', g.fb)}
+      ${num('alto', 'Alto', m.alto)}${num('zocalo', 'Zócalo', m.zocalo)}
+      ${opciones('esquina', 'Rincón del muro', m.esquina === 'izq' ? 'izq' : 'der', { der: 'A la derecha', izq: 'A la izquierda' }, 'ancho2')}
+      ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.cuadrado) return num('esq_hoja_a', 'Hoja de la puerta en L', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
+      ${S?.niveles ? opciones('niveles', 'Cajones por lado', String(g.niveles), { 2: '2 cajones', 3: '3 cajones' }, 'ancho2') : ''}
+      ${S?.frenteCajon ? num('frente_cajon', 'Frente del cajón (por lado)', g.ld) : ''}
+      ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
+      ${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
+    </div>
+    <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>
+    <div class="ed-botones"><button data-a="esq-sugerido">Medidas sugeridas (${sug.ancho} × ${sug.profundidad})</button><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="borrar-modulo" class="peligro">Eliminar</button></div>
+    ${S && !['1', '3'].includes(g.sol) || g.sol === '1' ? `<p class="ed-ayuda">Línea de aire en el rincón entre las dos hojas: ${cm(luzRincon(g) * 10)} mm (mínimo 3 mm; crece si el ancho de la hoja no la deja girar).</p>` : ''}
+    ${g.sol === '1' ? (() => { const b = bandejaGiratoria(g); return `<p class="ed-ayuda">Bandejas: Ø ${cm(2 * b.r)} cm, centradas (se piden cuadradas de ${cm(2 * b.r)} × ${cm(2 * b.r)}).${Math.abs(+m.ancho - +m.profundidad) > .5 ? ' Ojo: la puerta giratoria va en un módulo cuadrado; cambia la hoja para igualar los lados.' : ''}</p>`; })() : ''}
+    ${g.sol === '3' ? (() => { const k = cajonSpaceCorner(g), c = CORREDERAS_LARGOS.filter((l) => l <= Math.min(k.latA, k.latB)).pop(); return `<p class="ed-ayuda">Cajón en diagonal: caja de ${cm(Math.min(k.latA, k.latB))} cm de largo, pasillo de ${cm(k.pasillo)} cm. Corredera: ${c ? `${c} cm` : 'ninguna cabe'}${c && Math.min(k.latA, k.latB) - c > 10 ? ' (la caja es bastante más larga: si quieres, busca una corredera más larga en Imperial)' : ''}.</p>`; })() : ''}
+    ${(() => { const he = hojasEditables(m, g); if (!he) return ''; const fuera = [he.a, he.b].some((w) => w < he.rango[0] - .15 || w > he.rango[1] + .15); return `<p class="ed-ayuda${fuera ? ' ed-error' : ''}">${g.sol === '3' ? 'Puertas laterales' : 'Hojas'}: de ${he.rango[0]} a ${he.rango[1]} cm cada una${fuera ? ' · alguna está fuera de ese rango' : ''}. Al cambiar una, el lado se alarga o se acorta y el rincón queda en su lugar.</p>`; })()}
+    <p class="ed-ayuda">Lado 1 = el que va junto al muro de atrás; lado 2 = el que sale hacia adelante junto al muro del costado. El fondo de cada lado es el del cuerpo, como la profundidad de un basal. Al cambiar un largo, el rincón queda en su lugar.</p>
+    <p class="ed-ayuda">Todavía no cambia a los muebles vecinos: eso se define al fusionarlos en un mueble en L.</p></div>`;
+}
+// Al agrupar 1 esquinero con basales (dueño, 2026-11-24): cada basal se pega al lateral del esquinero que le toca, a
+// 0 cm, con la espalda en su muro. El que mira hacia el mismo lado que el esquinero va junto al lado 1; el que está
+// girado 90°, junto al lado 2. Devuelve cuántos movió.
+function pegarAlEsquinero(mods) {
+  const esq = mods.filter((m) => m.tipo === 'esquinero'); if (esq.length !== 1) return 0;
+  const e = esq[0], r = +e.rotacion || 0, W = +e.ancho, L = +e.profundidad, izq = e.esquina === 'izq';
+  const mundo = (lx, lz) => { const [dx, dz] = girar(lx, lz, r); return [r1(+e.x + dx), r1(+e.z + dz)]; };
+  let n = 0;
+  delete e.vecino_a; delete e.vecino_b;
+  for (const b of mods) {
+    if (b === e || b.artefacto || b.tipo === 'esquinero' || b.tipo === 'aereo') continue;
+    const dr = ((((+b.rotacion || 0) - r) % 360) + 360) % 360, Wb = +b.ancho;
+    if (Math.abs(dr) < 1 || Math.abs(dr - 360) < 1) { // lado 1: junto al muro de atrás
+      [b.x, b.z] = mundo(izq ? W : -Wb, 0); e.vecino_a = true; n++;
+    } else if (Math.abs(dr - 90) < 1 || Math.abs(dr - 270) < 1) { // lado 2: junto al muro del costado, mirando hacia adentro
+      b.rotacion = (r + (izq ? 90 : 270)) % 360;
+      [b.x, b.z] = izq ? mundo(0, L + Wb) : mundo(W, L); e.vecino_b = true; n++;
+    }
+  }
+  return n;
+}
+// Esquinero agrupado: al cambiar sus medidas, los basales del grupo lo siguen (quedan pegados a 0 cm)
+function repegar(m) { if (m.grupo) pegarAlEsquinero(modelo.modulos.filter((x) => x.grupo === m.grupo)); }
+// Cambia el largo del lado 1 de un esquinero sin mover el rincón (con el rincón a la derecha, el origen se corre)
+function anchoEsquinero(m, v) {
+  if (m.esquina !== 'izq') { const [ux, uz] = girar(1, 0, +m.rotacion || 0), d = v - +m.ancho; m.x = r1(+m.x - d * ux); m.z = r1(+m.z - d * uz); }
+  m.ancho = v;
+}
+// Agrega un esquinero en el primer rincón libre del espacio (dos muros en escuadra que se tocan)
+function agregarEsquinero() {
+  const ws = murosDe(modelo.espacio).filter((w) => !w.oculto), cerca = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 3;
+  const ocupado = (p) => modelo.modulos.some((x) => x.tipo === 'esquinero' && huella(x).some((q) => cerca(q, p)));
+  const m = nuevoEsquinero(uid());
+  let ok = false;
+  for (const A of ws) {
+    const E = ejeMuro(A), fin = [E.O[0] + A.largo * E.u[0], E.O[1] + A.largo * E.u[1]];
+    for (const B of ws) {
+      if (B === A || Math.abs(A.n[0] * B.n[0] + A.n[1] * B.n[1]) > .05) continue; // en escuadra
+      const toca = (p) => cerca(B.a, p) || cerca(B.b, p), hacia = B.n[0] * E.u[0] + B.n[1] * E.u[1];
+      if (toca(fin) && hacia < -.9 && !ocupado(fin)) { m.esquina = 'der'; m.x = r1(fin[0] - m.ancho * E.u[0]); m.z = r1(fin[1] - m.ancho * E.u[1]); m.rotacion = E.rot; ok = true; break; }
+      if (toca(E.O) && hacia > .9 && !ocupado(E.O)) { m.esquina = 'izq'; m.x = r1(E.O[0]); m.z = r1(E.O[1]); m.rotacion = E.rot; ok = true; break; }
+    }
+    if (ok) break;
+  }
+  if (!ok) m.x = modelo.modulos.reduce((a, x) => Math.max(a, +x.x + +x.ancho), 0);
+  cambiar((d) => d.modulos.push(m));
+  sel = { tipo: 'modulo', m: m.id };
+  if (vista === 'frente') setVista('planta');
+  render(); encuadrar(true);
+  aviso(ok ? 'Esquinero agregado en un rincón. Elige su solución en el panel derecho y ajusta el largo y el fondo de cada lado.' : 'No encontré un rincón libre entre dos muros: muévelo a la esquina en Planta. Elige su solución en el panel derecho.');
+}
+
 // Cambios desde los campos
 // Aplica una medida o propiedad a un módulo. s indica la pieza (col, fila, t) cuando corresponde.
 // Lo usan el panel derecho y la edición directa en las cotas.
@@ -1908,6 +2003,15 @@ function aplicarCampo(m, k, v, s = {}) {
       const c = catalogoTir[+String(v).slice(4)];
       if (c) { t.modelo = modeloCatalogo(c); t.color = c.color || t.color; t.nombre = c.nombre; }
     } else { t[k.slice(2)] = v; if (k === 't.modelo') delete t.nombre; }
+  } else if ((k === 'esq_hoja_a' || k === 'esq_hoja_b') && m.tipo === 'esquinero') { // ancho de una hoja: cambia el largo de ese lado
+    const he = hojasEditables(m); if (!he) return;
+    if (v < he.rango[0] || v > he.rango[1]) return aviso(`Cada ${geoEsquinero(m).sol === '3' ? 'puerta lateral' : 'hoja'} va de ${he.rango[0]} a ${he.rango[1]} cm.`);
+    if (he.cuadrado) { anchoEsquinero(m, r1(he.anchoPara(v))); m.profundidad = r1(he.profundidadPara(v)); } // puerta giratoria: cuadrado
+    else if (k === 'esq_hoja_a') anchoEsquinero(m, r1(he.anchoPara(v))); else m.profundidad = r1(he.profundidadPara(v));
+    repegar(m);
+  } else if (k === 'ancho' && m.tipo === 'esquinero') {
+    if (v < 30) return aviso('Largo mínimo del lado: 30 cm.');
+    anchoEsquinero(m, v); repegar(m);
   } else if (k === 'ancho') {
     if (v < 10) return aviso('Ancho mínimo: 10 cm.');
     const k2 = v / (+m.ancho || 1); m.columnas.forEach((c) => { c.ancho = +c.ancho * k2; }); m.ancho = v;
@@ -1917,6 +2021,8 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if (k === 'zocalo') {
     if (v < 0 || v > +m.alto - 10) return aviso('El zócalo tiene que dejar al menos 10 cm de cuerpo.');
     m.zocalo = v;
+  } else if (m.tipo === 'esquinero' && ['profundidad', 'esquina'].includes(k)) {
+    m[k] = v; repegar(m);
   } else if (k === 'rotacion') {
     rotarEnCentro(m, v); // gira alrededor del centro del mueble
   } else if (k === 'artefacto') {
@@ -2056,13 +2162,18 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
   if (b.dataset.a === 'agrupar') {
     const ids = sel.ids, gid = uid('g'), nombre = 'Mueble en L';
-    cambiar((d) => d.modulos.forEach((m) => { if (ids.includes(m.id)) { m.grupo = gid; m.grupo_nombre = nombre; } }));
+    let pegados = 0;
+    cambiar((d) => {
+      d.modulos.forEach((m) => { if (ids.includes(m.id)) { m.grupo = gid; m.grupo_nombre = nombre; } });
+      pegados = pegarAlEsquinero(d.modulos.filter((m) => ids.includes(m.id)));
+    });
+    if (pegados) { sel = { tipo: 'modulo', m: ids[0] }; render(); aviso(`${ids.length} módulos agrupados como «${nombre}»: ${pegados === 1 ? 'el basal quedó pegado' : 'los basales quedaron pegados'} al esquinero (0 cm). Ctrl+Z deshace.`); return; }
     sel = { tipo: 'modulo', m: ids[0] }; render();
     aviso(`${ids.length} módulos agrupados como «${nombre}». Al moverlos o girarlos van juntos; cada parte se edita por separado.`);
     return;
   }
   if (b.dataset.a === 'sel-grupo') { seleccionarVarios(grupoDe(modulo(sel.m)).map((x) => x.id)); return; }
-  if (b.dataset.a === 'desagrupar-mueble') { const g = modulo(sel.m).grupo; cambiar((d) => d.modulos.forEach((m) => { if (m.grupo === g) { delete m.grupo; delete m.grupo_nombre; } })); return; }
+  if (b.dataset.a === 'desagrupar-mueble') { const g = modulo(sel.m).grupo; cambiar((d) => d.modulos.forEach((m) => { if (m.grupo === g) { delete m.grupo; delete m.grupo_nombre; delete m.vecino_a; delete m.vecino_b; } })); return; }
   if (b.dataset.a === 'unir') {
     const ids = sel.ids, r = unirModulos(ids.map(modulo));
     if (r.error) { $('#unir-aviso').innerHTML = esc(r.error) + (r.giro ? ' <button data-a="agrupar" class="ed-primario">Agrupar ahora</button>' : ''); $('#unir-aviso').classList.add('ed-error'); aviso(r.error); return; }
@@ -2092,6 +2203,13 @@ $('#props').addEventListener('click', (e) => {
     c.tiradores.forEach((t) => { t.id = uid('t'); });
     cambiar((d) => d.modulos.push(c)); sel = { tipo: 'modulo', m: c.id }; render(); return;
   }
+  if (a.startsWith('esq-sol:')) { // elegir la solución; si las medidas eran las sugeridas, pasan a las de la nueva
+    const k = a.slice(8);
+    cambiar(() => { const s0 = medidasSugeridas(m); m.solucion = k; if (+m.ancho === s0.ancho && +m.profundidad === s0.profundidad) { const s1 = medidasSugeridas(m); anchoEsquinero(m, s1.ancho); m.profundidad = s1.profundidad; repegar(m); } });
+    aviso(k ? `«${m.nombre}»: ${SOLUCIONES[k].nombre}.` : `«${m.nombre}» queda sin solución (se ve el «?» rojo).`);
+    return;
+  }
+  if (a === 'esq-sugerido') { const s1 = medidasSugeridas(m); cambiar(() => { anchoEsquinero(m, s1.ancho); m.profundidad = s1.profundidad; repegar(m); }); return; }
   if (a === 'borrar-modulo') { cambiar((d) => { d.modulos = d.modulos.filter((x) => x.id !== m.id); }); sel = null; render(); return; }
   if (a === 'div-h') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirH(m, sel.col, sel.fila, c.y)); return; }
   if (a === 'div-v') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirV(m, sel.col, c.x)); return; }
@@ -2348,6 +2466,16 @@ function abrirDespiece() {
       <tr><td>Bisagras de cierre suave</td><td class="num">${d.herrajes.bisagras} (${d.herrajes.bisagras_rectas || 0} rectas · ${d.herrajes.bisagras_semicurvas || 0} semicurvas)</td></tr>
       <tr><td>Pino tapa canteada 1x4 (zócalo y soportes)</td><td class="num">${d.herrajes.pino?.tiras || 0} tira${d.herrajes.pino?.tiras === 1 ? '' : 's'} de 3,2 m · ${(d.herrajes.pino?.metros || 0).toFixed(2)} m</td></tr>
       <tr><td>Correderas telescópicas de cierre suave</td><td class="num">${esc(corr)}</td></tr>
+      ${(() => { // esquineros: platos giratorios, retenes (caja de 10) y ejes de acero (barra de 6 m)
+        const E = d.esquineros || [], pl = E.reduce((s, e) => s + (+e.platos || 0), 0), rt = E.reduce((s, e) => s + (+e.retenes || 0), 0), br = E.reduce((s, e) => s + (+e.barra_cm || 0), 0);
+        const pend = E.filter((e) => e.confirmar).length;
+        const b165 = E.reduce((s, e) => s + (+e.bisagras_165 || 0), 0);
+        return (b165 ? `<tr><td>Bisagras de 165° cierre suave (esquinero)</td><td class="num">${b165}</td></tr>` : '')
+          + (pl ? `<tr><td>Platos giratorios de 15 cm (esquinero)</td><td class="num">${pl}</td></tr>` : '')
+          + (rt ? `<tr><td>Retenes magnéticos (esquinero)</td><td class="num">${rt} · ${Math.ceil(rt / 10)} caja${rt > 10 ? 's' : ''} de 10</td></tr>` : '')
+          + (br ? `<tr><td>Ejes de barra de acero 3/4" (esquinero)</td><td class="num">${cm(br / 100)} m · ${Math.ceil(br / 600)} barra${br > 600 ? 's' : ''} de 6 m</td></tr>` : '')
+          + (pend ? `<tr><td colspan="2" class="ed-ayuda">${pend} esquinero${pend > 1 ? 's' : ''} con precio por confirmar (sin solución elegida o con piezas por definir).</td></tr>` : '');
+      })()}
       <tr><td>Tapacanto (cantos visibles)</td><td class="num">${d.tapacanto_m.toFixed(1)} m${d.tapacanto_blanco_m != null ? ` (${d.tapacanto_blanco_m.toFixed(1)} blanco · ${d.tapacanto_color_m.toFixed(1)} color)` : ''}</td></tr>
     </tbody></table>
     ${d.cubiertas.length ? `<table class="ed-tabla"><thead><tr><th>Cubierta</th><th class="num">Largo × ancho</th><th class="num">Sacados</th><th>Respaldo</th></tr></thead><tbody>${d.cubiertas.map((c) => `<tr><td>${esc(c.mueble)}</td><td class="num">${cm(c.largo)} × ${cm(c.ancho)} cm${c.ancho < 60 ? ' (cobra 60)' : ''}</td><td class="num">${c.sobrepuestos} sobrep. · ${c.bajo} bajo cub.</td><td>${c.respaldo ? 'Sí' : 'No'}</td></tr>`).join('')}</tbody></table>
@@ -2572,6 +2700,7 @@ function regenerarPlantilla(gid, tipo, p) {
   sel = { tipo: 'modulo', m: nuevos[0].id }; render();
 }
 $('#plantillas').addEventListener('click', (e) => {
+  if (e.target.closest('[data-esquinero]')) { agregarEsquinero(); return; }
   const t = e.target.closest('[data-plantilla]')?.dataset.plantilla; if (!t) return;
   const nuevos = generar(t, parametrosIniciales(t, modelo.espacio));
   cambiar((d) => { d.modulos.push(...nuevos); if (nuevos.objetos?.length) d.objetos = [...(d.objetos || []), ...nuevos.objetos]; });
