@@ -659,7 +659,7 @@ function bloqueZonasMuro(w) {
       ${vecinos.length ? `<div class="ed-botones">${vecinos.map((dir) => `<button data-a="zona-unir:${dir}">Unir con ${nomDir[dir]}</button>`).join('')}</div>` : ''}`
     : '<p class="ed-ayuda">Elige una zona (aquí o tocándola en la vista Frente) para cortarla o cambiar su material.</p>'}
     ${dividido ? '<div class="ed-botones"><button data-a="zonas-quitar" class="peligro">Quitar todas las divisiones</button></div>' : ''}
-    <p class="ed-ayuda">Divide el muro en zonas para combinar materiales (ej. pintura arriba, azulejo entre 90 y 150 cm y otra pintura abajo). ${enFrente ? 'Toca una zona para elegirla.' : 'Se ve mejor de frente: botón «Ver de frente».'}</p></div>`;
+    <p class="ed-ayuda">Divide el muro en zonas para combinar materiales (ej. pintura arriba, azulejo entre 90 y 150 cm y otra pintura abajo): con «Dividir |» o «Dividir —» de la barra de arriba, clic sobre el muro donde va el corte, o con las medidas de aquí. ${enFrente ? 'Toca una zona para elegirla.' : 'Se ve mejor de frente: botón «Ver de frente».'}</p></div>`;
 }
 function vecinoZona(ZS, Z, dir) { // zona que comparte el borde completo
   const eq = (p, q) => Math.abs(p - q) < .05;
@@ -668,10 +668,11 @@ function vecinoZona(ZS, Z, dir) { // zona que comparte el borde completo
       : dir === 'izq' ? eq(o.x1, Z.x0) && eq(o.y0, Z.y0) && eq(o.y1, Z.y1)
         : eq(o.x0, Z.x1) && eq(o.y0, Z.y0) && eq(o.y1, Z.y1)));
 }
-function cortarZona(eje) {
-  const i = sel.i, w = murosDe(modelo.espacio)[i]; if (!w) return;
-  const v = parseFloat($(`#props [data-corte-zona="${eje}"]`)?.value);
-  const ZS = zonasMuro(modelo.espacio, i, w.largo, w.alto), z = ZS.length > 1 ? sel.z : 0, Z = ZS[z]; if (!Z) return;
+// en = { i, z, v }: corte hecho con «Dividir |» o «Dividir —» al hacer clic sobre el muro en la vista Frente
+function cortarZona(eje, en = null) {
+  const i = en ? en.i : sel.i, w = murosDe(modelo.espacio)[i]; if (!w) return;
+  const v = en ? en.v : parseFloat($(`#props [data-corte-zona="${eje}"]`)?.value);
+  const ZS = zonasMuro(modelo.espacio, i, w.largo, w.alto), z = ZS.length > 1 ? (en ? en.z : sel.z) : 0, Z = ZS[z]; if (!Z) return;
   const a = Z[`${eje}0`], b = Z[`${eje}1`];
   if (!(isFinite(v) && v > a + 1 && v < b - 1)) { aviso(`El corte tiene que quedar dentro de la zona: entre ${cm(a + 1)} y ${cm(b - 1)} cm.`); return; }
   const n = Math.round(v * 10) / 10;
@@ -1462,6 +1463,13 @@ plano.addEventListener('pointerdown', (e) => {
   if (t?.dataset.tipo === 'medida') { sel = { tipo: 'medida', id: t.dataset.id }; render(); return; }
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
   // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
+  if ((herr === 'div-v' || herr === 'div-h') && t?.dataset.tipo === 'zona-muro') { // dividir el muro en zonas (dueño, 2026-11-25)
+    const i = +t.dataset.i, z = t.dataset.z != null ? +t.dataset.z : 0, w = murosDe(modelo.espacio)[i];
+    const Z = w && zonasMuro(modelo.espacio, i, w.largo, w.alto)[z]; if (!Z) return;
+    const eje = herr === 'div-v' ? 'x' : 'y', a = Z[`${eje}0`], b = Z[`${eje}1`], mitad = (a + b) / 2;
+    let v = snap(eje === 'x' ? p.x : p.y, 1); if (Math.abs(v - mitad) < 4) v = Math.round(mitad * 10) / 10; // imán a la mitad, como en los frentes
+    cortarZona(eje, { i, z, v }); return;
+  }
   if (!t || t.dataset.tipo === 'zona-muro') { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey, zona: t ? { i: +t.dataset.i, ...(t.dataset.z != null ? { z: +t.dataset.z } : {}) } : null }; return; }
   if (t.dataset.tipo === 'objeto') {
     const o = objeto(t.dataset.o); if (!o) return;
@@ -2918,6 +2926,9 @@ function setHerr(h) {
   lienzo.className = lienzo.className.replace(/\bh-\S+/g, '').trim() + ` h-${h}`;
   // Cada herramienta trabaja en su vista: muros en Planta, divisiones en Frente; dibujar módulo en ambas.
   medF = null; cursorF = null; planta.cancelar?.();
+  if (h.startsWith('div') && (sel?.tipo === 'muro' || sel?.tipo === 'vano') && murosDe(modelo.espacio)[sel.i] && !murosDe(modelo.espacio)[sel.i].oculto && muroFrente !== sel.i) {
+    muroFrente = sel.i; opcionesMuroFrente(); if (vista === 'frente') { render(); encuadrar(true); } // dividir el muro elegido
+  }
   const necesita = h === 'muros' ? 'planta' : h.startsWith('div') ? 'frente' : (h === 'dibujar' || h === 'medir') && vista === '3d' ? (h === 'medir' ? 'planta' : 'frente') : null;
   if (necesita && vista !== necesita) setVista(necesita);
   estadoEl.textContent = ayuda();
@@ -2934,8 +2945,8 @@ function ayuda() {
   return {
     sel: 'Clic selecciona · arrastra divisores y tiradores',
     dibujar: 'Arrastra para dibujar un módulo (se apoya en el piso si empiezas cerca)',
-    'div-v': 'Clic en un frente para dividirlo en columnas (imán a la mitad)',
-    'div-h': 'Clic en un frente para dividirlo en filas (imán a la mitad)',
+    'div-v': 'Clic en un frente para dividirlo en columnas, o en el muro para cortarlo en zonas de material (imán a la mitad)',
+    'div-h': 'Clic en un frente para dividirlo en filas, o en el muro para cortarlo en zonas de material (imán a la mitad)',
     medir: 'Huincha: clic en un punto y clic en otro (se pega a la línea más cercana de un mueble) · clic derecho sobre una medida y Supr la borra',
   }[herr];
 }
