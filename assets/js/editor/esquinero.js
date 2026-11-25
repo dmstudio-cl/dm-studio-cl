@@ -16,13 +16,15 @@ const CORREDERAS_ESQ = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (
 // Las 5 soluciones de esquina (nombres del dueño). lado = largo sugerido de cada lado más allá del fondo del otro.
 // factor: los tipos 1, 3 y 4 usan factor 2,5 sobre los materiales (más trabajo); 2a y 2b, el normal.
 export const SOLUCIONES = {
-  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 34, factor: true, hojas: [30, 60], cuadrado: true },
+  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 32, factor: true, hojas: [30, 60], cuadrado: true },
   '2a': { nombre: 'Puertas con repisa fija en L', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y una repisa fija en L (se pide rectangular; el calado se corta en el taller). Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '2b': { nombre: 'Puertas con repisas intercaladas', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y 2 repisas rectas, una por muro, a distinta altura. Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '3': { nombre: 'Cajón space corner', ayuda: 'Cajones con frente en flecha que salen en diagonal y terminan en punta atrás. A los lados, compartimentos en trapecio rectángulo con puerta (bisagras semicurvas, de 35 a 60 cm) y repisa; sus lados en diagonal llevan, por el otro lado, las correderas.', lado: 82, factor: true, niveles: true, frenteCajon: true, hojas: [35, 60] },
   '4': { nombre: 'Cajones pivotantes', ayuda: '2 filas de cajones, una por lado, que giran hacia afuera, cada fila en su eje vertical de barra de acero de 3/4".', lado: 32, factor: true, niveles: true },
 };
-export const ORDEN_SOLUCIONES = ['1', '2a', '2b', '3', '4']; // las claves numéricas se ordenarían solas primero
+// Soluciones que se ofrecen en el panel (las claves numéricas se ordenarían solas primero). El tipo 4, cajones
+// pivotantes, queda guardado para más adelante (dueño, 2026-11-25): su código sigue aquí, pero no se ofrece.
+export const ORDEN_SOLUCIONES = ['1', '2a', '2b', '3'];
 export const esEsquinero = (m) => m?.tipo === 'esquinero';
 
 export function nuevoEsquinero(id, { x = 0, z = 0, rotacion = 0, esquina = 'der', fondo = 58, alto = 85 } = {}) {
@@ -45,7 +47,7 @@ export function geoEsquinero(m) {
   const ld = Math.max(20, Math.min(+m.frente_cajon || 40, W - fb - T - 5, L - fa - T - 5)); // ancho del frente del cajón space corner por lado
   // barra (soporte delantero): 7 cm en la puerta giratoria (dueño, 2026-11-25, editable), 10 cm en los demás
   const sop = sol === '1' ? Math.max(3, Math.min(20, +m.soporte_alto || 7)) : SOPORTE;
-  return { T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, arriba: m.cubierta ? 7 : 1, X: (x) => (izq ? W - x : x) };
+  return { m, T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, arriba: m.cubierta ? 7 : 1, X: (x) => (izq ? W - x : x) };
 }
 
 // Contorno en planta (cuerpo + frentes) en coordenadas locales del mueble
@@ -107,8 +109,11 @@ export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
     // base de 15 mm, entre los laterales, con 3 mm de aire arriba, abajo y a cada lado; si cambia la barra, la puerta
     // se ajusta sola. Vale para las 2 hojas.
     const yb = Z + T + LUZ, yt = H - g.sop - LUZ;
-    hoja('A', [T + LUZ, A[1]], 'puerta', 'Puerta en L, hoja del lado 1 (va unida a las bandejas)', { en: 's0' }, {}, yb, yt);
-    hoja('B', [B[0], L - T - LUZ], 'puerta', 'Puerta en L, hoja del lado 2 (va unida a las bandejas)', { en: 's1' }, {}, yb, yt);
+    // (dueño, 2026-11-25) las 2 hojas se juntan en el rincón sin línea de aire: se cortan a 45° (largo hasta la punta
+    // larga del inglete, el canto del inglete sin tapacanto); en el modelo van de tope (la hoja 2 tapa el rincón)
+    const c3 = { ancho: 2, alto: 1 };
+    hoja('A', [T + LUZ, xb - T], 'puerta', 'Puerta en L, hoja del lado 1 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's0' }, { corte: xb - T - LUZ, cantos: c3, tope: 's1' }, yb, yt);
+    hoja('B', [fa, L - T - LUZ], 'puerta', 'Puerta en L, hoja del lado 2 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's1' }, { corte: L - T - LUZ - fa, cantos: c3, tope: 's0' }, yb, yt);
   }
   if (sol === '2a' || sol === '2b') { hoja('A', A, 'puerta', 'Puerta del lado 1', { en: 's1' }); hoja('B', B, 'puerta', 'Puerta del lado 2', { en: 's0' }); }
   if (sol === '4') pisos((y0, ya, i) => { // cada fila gira en su eje del rincón: el tirador va en el extremo de afuera
@@ -138,7 +143,7 @@ export function hojasEditables(m, g = geoEsquinero(m)) {
   const fr = frentesEsquinero(m, g).filter((f) => f.clase === 'puerta'), A = fr.find((f) => f.lado === 'A'), Bf = fr.find((f) => f.lado === 'B');
   const extra = g.sol === '3' ? g.ld + LUZ / 2 : g.T + luzRincon(g); // lo que va entre el fondo del otro lado y la hoja
   const iA = m.vecino_a ? LUZ : 0, iB = m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado)
-  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + extra + g.T + LUZ; /* la hoja va entre los laterales, con 3 mm de aire */ return { rango: s.hojas, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
+  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + g.T + LUZ; /* hoja (hasta la punta del inglete) + lateral + 3 mm de aire */ return { rango: s.hojas, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
   return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v + g.fb + extra + iA, profundidadPara: (v) => v + g.fa + extra + iB };
 }
 
@@ -156,6 +161,27 @@ export function divisionesEsquinero(m, g = geoEsquinero(m)) {
     una(k.pa, [k.pa[0] + (g.fa - CHOL), CHOL], -1),           // lado 1: desde el frente hasta el fondo del muro 1
     una(k.pb, [g.W - CHOL, k.pb[1] - (g.fb - CHOL)], 1),      // lado 2: desde el frente hasta el fondo del muro 2
   ];
+}
+
+// Repisas en trapecio rectángulo de los compartimentos laterales del space corner (dueño, 2026-11-25), con el rincón a
+// la derecha: van del fondo hasta 1 cm del frente, con 1 mm de juego contra el lateral y contra la división diagonal.
+// Cada una: { pts: [[x, z] × 4] (fondo y frente), corto, largo, prof }.
+export function repisasTrapecio(g) {
+  const { T, W, L, fa, fb, xb, ld } = g, d2 = T * Math.SQRT2, out = {};
+  const cA = xb - ld + fa - d2, xDiv = (z) => cA - z;                      // cara de la división 1 hacia su compartimento: x + z = cA
+  const zf = fa - 1, xa = T + .1;
+  if (xDiv(zf) - .1 - xa > 5) out.A = { pts: [[xa, CHOL], [xDiv(CHOL) - .1, CHOL], [xDiv(zf) - .1, zf], [xa, zf]], corto: xDiv(zf) - .1 - xa, largo: xDiv(CHOL) - .1 - xa, prof: zf - CHOL };
+  const cB = xb + fa + ld + d2, zDiv = (x) => cB - x;                      // división 2: x + z = cB
+  const xf = xb + 1, zl = L - T - .1, xw = W - CHOL;
+  if (zl - zDiv(xf) - .1 > 5) out.B = { pts: [[xw, zDiv(xw) + .1], [xw, zl], [xf, zl], [xf, zDiv(xf) + .1]], corto: zl - zDiv(xf) - .1, largo: zl - zDiv(xw) - .1, prof: xw - xf };
+  return out;
+}
+// Placa para pedir las 2 repisas en trapecio juntas, intercaladas (una girada), con 1 cm entre ambas para la sierra
+// (dueño, 2026-11-25). Si hay una sola, su rectángulo.
+export function placaTrapecios(g) {
+  const { A, B } = repisasTrapecio(g);
+  if (A && B) return { ancho: Math.max(A.corto + B.largo, A.largo + B.corto) + 1, prof: Math.max(A.prof, B.prof), n: 2 };
+  const t = A || B; return t ? { ancho: t.largo, prof: t.prof, n: 1 } : null;
 }
 
 // Cajón space corner (tipo 3) en planta, con el rincón a la derecha. El cajón sale en diagonal (45°) por un pasillo
@@ -206,14 +232,16 @@ export function dibujarEsquinero(G, m, o) {
       B(T, W - CHOL - PINO_E, H - SOPORTE, H, CHOL, CHOL + PINO_E, PINO, `${id}|soporte|atras`); B(W - CHOL - PINO_E, W - CHOL, H - SOPORTE, H, CHOL, L - T, PINO, `${id}|soporte|atras`);
     }
   }
+  if (o.interior && g.sol) { dibujarInterior(G, m, g, o, fab ? H - g.arriba : H); return; } // vista 3/4: interior y partes que se mueven (sin cubierta)
   if (ver('frentes')) {
     const top = fab ? H - g.arriba : H, fr = frentesEsquinero(m, g, top);
     const espec = (m.tiradores || []).find((t) => t?.esq); // modelo y color del tirador (del proyecto o del cliente)
     const def = ver('tiradores') && espec && o.tiradorDef?.(espec.modelo);
     fr.forEach((f, i) => {
       const tex = propio(`esq|${i}`, 'frentes') || M.frente, ref = `${id}|esq|${i}`, y0 = f.y0 + LUZ / 2, y1 = f.y1 - LUZ / 2;
-      if (f.lado === 'A') B(f.s0 + LUZ / 2, f.s1 - LUZ / 2, y0, y1, fa, fa + T, tex, ref);
-      else B(xb - T, xb, y0, y1, f.s0 + LUZ / 2, f.s1 - LUZ / 2, tex, ref);
+      const l0 = f.tope === 's0' ? 0 : LUZ / 2, l1 = f.tope === 's1' ? 0 : LUZ / 2; // de tope en el rincón: sin luz
+      if (f.lado === 'A') B(f.s0 + l0, f.s1 - l1, y0, y1, fa, fa + T, tex, ref);
+      else B(xb - T, xb, y0, y1, f.s0 + l0, f.s1 - l1, tex, ref);
       if (!def || !f.tir) return;
       const largo = def.largo || 10;
       let mg = f.tir.horizontal ? largo / 2 + 4 : 3.5;
@@ -233,6 +261,177 @@ export function dibujarEsquinero(G, m, o) {
   if (ver('cubierta') && m.cubierta) { // cubierta en L: el lado A completo y el resto del lado B
     const tex = propio('cubierta') || M.cubierta, f = fa + T + VUELO;
     B(0, W, H, H + CT, 0, f, tex, `${id}|cubierta`); B(xb - T - VUELO, W, H, H + CT, f, L, tex, `${id}|cubierta`);
+  }
+}
+
+// ----- vista fija 3/4 del interior (dueño, 2026-11-22/25) -----
+// Solo en el acercamiento 3/4 se dibuja lo de adentro. Cada parte que se mueve va en un grupo con su posición cerrada
+// y abierta (data-esq-anim, data-cerrado, data-abierto): el editor cambia el transform y la transición CSS la anima,
+// sin volver a dibujar la escena. Puerta giratoria: gira 180° lento (la bandeja muestra su borde redondo, sin el corte);
+// puertas: abren 165° (casi tocan la puerta del vecino); cajones: salen (en diagonal el space corner) o giran 80° en su eje (pivotantes).
+export function partesInterior(m, g = geoEsquinero(m)) { // botones del panel: [{ key, nombre }]
+  const fr = frentesEsquinero(m, g), out = [];
+  if (g.sol === '1') out.push({ key: 'auto', nombre: 'Girar solo' }, { key: 'vueltaA', nombre: 'Una vuelta (hoja 1)' }, { key: 'vueltaB', nombre: 'Una vuelta (hoja 2)' }, { key: 'giro', nombre: 'Dejar girada (180°)' });
+  if (g.sol === '2a' || g.sol === '2b') out.push({ key: 'pA', nombre: 'Puerta del lado 1' }, { key: 'pB', nombre: 'Puerta del lado 2' });
+  if (g.sol === '3') {
+    for (let i = 0; i < g.niveles; i++) out.push({ key: `c${i}`, nombre: `Cajón ${i + 1}` });
+    if (fr.some((f) => f.clase === 'puerta' && f.lado === 'A')) out.push({ key: 'pA', nombre: 'Puerta lateral, lado 1' });
+    if (fr.some((f) => f.clase === 'puerta' && f.lado === 'B')) out.push({ key: 'pB', nombre: 'Puerta lateral, lado 2' });
+  }
+  if (g.sol === '4') for (let i = 0; i < g.niveles; i++) out.push({ key: `cA${i}`, nombre: `Cajón ${i + 1}, lado 1` }, { key: `cB${i}`, nombre: `Cajón ${i + 1}, lado 2` });
+  return out;
+}
+// Polígono de recorte (clip-path) de un sector de círculo en la cara de arriba de una caja cuadrada: ángulos en grados
+// de pantalla (0 = +x, 90 = +z hacia el frente), de t0 a t1.
+const sector = (t0, t1, espejo) => {
+  const pts = ['50% 50%'];
+  for (let t = t0; t <= t1 + .01; t += 7.5) { const a = (espejo ? 180 - t : t) * Math.PI / 180; pts.push(`${(50 + 50 * Math.cos(a)).toFixed(2)}% ${(50 + 50 * Math.sin(a)).toFixed(2)}%`); }
+  return `polygon(${pts.join(',')})`;
+};
+// Animaciones de la puerta giratoria, compartidas por el editor y el portal: girar sola en círculo (14 s por vuelta)
+// y una vuelta completa hacia el lado de la otra hoja (la de la derecha hacia la izquierda y al revés).
+export function animarGiro(rig, on) {
+  const g = rig.querySelector('[data-esq-anim="giro"]'); if (!g) return;
+  g.getAnimations().forEach((a) => a.cancel());
+  if (!on) return;
+  const paso = (deg) => ({ transform: g.dataset.cerrado.replace(/rotateY\([^)]*\)/, `rotateY(${deg}deg)`) });
+  g.animate([paso(0), paso(360)], { duration: 14000, iterations: Infinity, easing: 'linear' });
+}
+export function vueltaGiro(rig, hoja, izq) {
+  const g = rig.querySelector('[data-esq-anim="giro"]'); if (!g) return;
+  g.getAnimations().forEach((a) => a.cancel()); g.style.transform = g.dataset.cerrado;
+  const s = (hoja === 'B' ? -1 : 1) * (izq ? -1 : 1), paso = (deg) => ({ transform: g.dataset.cerrado.replace(/rotateY\([^)]*\)/, `rotateY(${deg}deg)`) });
+  g.animate([paso(0), paso(360 * s)], { duration: 7000, iterations: 1, easing: 'ease-in-out' });
+}
+
+// Bandeja de la puerta giratoria: el círculo menos el rincón que queda por delante de las hojas. kx, kz = caras
+// interiores de las hojas 2 y 1 respecto del eje (con el rincón a la derecha). Polígono en % de la cara cuadrada.
+function bandejaRecortada(r, kx, kz, espejo) {
+  const P = (x, z) => `${(50 + 50 * (espejo ? -x : x) / r).toFixed(2)}% ${(50 + 50 * z / r).toFixed(2)}%`;
+  if (Math.abs(kx) >= r || Math.abs(kz) >= r) return sector(-180, 90, espejo);
+  const x1 = -Math.sqrt(r * r - kz * kz), z2 = Math.sqrt(r * r - kx * kx); // donde el borde toca la hoja 1 y la hoja 2
+  let a1 = Math.atan2(kz, x1) * 180 / Math.PI, a2 = Math.atan2(z2, kx) * 180 / Math.PI;
+  if (a2 <= a1) a2 += 360;
+  const pts = [P(kx, kz), P(x1, kz)];
+  for (let t = a1 + 6; t < a2; t += 6) pts.push(P(r * Math.cos(t * Math.PI / 180), r * Math.sin(t * Math.PI / 180)));
+  pts.push(P(kx, z2));
+  return `polygon(${pts.join(',')})`;
+}
+// Alturas de las repisas en L del 2a: repartidas parejo entre la base y la barra (dueño, 2026-11-25: la cantidad se
+// cambia en el panel; la altura queda regulable en el taller)
+export const repisasL = (m) => Math.max(0, Math.min(4, Math.round(m.repisas_l ?? 1)));
+export function nivelesL(g, n = repisasL(g.m || {})) {
+  const y0 = g.Z + g.T, y1 = g.H - g.sop;
+  return Array.from({ length: n }, (_, i) => y0 + (y1 - y0) * (i + 1) / (n + 1));
+}
+function dibujarInterior(G, m, g, o, top) {
+  const { T, W, L, H, Z, fa, xb, izq, sol } = g, id = m.id, { M, propio } = o, MC = propio('cuerpo') || M.cuerpo;
+  const abiertos = o.interior.abiertos || [], sx = izq ? -1 : 1; // sx: las x locales se reflejan con el rincón a la izquierda
+  const tf = (p) => `translate3d(${p.x}em, ${-p.y}em, ${p.z}em) rotateY(${p.ry || 0}deg) rotateZ(0deg)`;
+  const anim = (key, base, abierto, dur) => { // grupo que se mueve entre cerrado y abierto
+    const p = abiertos.includes(key) ? abierto : base, gr = G.group({ x: p.x, y: p.y, z: p.z, ry: p.ry || 0 });
+    Object.assign(gr.el.dataset, { esqAnim: key, cerrado: tf(base), abierto: tf(abierto) });
+    gr.el.style.transition = `transform ${dur}s ease-in-out`;
+    return gr;
+  };
+  const caja = (gr, x0, x1, y0, y1, z0, z1, tex, ref, extra = {}) => gr.box({ w: Math.abs(x1 - x0), h: y1 - y0, d: z1 - z0, x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (z0 + z1) / 2, tex, ref, ...extra });
+  const fr = frentesEsquinero(m, g, top), MF = (i) => propio(`esq|${i}`, 'frentes') || M.frente, ref = (k) => `${id}|esq34|${k}`;
+  const est = (x0, x1, y0, y1, z0, z1, tex = MC) => G.box({ w: x1 - x0, h: y1 - y0, d: z1 - z0, x: g.X((x0 + x1) / 2), y: (y0 + y1) / 2, z: (z0 + z1) / 2, tex, ref: `${id}|esq|int` });
+  // hoja con bisagra en su extremo de afuera (2a, 2b y puertas laterales del 3): abre casi hasta tocar la puerta del
+  // mueble vecino, a punto de tocar su tirador (dueño, 2026-11-25): 165°, lo que dan las bisagras de 165°
+  const ABRE = 165;
+  const puerta = (f, i, key) => {
+    const y0 = f.y0 + .15, y1 = f.y1 - .15;
+    if (f.lado === 'A') { // bisagra en s0 (lado del lateral 1), cara de afuera en z = fa + T
+      const gr = anim(key, { x: g.X(f.s0), y: 0, z: fa + T }, { x: g.X(f.s0), y: 0, z: fa + T, ry: -ABRE * sx }, 1.1);
+      caja(gr, 0, sx * (f.s1 - f.s0 - .3), y0, y1, -T, 0, MF(i), ref(key));
+    } else { // bisagra en s1 (lado del lateral 2), cara de afuera en x = xb − T
+      const gr = anim(key, { x: g.X(xb - T), y: 0, z: f.s1 }, { x: g.X(xb - T), y: 0, z: f.s1, ry: ABRE * sx }, 1.1);
+      gr.box({ w: T, h: y1 - y0, d: f.s1 - f.s0 - .3, x: sx * T / 2, y: (y0 + y1) / 2, z: -(f.s1 - f.s0 - .3) / 2, tex: MF(i), ref: ref(key) });
+    }
+  };
+  const yIn = Z + T, yTop = H - g.sop; // interior útil: sobre la base y bajo la barra
+  if (sol === '1') { // puerta en L unida a 2 bandejas de ¾ de círculo, gira 180° sobre el eje centrado
+    const b = bandejaGiratoria(g), cx = g.X(b.cx), d = 2 * b.r;
+    const gr = anim('giro', { x: cx, y: 0, z: b.cz }, { x: cx, y: 0, z: b.cz, ry: 180 }, 2.6);
+    // la bandeja llega justo hasta la cara interior de las 2 hojas (la puerta va fija a ella, sin espacio entre ambas)
+    const clip = bandejaRecortada(b.r, xb - b.cx, fa - b.cz, izq);
+    // contorno negro (dueño, 2026-11-25): una cara oscura 4 mm más grande justo debajo dibuja el borde y da profundidad (1 cara más por bandeja)
+    const e = .4, borde = bandejaRecortada(b.r + e, xb - b.cx - e, fa - b.cz + e, izq);
+    for (const y of [yIn + 2, (yIn + yTop) / 2]) {
+      gr.box({ w: d + 2 * e, h: 1.5, d: d + 2 * e, x: 0, y: y - .15, z: 0, tex: { bg: '#141210', clip: borde }, ref: ref('giro'), caras: ['top'] });
+      gr.box({ w: d, h: 1.5, d, x: 0, y, z: 0, tex: { bg: MC.bg, clip }, ref: ref('giro'), caras: ['top'] });
+    }
+    fr.forEach((f, i) => { // cada hoja con su ref: el clic en una la hace dar la vuelta hacia el otro lado
+      if (f.lado === 'A') caja(gr, g.X(f.s0 + .15) - cx, g.X(f.s1) - cx, f.y0 + .15, f.y1 - .15, fa - b.cz, fa + T - b.cz, MF(i), `${ref('giro')}|A`);
+      else caja(gr, g.X(xb - T) - cx, g.X(xb) - cx, f.y0 + .15, f.y1 - .15, f.s0 - b.cz, f.s1 - .15 - b.cz, MF(i), `${ref('giro')}|B`);
+    });
+  }
+  if (sol === '2a' || sol === '2b') {
+    fr.forEach((f, i) => puerta(f, i, f.lado === 'A' ? 'pA' : 'pB'));
+    // contorno negro (dueño, 2026-11-25): bajo cada repisa, su cara de arriba en oscuro y 4 mm más salida en los cantos
+    // que se ven (el frente de cada lado), para que se note la profundidad
+    const e = .4, NEGRO = { bg: '#141210' }, plano = (x0, x1, y, z0, z1, tex) => G.box({ w: x1 - x0, h: .1, d: z1 - z0, x: g.X((x0 + x1) / 2), y, z: (z0 + z1) / 2, tex, ref: `${id}|esq|int`, caras: ['top'] });
+    const repisa = (x0, x1, y, z0, z1, fx, fz) => { // fx / fz: cuánto sale el contorno en x (hacia el rincón) y en z (hacia adelante)
+      plano(x0 - fx, x1, y + T / 2 - .2, z0, z1 + fz, NEGRO); est(x0, x1, y - T / 2, y + T / 2, z0, z1);
+    };
+    if (sol === '2a') { // repisas fijas en L, repartidas parejo en el alto (se agregan o se quitan en el panel)
+      for (const y of nivelesL(g)) { repisa(T, W - CHOL, y, CHOL, fa - .3, 0, e); repisa(xb, W - CHOL, y, fa - .3, L - T, e, 0); }
+    } else { const y1 = yIn + (yTop - yIn) / 3, y2 = yIn + 2 * (yTop - yIn) / 3; repisa(T, W - CHOL, y1, CHOL, fa - .3, 0, e); repisa(xb, W - CHOL, y2, CHOL, L - T, e, 0); }
+  }
+  if (sol === '3') {
+    const k = cajonSpaceCorner(g), sale = 45, dx = -sale / Math.SQRT2 * sx, dz = sale / Math.SQRT2; // sale en diagonal hacia la habitación
+    fr.filter((f) => f.clase === 'puerta').forEach((f) => puerta(f, fr.indexOf(f), f.lado === 'A' ? 'pA' : 'pB'));
+    // cara plana con forma de polígono (puntos [x, z] con el rincón a la derecha), recortada sobre su rectángulo
+    const placa = (gr, pts, y, tex, ref2) => {
+      const P = pts.map(([x, z]) => [g.X(x), z]), xs = P.map((q) => q[0]), zs = P.map((q) => q[1]);
+      const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs), w = x1 - x0 || 1, d = z1 - z0 || 1;
+      const clip = `polygon(${P.map(([x, z]) => `${((x - x0) / w * 100).toFixed(2)}% ${((z - z0) / d * 100).toFixed(2)}%`).join(',')})`;
+      gr.box({ w, h: .1, d, x: (x0 + x1) / 2, y, z: (z0 + z1) / 2, tex: { bg: tex.bg, clip }, ref: ref2, caras: ['top'] });
+    };
+    const NEG = { bg: '#141210' }, e = .4;
+    const ym = (yIn + yTop) / 2, rt = repisasTrapecio(g); // repisas en trapecio de los compartimentos, con contorno negro en los cantos que se ven
+    if (rt.A) { const [a, b, c, d] = rt.A.pts; placa(G, [a, [b[0] + e, b[1]], [c[0] + e, c[1] + e], [d[0], d[1] + e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.A.pts, ym + T / 2, MC, `${id}|esq|int`); }
+    if (rt.B) { const [a, b, c, d] = rt.B.pts; placa(G, [[a[0], a[1] - e], b, [c[0] - e, c[1]], [d[0] - e, d[1] - e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.B.pts, ym + T / 2, MC, `${id}|esq|int`); }
+    for (let i = 0; i < g.niveles; i++) {
+      const fA = fr.find((f) => f.cajon === i && f.lado === 'A'), fB = fr.find((f) => f.cajon === i && f.lado === 'B'); if (!fA || !fB) continue;
+      const key = `c${i}`, gr = anim(key, { x: 0, y: 0, z: 0 }, { x: dx, y: 0, z: dz }, .9);
+      const y0 = fA.y0 + .15, y1 = fA.y1 - .15, ac = Math.max(6, y1 - y0 - 2), yb = y0 + 1;
+      caja(gr, g.X(fA.s0 + .15), g.X(fA.s1), y0, y1, fa, fa + T, MF(fr.indexOf(fA)), ref(key));
+      caja(gr, g.X(xb - T), g.X(xb), y0, y1, fB.s0, fB.s1 - .15, MF(fr.indexOf(fB)), ref(key));
+      // caja: laterales en diagonal y traseras en flecha
+      for (const [p, largo] of [[k.pa, k.latA], [k.pb, k.latB]]) {
+        const gl = gr.group({ x: g.X(p[0] + largo / 2 / Math.SQRT2), y: 0, z: p[1] - largo / 2 / Math.SQRT2, ry: 45 * sx });
+        gl.box({ w: largo, h: ac, d: T, x: 0, y: yb + ac / 2, z: 0, tex: MC, ref: ref(key) });
+      }
+      caja(gr, g.X(k.pa[0] + k.latA / Math.SQRT2), g.X(k.xk), yb, yb + ac - .8, k.zb, k.zb + T, MC, ref(key));
+      caja(gr, g.X(k.xk - T), g.X(k.xk), yb, yb + ac - .8, k.zb, k.pb[1] - k.latB / Math.SQRT2, MC, ref(key));
+      // fondo de la caja (cholguán, con la forma en flecha) y contorno negro en el canto de arriba de la caja y los frentes
+      const zA = k.pa[0] + fa - k.zb, zB = k.pb[1] - (k.xk - xb);
+      placa(gr, [[xb, fa], [k.pa[0], fa], [zA, k.zb], [k.xk, k.zb], [k.xk, zB], [xb, k.pb[1]]], yb + .2, { bg: '#e2ddd3' }, ref(key));
+      const linea = (x0, x1, z0, z1, y) => caja(gr, g.X(x0), g.X(x1), y, y + .1, z0, z1, NEG, ref(key), { caras: ['top'] });
+      linea(fA.s0 + .15, fA.s1, fa + T / 2 - .2, fa + T / 2 + .2, y1);                       // canto de arriba del frente, lado 1
+      linea(xb - T / 2 - .2, xb - T / 2 + .2, fB.s0, fB.s1 - .15, y1);                       // frente, lado 2
+      linea(k.pa[0] + k.latA / Math.SQRT2, k.xk, k.zb + T / 2 - .2, k.zb + T / 2 + .2, yb + ac - .8); // traseras en flecha
+      linea(k.xk - T / 2 - .2, k.xk - T / 2 + .2, k.zb, zB, yb + ac - .8);
+      for (const [p, largo] of [[k.pa, k.latA], [k.pb, k.latB]]) { // laterales en diagonal
+        const gl = gr.group({ x: g.X(p[0] + largo / 2 / Math.SQRT2), y: 0, z: p[1] - largo / 2 / Math.SQRT2, ry: 45 * sx });
+        gl.box({ w: largo, h: .1, d: .4, x: 0, y: yb + ac + .05, z: 0, tex: NEG, ref: ref(key), caras: ['top'] });
+      }
+    }
+  }
+  if (sol === '4') { // 2 filas de cajones en tajada, cada fila gira 80° en su eje del rincón
+    const b = bandejaCarrusel(g), cx = g.X(b.cx), d = 2 * b.r;
+    fr.forEach((f, i) => {
+      const lado = f.lado, n = Math.floor(i / 2), key = `c${lado}${n}`;
+      const gr = anim(key, { x: cx, y: 0, z: b.cz }, { x: cx, y: 0, z: b.cz, ry: (lado === 'A' ? 80 : -80) * sx }, 1.1);
+      const y0 = f.y0 + .15, y1 = f.y1 - .15;
+      const tajada = lado === 'A' ? sector(180, 315, izq) : sector(-45, 90, izq), e = .4; // contorno negro: la misma tajada 4 mm más grande, justo debajo
+      gr.box({ w: d + 2 * e, h: 1.5, d: d + 2 * e, x: 0, y: y0 + .85, z: 0, tex: { bg: '#141210', clip: tajada }, ref: ref(key), caras: ['top'] });
+      gr.box({ w: d, h: 1.5, d, x: 0, y: y0 + 1, z: 0, tex: { bg: MC.bg, clip: tajada }, ref: ref(key), caras: ['top'] });
+      if (lado === 'A') caja(gr, g.X(f.s0 + .15) - cx, g.X(f.s1 - .15) - cx, y0, y1, fa - b.cz, fa + T - b.cz, MF(i), ref(key));
+      else caja(gr, g.X(xb - T) - cx, g.X(xb) - cx, y0, y1, f.s0 + .15 - b.cz, f.s1 - .15 - b.cz, MF(i), ref(key));
+    });
   }
 }
 
@@ -271,8 +470,8 @@ export function despieceEsquinero(m, ctx) {
     for (const k of ['inferior', 'superior']) add('esq|bandeja', `Bandeja ${k} del carrusel (cuadrado; círculo de Ø ${d} cm con el cuarto del frente recortado, en el taller)`, BLANCA, d, d, undefined, 'tablero', { tapacanto_taller: r1(1.5 * Math.PI * b.r + 2 * b.r) });
     ficha.platos = 2; ficha.retenes = 2;
   }
-  if (sol === '2a') {
-    add('esq|repisa', 'Repisa fija en L (se pide rectangular; calado en el taller)', mat('esq|repisa', cuerpo), r1(ri), r1(rj), undefined, 'tablero',
+  if (sol === '2a') for (let i = 0; i < repisasL(m); i++) { // repisas en L (cantidad en el panel)
+    add('esq|repisa', `Repisa fija en L ${i + 1} (se pide rectangular; calado en el taller)`, mat('esq|repisa', cuerpo), r1(ri), r1(rj), undefined, 'tablero',
       { nota: `Calado: quitar ${r1(xb - T)} × ${r1(L - fa - T)} cm en el rincón del frente`, tapacanto_taller: r1(xb - T + L - fa - T) });
   }
   if (sol === '2b') {
@@ -284,10 +483,12 @@ export function despieceEsquinero(m, ctx) {
     // divisiones diagonales del pasillo del cajón (ahí van las correderas); se cotizan como rectángulo
     add('esq|div', 'División diagonal del cajón, lado 1 (corte a 45° en los extremos, en el taller)', div, r1(k.divA), hs, { ancho: 0, alto: 1 });
     add('esq|div', 'División diagonal del cajón, lado 2 (corte a 45° en los extremos, en el taller)', div, r1(k.divB), hs, { ancho: 0, alto: 1 });
-    // repisas en trapecio de los compartimentos laterales: se cotizan como rectángulo y la diagonal se corta en el taller
-    const anA = k.pa[0] + (fa - .3) - T, anB = (L - k.pb[1]) + (fb - .3) - T;
-    if (k.pa[0] - T > 5) add('esq|repisa', 'Repisa en trapecio del compartimento, lado 1 (rectángulo; diagonal en el taller)', mat('esq|repisa', cuerpo), r1(anA - .2), r1(fa - .3 - 1), { ancho: 1, alto: 0 });
-    if (L - k.pb[1] - T > 5) add('esq|repisa', 'Repisa en trapecio del compartimento, lado 2 (rectángulo; diagonal en el taller)', mat('esq|repisa', cuerpo), r1(anB - .2), r1(fb - .3 - 1), { ancho: 1, alto: 0 });
+    // repisas en trapecio de los compartimentos laterales (dueño, 2026-11-25): las 2 se piden juntas en una placa
+    // rectangular, intercaladas (una girada), con 1 cm entre ambas para la sierra; el corte en diagonal y el tapacanto
+    // del frente se hacen en el taller
+    const rt = repisasTrapecio(g), pl = placaTrapecios(g);
+    if (pl) add('esq|repisa', pl.n === 2 ? `Placa para las 2 repisas en trapecio, intercaladas (corte en diagonal con 1 cm de sierra, en el taller): ${r1(rt.A.corto)}/${r1(rt.A.largo)} y ${r1(rt.B.corto)}/${r1(rt.B.largo)} × ${r1(Math.max(rt.A.prof, rt.B.prof))}` : 'Repisa en trapecio del compartimento (rectángulo; diagonal en el taller)',
+      mat('esq|repisa', cuerpo), r1(pl.ancho), r1(pl.prof), undefined, 'tablero', { tapacanto_taller: r1((rt.A?.corto || 0) + (rt.B?.corto || 0)) });
     semicurvas(4); // puertas laterales (dueño, 2026-11-24): 2 bisagras semicurvas cada una
     // cajas: alto como un cajón normal (2 cm bajo el soporte en el de arriba; 2 cm bajo el canto de su frente en los demás)
     const hF = frs.filter((fr) => fr.cajon != null && fr.lado === 'A');

@@ -55,6 +55,15 @@
 .ppie-total .mono { font-size: 1.05rem; color: var(--bone); }
 .papp-side[data-vista="productos"] .ppie-total, .papp-side[data-vista="personalizar"] .ppie-total { display: none; } /* ahí el total ya se ve grande */
 /* En «Personalizar» el total queda fijo arriba mientras se recorren los materiales */
+/* mueble enfocado: lo demás tenue y sin tomar toques */
+.pcss .c3-tenue { opacity: .16; pointer-events: none; }
+.pfoco { margin-bottom: 14px; display: grid; gap: 8px; }
+.pfoco .pfoco-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.pfoco .pfoco-cab b { font-family: var(--serif, serif); font-size: 1.05rem; }
+.pfoco .pfoco-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pfoco .pfoco-btns button { font: inherit; font-size: .8rem; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line-2, #333); background: transparent; color: inherit; cursor: pointer; }
+.pfoco .pfoco-btns button[aria-pressed="true"] { background: var(--bone, #ece7dd); color: var(--ink, #0b0b0d); }
+.pfoco .pfoco-volver { justify-self: start; }
 .pprice-mini { margin-bottom: 14px; position: sticky; top: 0; z-index: 3; box-shadow: 0 -22px 0 var(--ink), 0 10px 18px -8px rgba(0, 0, 0, .7); }
 
 .ptools { position: absolute; top: 14px; left: 14px; right: 14px; display: flex; flex-wrap: wrap; gap: 6px; z-index: 5; pointer-events: none; }
