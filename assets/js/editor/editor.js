@@ -163,9 +163,14 @@ function normalizar(m) {
 // hojas del mueble midan lo mismo (ej. 150 cm con 2 secciones de 2 hojas → 4 × 37,2); las columnas de cajones o mixtas
 // mantienen su ancho. Si se pone una medida a mano (cota de una puerta, ancho de columna o arrastrando una división), el
 // mueble queda en «medida manual» (m.puertas_manual) y respeta ese número hasta que se vuelva a igualar en su panel.
-function bordesColumna(m, i, k) { // lo que no es hoja dentro de una columna de k hojas: luces, divisiones y costados
+function bordesColumna(m, i, k, fila = 0) { // lo que no es hoja dentro de una columna de k hojas: luces, divisiones y costados
   const n = m.columnas.length, izq = i === 0, der = i === n - 1;
-  if (m.tipo === 'isla') { const T = tablero(m), G = grosorCostado(m); return (k - 1) * (T + 2 * GAP) + (izq ? G + GAP : T / 2 + GAP) + (der ? G + GAP : T / 2 + GAP); }
+  if (m.tipo === 'isla') {
+    const T = tablero(m), G = grosorCostado(m), sin = new Set((m.columnas[i]?.frentes?.[fila]?.sin_div || []).map(Number));
+    let e = (izq ? G + GAP : T / 2 + GAP) + (der ? G + GAP : T / 2 + GAP);
+    for (let j = 1; j < k; j++) e += sin.has(j) ? GAP : T + 2 * GAP;
+    return e;
+  }
   return (k - 1) * GAP + (izq ? 0 : GAP / 2) + (der ? 0 : GAP / 2);
 }
 function igualarPuertas(m) {
@@ -309,7 +314,7 @@ function claveDeSel() {
   if (sel?.tipo === 'vano') return { vano: { i: sel.i, v: sel.v } };
   if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
   const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
-    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte', div: sel.dir === 'h' ? `f|${sel.col}|${sel.fila}|div` : `div|${sel.col}` }[sel.tipo];
+    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte', div: sel.dir === 'h' ? `f|${sel.col}|${sel.fila}|div` : `div|${sel.col}`, divhoja: `f|${sel.col}|${sel.fila}|dh${sel.i}` }[sel.tipo];
   return k ? { m: sel.m, k } : null;
 }
 const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo', soporte: 'Soporte delantero' };
@@ -343,7 +348,9 @@ function nombreClave(k) {
   if (k === 'cuerpo') return 'todo el cuerpo';
   if (k === 'zocalo') return 'el zócalo'; if (k === 'cubierta') return 'la cubierta';
   if (k === 'soporte') return 'el soporte delantero';
+  if (k.endsWith('|canto')) return `el canto de ${nombreClave(k.slice(0, -6))}`;
   if (/^div\|\d+$/.test(k)) return `la división vertical ${+k.slice(4) + 1}`;
+  if (/\|dh\d+$/.test(k)) return 'la división entre puertas';
   if (k === 'esq|repisa') return 'las repisas del esquinero'; if (k === 'esq|div') return 'las divisiones del esquinero';
   const p = k.split('|');
   if (p[0] === 'cuerpo') return (NOMBRE_PIEZA[p[1]] || p[1]).toLowerCase();
@@ -416,7 +423,12 @@ $('#materiales').addEventListener('pointerdown', (e) => {
     if (zoc) return { m: zoc.dataset.m, k: 'zocalo' };
     const vano = bajo?.closest?.('[data-tipo="vano"]'); // en Frente o en Planta
     if (vano?.dataset.v) return { vano: { i: +vano.dataset.i, v: vano.dataset.v } };
-    if (cara && lienzo.contains(cara)) return claveDeRef(cara.dataset.ref);
+    if (cara && lienzo.contains(cara)) {
+      const d = claveDeRef(cara.dataset.ref);
+      // el canto a la vista de una división (su cara de adelante) toma su propio material: el tapacanto (dueño, 2026-11-25)
+      if (d?.k && cara.dataset.cara === 'front' && (/^div\|\d+$/.test(d.k) || /\|div$/.test(d.k) || /\|dh\d+$/.test(d.k))) d.k += '|canto';
+      return d;
+    }
     return null;
   };
   const mover = (ev) => {
@@ -778,6 +790,7 @@ function selRef() {
   if (sel.tipo === 'objeto') return `obj|${sel.o}`;
   if (sel.tipo === 'pieza') return `${sel.m}|cuerpo|${sel.p}${sel.parte != null ? `|p${sel.parte}` : ''}`;
   if (sel.tipo === 'repisa') return `${sel.m}|f|${sel.col}|${sel.fila}|rep|${sel.i}`;
+  if (sel.tipo === 'divhoja') return `${sel.m}|f|${sel.col}|${sel.fila}|dh${sel.i}`;
   if (sel.tipo === 'div') return sel.dir === 'h' ? `${sel.m}|f|${sel.col}|${sel.fila}|div` : `${sel.m}|cuerpo|dv${sel.col}`;
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
@@ -1241,7 +1254,7 @@ function dibujarPlano() {
       const F = c.tipo === 'abierto' ? null : medidaFrente(m, c), fx0 = F ? F.x0 : c.x0, fx1 = F ? F.x1 : c.x1;
       el('rect', { x: M.X(ox + fx0), y: M.Y(oy + c.y1), width: (fx1 - fx0) * M.s, height: c.h * M.s, class: `celda${s ? ' sel' : ''}${c.tipo === 'abierto' ? ' abierta' : ''}`, 'data-tipo': 'celda', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
       if (F && F.hojas > 1) for (let i = 1; i < F.hojas; i++) { // luz entre las hojas de la sección
-        const x = F.x0 + i * (F.paso ?? F.hoja + GAP) - (F.sep ?? GAP) / 2; // en la isla, al centro de la división entre hojas
+        const x = F.juntas ? F.juntas[i - 1] : F.x0 + i * (F.hoja + GAP) - GAP / 2; // en la isla, al centro de la división (o de los 3 mm)
         el('line', { x1: M.X(ox + x), y1: M.Y(oy + c.y1), x2: M.X(ox + x), y2: M.Y(oy + c.y0), class: 'junta' }, plano);
       }
       aperturaFrente(m, c, M, ox, oy);
@@ -1422,7 +1435,7 @@ const frenteAbajo = (cs, ci) => cs.filter((k) => k.col === ci).sort((a, b) => a.
 // Ancho de columna para que su puerta (o cada hoja) mida «puerta» cm: + 3 mm entre hojas y 1,5 mm hacia cada vecino
 function anchoColumnaPara(m, c, puerta) {
   const n = c.tipo === 'puerta_doble' ? c.hojas : 1, W = +m.ancho;
-  if (m.tipo === 'isla') return n * puerta + bordesColumna(m, c.col, n); // isla: empotradas, con división entre hojas
+  if (m.tipo === 'isla') return n * puerta + bordesColumna(m, c.col, n, c.fila); // isla: empotradas, con división entre hojas
   return n * puerta + (n - 1) * GAP + (c.x0 > .05 ? GAP / 2 : 0) + (c.x1 < W - .05 ? GAP / 2 : 0);
 }
 
@@ -1952,6 +1965,7 @@ function desdeRef(ref) {
   const [m, k, a, b, e, i] = ref.split('|');
   if (k === 'cuerpo' && /^dv\d+$/.test(a || '')) return { tipo: 'div', m, dir: 'v', col: +a.slice(2), fila: 0 }; // división vertical
   if (k === 'f' && e === 'div') return { tipo: 'div', m, dir: 'h', col: +a, fila: +b }; // división entre dos secciones
+  if (k === 'f' && /^dh\d+$/.test(e || '')) return { tipo: 'divhoja', m, col: +a, fila: +b, i: +e.slice(2) }; // isla: división entre hojas
   if (k === 'cuerpo' && a) return /^p\d+$/.test(b || '') ? { tipo: 'pieza', m, p: a, parte: +b.slice(1) } : { tipo: 'pieza', m, p: a };
   if (k === 'f' && e === 'rep') return { tipo: 'repisa', m, col: +a, fila: +b, i: +i };
   if (m === 'muro') return /^z\d+$/.test(a || '') ? { tipo: 'muro', i: +k, z: +a.slice(1) } : { tipo: 'muro', i: +k };
@@ -2128,6 +2142,13 @@ function props() {
       <p class="ed-ayuda">Arrástralo en Planta (o hacia los lados en Frente): se mueve libre por las cubiertas y puede quedar sobre la unión de dos muebles si la cubierta sigue. Donde no hay cubierta no se deja. Las flechas lo mueven (Mayús: 10 cm).</p></div>`;
     return;
   }
+  if (sel.tipo === 'divhoja') { // isla: división entre dos hojas de una sección
+    const m = modulo(sel.m); if (!m) { sel = null; return props(); }
+    P.innerHTML = `<div class="ed-props"><p class="tit">División entre puertas</p><p class="sub">${esc(m.nombre)} · columna ${sel.col + 1}, fila ${sel.fila + 1}, entre las hojas ${sel.i} y ${sel.i + 1}</p>
+      <div class="ed-botones"><button data-a="quitar-divhoja" class="peligro">Quitar esta división (Supr)</button></div>
+      <p class="ed-ayuda">Va fija a la base, a la trasera y al soporte delantero. Si la quitas, las dos hojas quedan con 3 mm de aire entre ellas. Para cambiar el color de su canto, suelta un material sobre el canto.</p>${bloqueMaterial()}</div>`;
+    return;
+  }
   if (sel.tipo === 'div') {
     const m = modulo(sel.m); if (!m) { sel = null; return props(); }
     P.innerHTML = `<div class="ed-props"><p class="tit">División ${sel.dir === 'v' ? 'vertical' : 'horizontal'}</p>
@@ -2283,6 +2304,7 @@ function props() {
           <p class="ed-ayuda">Máximo ${MAX_HOJA} cm por hoja: con ${cm(col.ancho)} cm van al menos ${hojasMin(+col.ancho)}.</p>`;
       })() : ''}
       <div class="ed-botones">
+        ${m.tipo === 'isla' && f.sin_div?.length ? '<button data-a="poner-divhojas">Volver a poner las divisiones entre hojas</button>' : ''}
         <button data-a="div-h">Dividir en 2 filas</button><button data-a="div-v">Dividir en 2 columnas</button>
         ${sel.fila < col.frentes.length - 1 ? '<button data-a="unir-abajo">Unir con el de abajo</button>' : ''}
         ${sel.col < m.columnas.length - 1 ? '<button data-a="unir-der">Unir columna con la derecha</button>' : ''}
@@ -2775,7 +2797,8 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'borrar-art') { borrarSel(); return; }
   if (b.dataset.a.startsWith('art-pos:')) { posicionEnL(b.dataset.a.slice(8)); return; }
   if (b.dataset.a === 'centrar-art') { cambiarArtefacto((a, m, { W }) => { a.desde = r1((W - Math.min(+a.ancho, W)) / 2); }); return; }
-  if (b.dataset.a === 'borrar-div') { borrarSel(); return; }
+  if (b.dataset.a === 'borrar-div' || b.dataset.a === 'quitar-divhoja') { borrarSel(); return; }
+  if (b.dataset.a === 'poner-divhojas') { const s = { ...sel }, fr = modulo(s.m)?.columnas?.[s.col]?.frentes?.[s.fila]; if (!fr) return; cambiar(() => { delete fr.sin_div; }); return; }
   if (b.dataset.a.startsWith('div-tablero:')) { // poner o quitar el tablero de la división entre dos secciones
     const s = { ...sel }, m = modulo(s.m), fr = m?.columnas?.[s.col]?.frentes?.[s.fila]; if (!fr) return;
     const v = b.dataset.a.endsWith('1'), def = divisionesH({ ...m, columnas: m.columnas.map((c, i) => (i === s.col ? { ...c, frentes: c.frentes.map((f, j) => (j === s.fila ? { ...f, division: undefined } : f)) } : c)) }).some((d) => d.col === s.col && d.fila === s.fila);
@@ -2969,6 +2992,11 @@ function borrarSel() {
     const s = { ...sel }, m = modulo(s.m), c = celdas(m).find((k) => k.col === s.col && k.fila === s.fila);
     cambiar(() => { m.columnas[s.col].frentes[s.fila].repisas = Math.max(0, (c?.repisas || 1) - 1); });
     sel = { tipo: 'frente', m: m.id, col: s.col, fila: s.fila }; render(); return;
+  }
+  if (sel.tipo === 'divhoja') { // Supr sobre la división entre hojas de una isla: se quita (3 mm de aire entre las hojas)
+    const s = { ...sel }, m = modulo(s.m), fr = m?.columnas?.[s.col]?.frentes?.[s.fila]; if (!fr) return;
+    cambiar(() => { fr.sin_div = [...new Set([...(fr.sin_div || []), s.i])].sort((a, b) => a - b); });
+    sel = { tipo: 'frente', m: m.id, col: s.col, fila: s.fila }; render(); aviso('División quitada: las hojas quedan con 3 mm de aire. Ctrl+Z la trae de vuelta.'); return;
   }
   if (sel.tipo === 'div') { // Supr sobre una división: las dos secciones quedan en una
     const s = { ...sel }, m = modulo(s.m);

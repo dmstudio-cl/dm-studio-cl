@@ -439,8 +439,16 @@ export function frentesIsla(m, c) {
   const x0 = c.x0 < .05 ? G + L : c.x0 + T / 2 + L, x1 = c.x1 > W - .05 ? W - G - L : c.x1 - T / 2 - L;
   const y0 = c.y0 <= Z + .05 ? Z + (q.includes('piso') ? 0 : T) + L : abajo ? c.y0 + T / 2 + L : c.y0 + L / 2;
   const y1 = c.y1 >= H - .05 ? H - (q.includes('soporte') ? 0 : 10) - L : arriba ? c.y1 - T / 2 - L : c.y1 - L / 2;
-  const n = c.tipo === 'puerta_doble' ? Math.max(1, c.hojas || 1) : 1, sep = T + 2 * L, w = (x1 - x0 - (n - 1) * sep) / n;
-  return { x0, x1, y0, y1, n, w, sep, hojas: Array.from({ length: n }, (_, i) => ({ x0: x0 + i * (w + sep), x1: x0 + i * (w + sep) + w })) };
+  const n = c.tipo === 'puerta_doble' ? Math.max(1, c.hojas || 1) : 1, sep = T + 2 * L;
+  // uniones de hojas (1..n−1): con división de 15 mm, salvo las que se quitaron (fr.sin_div): ahí 3 mm entre hojas
+  const sin = new Set(((m.columnas?.[c.col]?.frentes?.[c.fila] || {}).sin_div || []).map(Number));
+  const seps = Array.from({ length: n - 1 }, (_, j) => (sin.has(j + 1) ? L : sep)), w = (x1 - x0 - seps.reduce((a, b) => a + b, 0)) / n;
+  const hojas = [], divs = [], juntas = []; let x = x0;
+  for (let i = 0; i < n; i++) {
+    hojas.push({ x0: x, x1: x + w }); x += w;
+    if (i < n - 1) { const s = seps[i]; juntas.push(x + s / 2); if (s > L + .01) divs.push({ i: i + 1, x: x + s / 2 }); x += s; }
+  }
+  return { x0, x1, y0, y1, n, w, sep, hojas, divs, juntas };
 }
 // Cubierta de un módulo en coordenadas locales: ancho W y fondo Dc (desde la pared hasta el canto)
 // Vuelos de la cubierta (cm que sobresale del cuerpo por cada lado). Frente: 2 cm por defecto.
@@ -718,7 +726,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const T = tablero(m); // 1,5 cm (melamina 15 mm) o 1,8 cm
     const TC = grosorCostado(m), isla = esIsla(m); // costado (doble en la isla, crece hacia adentro)
     const ZF = isla ? D : D + T;                  // cara de adelante de los frentes (en la isla, empotrados al ras)
-    const canto = (base) => (isla ? (c) => (c === 'front' ? M.frente : base) : base); // isla: cantos a la vista del color del frente
+    // canto a la vista de una división: el material que se le soltó encima (clave «…|canto») o, en la isla, el color del frente
+    const canto = (base, key) => {
+      const pc = key && propio(`${key}|canto`); if (!isla && !pc) return base;
+      const f = pc || M.frente; return (c) => (c === 'front' ? f : typeof base === 'function' ? base(c) : base);
+    };
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
@@ -776,7 +788,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       if (!quitada('piso')) B({ w: W - 2 * TC, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, canto(tab('piso')), `${id}|cuerpo|piso`); // base
       if (isla) { // divisiones entre columnas: sus cantos se ven entre las puertas empotradas
         const xs = [...new Set(celdas(m).filter((c) => c.x1 < W - .05).map((c) => +c.x1.toFixed(2)))];
-        xs.forEach((x, i) => B({ w: T, h: H - piso, d: D - T, x, y: piso + (H - piso) / 2, z: T + (D - T) / 2 }, canto(propio(`div|${i}`, 'cuerpo') || M.cuerpo), `${id}|cuerpo|dv${i}`));
+        xs.forEach((x, i) => B({ w: T, h: H - piso, d: D - T, x, y: piso + (H - piso) / 2, z: T + (D - T) / 2 }, canto(propio(`div|${i}`, 'cuerpo') || M.cuerpo, `div|${i}`), `${id}|cuerpo|dv${i}`));
       }
       // Techo de melamina: por defecto los basales no llevan (quedan abiertos arriba) y aéreos y torres sí;
       // cada mueble puede forzarlo con m.techo = 'si' | 'no' (ej. el nicho del microondas o una torre con placa arriba)
@@ -803,7 +815,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     if (ver('frentes')) {
       if (ver('cuerpo')) for (const dv of divisionesH(m)) { // divisiones entre secciones: dentro de los costados
         const xa = dv.x0 + (dv.x0 < .05 ? TC : T / 2), xb = dv.x1 - (dv.x1 > W - .05 ? TC : T / 2), kd = `f|${dv.col}|${dv.fila}`;
-        B({ w: xb - xa, h: T, d: isla ? D - T : D, x: (xa + xb) / 2, y: dv.y, z: isla ? T + (D - T) / 2 : D / 2 }, canto(propio(`${kd}|div`, 'cuerpo') || M.cuerpo), `${id}|${kd}|div`);
+        B({ w: xb - xa, h: T, d: isla ? D - T : D, x: (xa + xb) / 2, y: dv.y, z: isla ? T + (D - T) / 2 : D / 2 }, canto(propio(`${kd}|div`, 'cuerpo') || M.cuerpo, `${kd}|div`), `${id}|${kd}|div`);
       }
       // Repisa: fija (justa, hasta el canto) o móvil (más corta; en el editor lleva una marca roja en su canto)
       const repisas = (c, k, ref, xa, xb) => nivelesRepisa(c).forEach((y, i) => {
@@ -820,7 +832,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         const fw = c.w - GAP, fh = ch - GAP, zf = D + T / 2;
         const MF = propio(k, 'frentes') || M.frente, MD = propio(`${k}|div`, 'cuerpo') || M.cuerpo;
         const FI = isla && c.tipo !== 'abierto' ? frentesIsla(m, c) : null;
-        const divHojas = () => { if (FI && ver('cuerpo')) for (let i = 1; i < FI.n; i++) B({ w: T, h: FI.y1 - FI.y0 + .6, d: D - T, x: FI.hojas[i].x0 - FI.sep / 2, y: (FI.y0 + FI.y1) / 2, z: T + (D - T) / 2 }, canto(MD), ref); };
+        const divHojas = () => { if (FI && ver('cuerpo')) for (const dv of FI.divs) B({ w: T, h: FI.y1 - FI.y0 + .6, d: D - T, x: dv.x, y: (FI.y0 + FI.y1) / 2, z: T + (D - T) / 2 }, canto(propio(`${k}|dh${dv.i}`, `${k}|div`, 'cuerpo') || M.cuerpo, `${k}|dh${dv.i}`), `${ref}|dh${dv.i}`); }; // se elige y se quita con Supr
         if (FI && !abre) { // isla: frentes empotrados al ras de los costados y una división entre hojas
           FI.hojas.forEach((h) => B({ w: h.x1 - h.x0, h: FI.y1 - FI.y0, d: T, x: (h.x0 + h.x1) / 2, y: (FI.y0 + FI.y1) / 2, z: D - T / 2 }, MF, ref));
           divHojas(); continue;
@@ -831,8 +843,8 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
             // regla del dueño (2026-11-25): repisas y divisiones horizontales van siempre DENTRO de los costados (y de las
             // divisiones verticales); los costados son piezas completas y no se ve el canto de ninguna repisa por fuera
             const xa = c.x0 + (c.x0 < .05 ? TC : T / 2), xb = c.x1 - (c.x1 > W - .05 ? TC : T / 2);
-            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, propio(`div|${c.col - 1}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col - 1}`);  // división vertical izq. (la isla las dibuja enteras)
-            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, propio(`div|${c.col}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col}`); // división vertical der.
+            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, canto(propio(`div|${c.col - 1}`, 'cuerpo') || M.cuerpo, `div|${c.col - 1}`), `${id}|cuerpo|dv${c.col - 1}`);  // división vertical izq. (la isla las dibuja enteras)
+            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, canto(propio(`div|${c.col}`, 'cuerpo') || M.cuerpo, `div|${c.col}`), `${id}|cuerpo|dv${c.col}`); // división vertical der.
             repisas(c, k, ref, xa, xb); // las divisiones de arriba y abajo van en divisionesH()
           }
         } else if (abre) { // mueble enfocado: divisiones y repisas a la vista al abrir, puertas que giran y cajones que salen
@@ -857,20 +869,21 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
           } else if (c.tipo === 'puerta_doble') {
             const n = c.hojas, lw = FI ? FI.w : (fw - (n - 1) * GAP) / n, paso = FI ? FI.w + FI.sep : lw + GAP;
             for (let i = 0; i < n; i++) {
-              const a = x0f + i * paso, lado = i <= (n - 1) / 2 ? 'izq' : 'der';
+              const a = FI ? FI.hojas[i].x0 : x0f + i * paso, lado = i <= (n - 1) / 2 ? 'izq' : 'der';
               const ang = i === 0 ? anguloBisagra(m, c, c.x0) : i === n - 1 ? anguloBisagra(m, c, c.x1) : 110; // las del medio abren hacia otra puerta
               hoja(a, a + lw, lado, ang, `${ref}|h${i}`);
             }
           } else if (c.tipo === 'cajon') { // sale lo que mide su corredera, con su caja
             const xa = c.x0 + (c.x0 < .05 ? TC : T / 2) + 1.25, xb = c.x1 - (c.x1 > W - .05 ? TC : T / 2) - 1.25;
-            const lc = Math.max(10, D - CHOLGUAN - 2), corr = CORREDERAS_M.filter((l) => l <= lc).pop() || CORREDERAS_M[0];
-            const yb = (c.y0 <= Z + .05 ? Z + T : c.y0) + .5, yt = Math.max(yb + 6, cy + fh / 2 - 2), ac = yt - yb;
+            const zFr = FI ? D - T : D; // la caja llega hasta la cara de atrás del frente (empotrado en la isla)
+            const lc = Math.max(10, FI ? D - 2 * T - 2 : D - CHOLGUAN - 2), corr = CORREDERAS_M.filter((l) => l <= lc).pop() || CORREDERAS_M[0];
+            const yb = FI ? FI.y0 + .2 : (c.y0 <= Z + .05 ? Z + T : c.y0) + .5, yt = Math.max(yb + 6, FI ? FI.y1 - 2 : cy + fh / 2 - 2), ac = yt - yb;
             const gr = grupoMovil(G, ref, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: corr }, .8, abiertos), NEG = { bg: '#141210' };
             gr.box({ w: FI ? FI.x1 - FI.x0 : fw, h: hh, d: T, x: FI ? (FI.x0 + FI.x1) / 2 : c.x, y: yy, z: FI ? D - T / 2 : zf, tex: MF, ref });
-            const z0 = D - lc, bx = (x0, x1, y0, y1, za, zb, tex = M.cuerpo, extra = {}) => gr.box({ w: x1 - x0, h: y1 - y0, d: zb - za, x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (za + zb) / 2, tex, ref, ...extra });
-            bx(xa, xa + T, yb, yt, z0, D); bx(xb - T, xb, yb, yt, z0, D); bx(xa + T, xb - T, yb, yt - .8, z0, z0 + T); // laterales y trasera
-            bx(xa + T, xb - T, yb + .3, yb + .4, z0 + T, D, { bg: '#e2ddd3' }, { caras: ['top'] });         // fondo
-            for (const [p, q, r, t] of [[xa, xa + T, z0, D], [xb - T, xb, z0, D], [xa + T, xb - T, z0, z0 + T]]) bx(p, q, yt + .02, yt + .1, r, t, NEG, { caras: ['top'] }); // contorno negro arriba
+            const z0 = zFr - lc, bx = (x0, x1, y0, y1, za, zb, tex = M.cuerpo, extra = {}) => gr.box({ w: x1 - x0, h: y1 - y0, d: zb - za, x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (za + zb) / 2, tex, ref, ...extra });
+            bx(xa, xa + T, yb, yt, z0, zFr); bx(xb - T, xb, yb, yt, z0, zFr); bx(xa + T, xb - T, yb, yt - .8, z0, z0 + T); // laterales y trasera
+            bx(xa + T, xb - T, yb + .3, yb + .4, z0 + T, zFr, { bg: '#e2ddd3' }, { caras: ['top'] });         // fondo
+            for (const [p, q, r, t] of [[xa, xa + T, z0, zFr], [xb - T, xb, z0, zFr], [xa + T, xb - T, z0, z0 + T]]) bx(p, q, yt + .02, yt + .1, r, t, NEG, { caras: ['top'] }); // contorno negro arriba
             (grupos[`${c.col}|${c.fila}`] ||= []).push({ gr, x0: c.x0, x1: c.x1, ox: 0, oz: 0 });
           } else B({ w: fw, h: fh, d: T, x: c.x, y: cy, z: zf }, MF, ref);
         } else if (c.tipo === 'puerta_doble') { // n hojas iguales (máx. 45 cm cada una)
