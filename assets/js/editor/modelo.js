@@ -540,7 +540,7 @@ export function limites(modelo, { conMuros = true } = {}) {
 // (igual que three/mueble.js), así el editor y el portal ubican todo en el mismo lugar.
 // fabricacion: dibuja el mueble tal como se arma (basales sin techo, con soportes de 10 cm; puertas 7 cm bajo la
 // cubierta o 1 cm sin ella; zócalo de pino). Por ahora solo lo usa el editor; el portal del cliente va sin él.
-export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabricacion = false } = {}) {
+export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabricacion = false, interior = null, abrir = null } = {}) {
   st.clear();
   const ver = (k) => capas[k] !== false;
   const SOPORTE = 10;                       // alto de los soportes horizontales (cm)
@@ -573,7 +573,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
     const propioE = (...claves) => { for (const k of claves) { const mid = m.materiales?.[k]; const bg = mid && mats.material?.(mid); if (bg) return { bg }; } return null; };
-    if (m.tipo === 'esquinero') { dibujarEsquinero(G, m, { M, ver, fab: fabricacion, propio: propioE, PINO, tiradorDef, colorTirador: (c) => COLORES_TIRADOR[c] || c }); return; }
+    if (m.tipo === 'esquinero') { dibujarEsquinero(G, m, { M, ver, fab: fabricacion, propio: propioE, PINO, tiradorDef, colorTirador: (c) => COLORES_TIRADOR[c] || c, interior: interior?.id === m.id ? interior : null }); return; }
     const esBasal = m.tipo !== 'aereo' && m.tipo !== 'torre';
     const fab = fabricacion && !m.artefacto;
     const recorteSup = fab ? (m.cubierta ? 7 : 1) : 0; // cuánto bajan los frentes del borde superior
@@ -585,6 +585,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     };
     const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
     const uA = uniones.find((u) => u.A === m), uB = uniones.find((u) => u.B === m);
+    // Mueble enfocado en el portal (dueño, 2026-11-25): sus puertas abren según su bisagra (recta 90°, semicurva 110°) y
+    // sus cajones salen lo que mide su corredera. Cada parte que se mueve va en un grupo con su posición cerrada y abierta.
+    const abre = abrir?.id === id && !m.artefacto, abiertos = abrir?.abiertos || [], grupos = {};
     if (ver('zocalo') && Z > 0 && uA) { // mueble en L: un solo zócalo en L (6 tablas) bajo los dos
       const MZ = propio('zocalo') || (fab ? PINO : M.zocalo);
       for (const t of zocaloL(uA, T)) B({ w: t.x1 - t.x0, h: Z, d: t.z1 - t.z0, x: (t.x0 + t.x1) / 2, y: Z / 2, z: (t.z0 + t.z1) / 2 }, MZ, `${id}|zocalo`);
@@ -648,6 +651,46 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
             const dr = D - 1.1; // repisa completa: desde el fondo hasta 0,5 cm del canto
             nivelesRepisa(c).forEach((y, i) => B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo, `${ref}|rep|${i}`));
           }
+        } else if (abre) { // mueble enfocado: divisiones y repisas a la vista al abrir, puertas que giran y cajones que salen
+          if (ver('cuerpo')) {
+            const rd = `${ref}|div`;
+            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, rd);
+            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, rd);
+            if (c.y1 < H - .05 && c.tipo !== 'cajon') B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, MD, rd);
+            if (c.tipo !== 'cajon') {
+              const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2), dr = D - 1.1;
+              nivelesRepisa(c).forEach((y, i) => B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo, `${ref}|rep|${i}`));
+            }
+          }
+          const fr = m.columnas?.[c.col]?.frentes?.[c.fila] || {}, x0f = c.x - fw / 2;
+          const hoja = (x0, x1, lado, ang, key) => { // bisagra en el canto izquierdo o derecho; abre hacia afuera
+            const w = x1 - x0, izq = lado === 'izq', base = { x: izq ? x0 : x1, y: 0, z: D + T };
+            const gr = grupoMovil(G, key, base, { ...base, ry: (izq ? -1 : 1) * ang }, .9, abiertos);
+            gr.box({ w, h: fh, d: T, x: izq ? w / 2 : -w / 2, y: cy, z: -T / 2, tex: MF, ref });
+            (grupos[`${c.col}|${c.fila}`] ||= []).push({ gr, x0, x1, ox: base.x, oz: base.z });
+          };
+          if (c.tipo === 'puerta') {
+            if (fr.bisagra === 'arriba' || fr.bisagra === 'abajo') B({ w: fw, h: fh, d: T, x: c.x, y: cy, z: zf }, MF, ref); // abatible: por ahora queda cerrada
+            else { const lado = fr.bisagra === 'derecha' ? 'der' : 'izq'; hoja(x0f, x0f + fw, lado, anguloBisagra(m, c, lado === 'der' ? c.x1 : c.x0), ref); }
+          } else if (c.tipo === 'puerta_doble') {
+            const n = c.hojas, lw = (fw - (n - 1) * GAP) / n;
+            for (let i = 0; i < n; i++) {
+              const a = x0f + i * (lw + GAP), lado = i <= (n - 1) / 2 ? 'izq' : 'der';
+              const ang = i === 0 ? anguloBisagra(m, c, c.x0) : i === n - 1 ? anguloBisagra(m, c, c.x1) : 110; // las del medio abren hacia otra puerta
+              hoja(a, a + lw, lado, ang, `${ref}|h${i}`);
+            }
+          } else if (c.tipo === 'cajon') { // sale lo que mide su corredera, con su caja
+            const xa = c.x0 + (c.x0 < .05 ? T : T / 2) + 1.25, xb = c.x1 - (c.x1 > W - .05 ? T : T / 2) - 1.25;
+            const lc = Math.max(10, D - CHOLGUAN - 2), corr = CORREDERAS_M.filter((l) => l <= lc).pop() || CORREDERAS_M[0];
+            const yb = (c.y0 <= Z + .05 ? Z + T : c.y0) + .5, yt = Math.max(yb + 6, cy + fh / 2 - 2), ac = yt - yb;
+            const gr = grupoMovil(G, ref, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: corr }, .8, abiertos), NEG = { bg: '#141210' };
+            gr.box({ w: fw, h: fh, d: T, x: c.x, y: cy, z: zf, tex: MF, ref });
+            const z0 = D - lc, bx = (x0, x1, y0, y1, za, zb, tex = M.cuerpo, extra = {}) => gr.box({ w: x1 - x0, h: y1 - y0, d: zb - za, x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: (za + zb) / 2, tex, ref, ...extra });
+            bx(xa, xa + T, yb, yt, z0, D); bx(xb - T, xb, yb, yt, z0, D); bx(xa + T, xb - T, yb, yt - .8, z0, z0 + T); // laterales y trasera
+            bx(xa + T, xb - T, yb + .3, yb + .4, z0 + T, D, { bg: '#e2ddd3' }, { caras: ['top'] });         // fondo
+            for (const [p, q, r, t] of [[xa, xa + T, z0, D], [xb - T, xb, z0, D], [xa + T, xb - T, z0, z0 + T]]) bx(p, q, yt + .02, yt + .1, r, t, NEG, { caras: ['top'] }); // contorno negro arriba
+            (grupos[`${c.col}|${c.fila}`] ||= []).push({ gr, x0: c.x0, x1: c.x1, ox: 0, oz: 0 });
+          } else B({ w: fw, h: fh, d: T, x: c.x, y: cy, z: zf }, MF, ref);
         } else if (c.tipo === 'puerta_doble') { // n hojas iguales (máx. 45 cm cada una)
           const n = c.hojas, lw = (fw - (n - 1) * GAP) / n;
           for (let i = 0; i < n; i++) B({ w: lw, h: fh, d: T, x: c.x - fw / 2 + lw / 2 + i * (lw + GAP), y: cy, z: zf }, MF, ref);
@@ -663,7 +706,8 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         const c = cs.find((k) => k.col === t.col && k.fila === t.fila);
         const def = tiradorDef(t.modelo);
         if (!c || !def) return;
-        const g = G.group({ x: c.x + (+t.dx || 0), y: c.y + (+t.dy || 0), z: D + T, rz: +t.rot || 0 });
+        const tx = c.x + (+t.dx || 0), gm = abre && (grupos[`${c.col}|${c.fila}`] || []).find((q) => tx >= q.x0 - .5 && tx <= q.x1 + .5); // se mueve con su puerta o cajón
+        const g = gm ? gm.gr.group({ x: tx - gm.ox, y: c.y + (+t.dy || 0), z: D + T - gm.oz, rz: +t.rot || 0 }) : G.group({ x: tx, y: c.y + (+t.dy || 0), z: D + T, rz: +t.rot || 0 });
         const color = { bg: COLORES_TIRADOR[t.color] || t.color || COLORES_TIRADOR.negro };
         // el perfil se estira al largo indicado (p. ej. el ancho del cajón)
         const piezas = t.modelo === 'perfil' && +t.largo ? def.piezas.map((p) => ({ ...p, w: +t.largo })) : def.piezas;
@@ -698,6 +742,25 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const pref = [].concat(sel);
     for (const f of st.rig.querySelectorAll('[data-ref]')) if (pref.some((p) => f.dataset.ref.startsWith(p))) f.classList.add('c3-sel');
   }
+}
+
+// ----- puertas y cajones que se abren (portal, mueble enfocado) -----
+const CORREDERAS_M = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (cm), los mismos de despiece.js
+// Grupo que se mueve entre su posición cerrada y abierta: la transición CSS lo anima sin volver a dibujar la escena.
+export function grupoMovil(G, key, base, abierto, dur, abiertos = []) {
+  const tf = (p) => `translate3d(${p.x}em, ${-p.y}em, ${p.z}em) rotateY(${p.ry || 0}deg) rotateZ(0deg)`;
+  const p = abiertos.includes(key) ? abierto : base, gr = G.group({ x: p.x, y: p.y, z: p.z, ry: p.ry || 0 });
+  Object.assign(gr.el.dataset, { esqAnim: key, cerrado: tf(base), abierto: tf(abierto) });
+  gr.el.style.transition = `transform ${dur}s ease-in-out`;
+  return gr;
+}
+// Ángulo de apertura según la bisagra (dueño, 2026-11-25), con la misma regla del despiece: recta (90°) si va en un
+// costado o si al otro lado no hay otra puerta; semicurva (110°) si va en una división compartida con otra puerta.
+export function anguloBisagra(m, c, x) {
+  const W = +m.ancho, interior = x > .05 && x < W - .05;
+  if (!interior) return 90;
+  const otra = celdas(m).find((o) => o !== c && (Math.abs(o.x1 - x) < .05 || Math.abs(o.x0 - x) < .05) && Math.min(o.y1, c.y1) - Math.max(o.y0, c.y0) > 1);
+  return otra && otra.tipo !== 'abierto' ? 110 : 90;
 }
 
 // Encimera o lavaplatos sobre la cubierta (y = altura de la cara superior de la cubierta)

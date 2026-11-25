@@ -2,7 +2,8 @@
 // así app.js no cambia. Dibuja con el mismo código que el editor de modelos (editor/modelo.js),
 // por lo que el cliente ve exactamente lo que el estudio diseñó: muros, muebles y tiradores.
 import { createStage } from '../css3d/engine.js';
-import { dibujar, limites, tiradoresCliente, espacioPortal } from '../editor/modelo.js';
+import { dibujar, limites, tiradoresCliente, espacioPortal, huella } from '../editor/modelo.js';
+import { geoEsquinero, animarGiro, vueltaGiro, partesInterior } from '../editor/esquinero.js';
 import { matsColores } from '../editor/colores.js';
 
 const VISTAS = { 'tres-cuartos': [-24, -32], frente: [-6, 0], planta: [-88, 0] };
@@ -17,6 +18,7 @@ export function createScene(el) {
 
   let soloMuebles = (() => { try { return localStorage.getItem('dm-portal-solo') === '1'; } catch { return false; } })();
   let proyecto = null, sel = {}, roomVisible = true, zoom = 1, modeloActual = null, catalogo = [], piezaSel = null;
+  let foco = null; // mueble enfocado (dueño, 2026-11-25): { id, abiertos: [claves de puertas y cajones abiertos] }
   // Fondo CSS de un material por pieza: melamina del catálogo (id) o color ('color:#rrggbb')
   const fondoMaterial = (mid) => {
     if (!mid) return null;
@@ -54,10 +56,39 @@ export function createScene(el) {
   }
   function build() {
     modeloActual = modelo(sel);
-    dibujar(st, modeloActual, { capas: { muros: roomVisible, cantoMuro: false }, mats: mats(sel), sel: piezaSel }); // el cliente no ve el borde superior de los muros
+    dibujar(st, modeloActual, { capas: { muros: roomVisible, cantoMuro: false }, mats: mats(sel), sel: piezaSel, interior: foco, abrir: foco }); // el cliente no ve el borde superior de los muros
+    if (foco) { // con un mueble enfocado, lo demás queda tenue y no toma los toques (no lo tapa ni se lleva el clic)
+      animarGiro(st.rig, foco.abiertos.includes('auto')); // la puerta giratoria enfocada gira sola
+      for (const f of st.rig.querySelectorAll('.c3-f[data-ref]')) { const r = f.dataset.ref; if (!r.startsWith(`${foco.id}|`) && !r.startsWith('muro|') && !r.startsWith('vano|')) f.classList.add('c3-tenue'); }
+    }
     listeners.forEach((fn) => fn());
   }
+  // Encuadre de un mueble (centro y tamaño, cm)
+  function marcoDe(m) {
+    const h = huella(m), xs = h.map((q) => q[0]), zs = h.map((q) => q[1]);
+    return { c: [(Math.min(...xs) + Math.max(...xs)) / 2, +m.elevacion + +m.alto / 2, (Math.min(...zs) + Math.max(...zs)) / 2], size: Math.hypot(+m.ancho, +m.profundidad, +m.alto) * 2 };
+  }
+  // Acercamiento suave (0,6 s): solo se mueve la cámara, no se vuelve a dibujar nada
+  let vuelo = 0, encuadreAct = null;
+  function volarA(c, size) {
+    const de = encuadreAct || { c: st.center, size }, t0 = performance.now(), ease = (t) => (t < .5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+    cancelAnimationFrame(vuelo);
+    const paso = (ahora) => {
+      const t = Math.min(1, (ahora - t0) / 600), k = ease(t);
+      const cc = de.c.map((v, i) => v + (c[i] - v) * k), ss = de.size + (size - de.size) * k;
+      st.frame(cc, ss, 1); encuadreAct = { c: cc, size: ss };
+      if (t < 1) vuelo = requestAnimationFrame(paso);
+    };
+    vuelo = requestAnimationFrame(paso);
+  }
+  function marcoGeneral() {
+    const L = limites(modeloActual, { conMuros: roomVisible }), diag = Math.hypot(L.w, L.h, L.d), Wp = host.clientWidth || 800, Hp = host.clientHeight || 600;
+    const px = (Math.min(Wp, Hp) / (diag * (Wp < Hp ? 1.05 : 1.2))) * zoom;
+    return { c: [(L.x0 + L.x1) / 2, L.h / 2, (L.z0 + L.z1) / 2], size: Math.min(Wp, Hp) / px };
+  }
   function encuadrar() {
+    if (foco) { const m = modeloActual.modulos.find((x) => x.id === foco.id); if (m) { const f = marcoDe(m); st.frame(f.c, f.size / zoom, 1); encuadreAct = { c: f.c, size: f.size / zoom }; return; } }
+    const g0 = marcoGeneral(); encuadreAct = g0;
     const L = limites(modeloActual, { conMuros: roomVisible });
     const diag = Math.hypot(L.w, L.h, L.d);
     const Wp = host.clientWidth || 800, Hp = host.clientHeight || 600;
@@ -134,6 +165,44 @@ export function createScene(el) {
     toggleSolo() { soloMuebles = !soloMuebles; try { localStorage.setItem('dm-portal-solo', soloMuebles ? '1' : '0'); } catch {} build(); return soloMuebles; },
     get soloMuebles() { return soloMuebles; },
     pick, toScreen,
+    // ----- mueble enfocado (portal, dueño 2026-11-25): acercamiento a una vista 3/4 del mueble (la cámara se puede
+    // mover) y sus puertas y cajones se abren y cierran con un toque
+    get foco() { return foco?.id || null; },
+    esMueble(id) { return !!modeloActual?.modulos.find((m) => m.id === id && !m.artefacto); },
+    enfocar(id) {
+      const m = modeloActual?.modulos.find((x) => x.id === id); if (!m) return;
+      const esq = m.tipo === 'esquinero' ? geoEsquinero(m) : null;
+      foco = { id, abiertos: esq?.sol === '1' ? ['auto'] : [] }; zoom = 1;
+      build();
+      const f = marcoDe(m), r = +m.rotacion || 0;
+      volarA(f.c, f.size);
+      st.view(esq?.sol ? -30 : -26, (esq ? (m.esquina === 'izq' ? -45 : 45) : -10) - r); // casi de frente al mueble, así los vecinos no lo tapan (el esquinero, hacia el rincón)
+    },
+    desenfocar() {
+      if (!foco) return; foco = null; zoom = 1; build();
+      const f = marcoGeneral(); volarA(f.c, f.size); st.view(...VISTAS['tres-cuartos']);
+    },
+    // abre o cierra una puerta o cajón del mueble enfocado (clave = data-esq-anim del grupo)
+    alternar(key, hoja) {
+      if (!foco) return;
+      const m = modeloActual.modulos.find((x) => x.id === foco.id);
+      if (hoja) { foco.abiertos = foco.abiertos.filter((k) => k !== 'auto'); vueltaGiro(st.rig, hoja, m?.esquina === 'izq'); return; } // puerta giratoria: una vuelta
+      const abierto = !foco.abiertos.includes(key);
+      foco.abiertos = abierto ? [...foco.abiertos, key] : foco.abiertos.filter((k) => k !== key);
+      if (key === 'auto') { animarGiro(st.rig, abierto); return; }
+      for (const g of st.rig.querySelectorAll('[data-esq-anim]')) if (g.dataset.esqAnim === key) g.style.transform = abierto ? g.dataset.abierto : g.dataset.cerrado;
+    },
+    // abrir o cerrar todo lo del mueble enfocado
+    todos(abrir) {
+      if (!foco) return;
+      const claves = [...new Set([...st.rig.querySelectorAll('[data-esq-anim]')].map((g) => g.dataset.esqAnim))].filter((k) => k !== 'giro');
+      foco.abiertos = abrir ? claves : [];
+      animarGiro(st.rig, false);
+      for (const g of st.rig.querySelectorAll('[data-esq-anim]')) g.style.transform = abrir && g.dataset.esqAnim !== 'giro' ? g.dataset.abierto : g.dataset.cerrado;
+    },
+    nombreFoco() { return foco && modeloActual.modulos.find((x) => x.id === foco.id)?.nombre || ''; },
+    partesEsquinero() { const m = foco && modeloActual.modulos.find((x) => x.id === foco.id); return m?.tipo === 'esquinero' ? partesInterior(m).filter((p) => p.key !== 'giro') : []; },
+    abiertos() { return foco?.abiertos || []; },
     onRender(fn) { listeners.push(fn); },
     request() { listeners.forEach((fn) => fn()); },
     canvas: host,

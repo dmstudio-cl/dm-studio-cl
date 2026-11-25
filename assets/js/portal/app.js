@@ -467,9 +467,16 @@ export async function startApp(api) {
   cv.addEventListener('click', (e) => {
     if (pinMode || !down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
     if (e.detail > 1) { clearTimeout(clicPendiente); return; } // segundo clic de un doble clic
-    const ref = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]')?.dataset.ref;
+    const bajo = document.elementFromPoint(e.clientX, e.clientY), ref = bajo?.closest('[data-ref]')?.dataset.ref;
+    const mueve = bajo?.closest('[data-esq-anim]')?.dataset.esqAnim, hojaGiro = /\|esq34\|giro\|([AB])$/.exec(ref || '')?.[1]; // puerta o cajón que se abre
     clearTimeout(clicPendiente);
     clicPendiente = setTimeout(() => {
+      // Mueble enfocado (dueño, 2026-11-25): el primer toque en un mueble lo acerca a una vista 3/4 y muestra sus
+      // opciones; desde ahí, tocar una puerta o un cajón lo abre o lo cierra. Tocar el fondo vuelve a la vista general.
+      const mid = (ref || '').split('|')[0];
+      if (scene.esMueble(mid) && scene.foco !== mid) { scene.enfocar(mid); mostrarFoco(); irA('personalizar', 'melamina'); return; }
+      if (scene.foco && mid === scene.foco && (mueve || hojaGiro)) { scene.alternar(mueve, hojaGiro); mostrarFoco(); return; }
+      if (!ref && scene.foco) { scene.desenfocar(); mostrarFoco(); return; }
       if (/^obj\|/.test(ref || '')) { mostrarElectro(ref.slice(4)); return; } // un electrodoméstico: sus productos recomendados
       if (refPintable(ref)) { elegirPieza(ref); return; } // una pieza: se le cambia el color
       if (!/\|cubierta$/.test(ref || '')) { if (piezaSel) { piezaSel = null; scene.seleccionar(null); pintarPiezas(); } return; } // fondo: suelta la pieza
@@ -480,6 +487,25 @@ export async function startApp(api) {
     }, 260);
   });
   cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
+  // Panel del mueble enfocado: nombre, precio, abrir y cerrar, y volver a la vista general
+  function mostrarFoco() {
+    const box = $('#pfoco'); if (!box) return;
+    const id = scene.foco;
+    box.hidden = !id; if (!id) { box.innerHTML = ''; return; }
+    const q = lastQuote?.modulos?.find((m) => m.id === id), abiertos = scene.abiertos(), partes = scene.partesEsquinero();
+    box.innerHTML = `<div class="pfoco-cab"><b>${esc(scene.nombreFoco() || 'Mueble')}</b>${q ? `<span class="mono">${q.por_confirmar ? 'desde ' : ''}${clp(q.precio)}</span>` : ''}</div>
+      <p class="small muted" style="margin:0">Toca una puerta o un cajón para abrirlo o cerrarlo. Para cambiar el color de una pieza, tócala o arrastra un color encima.</p>
+      <div class="pfoco-btns">${partes.length
+        ? partes.map((p) => `<button type="button" data-foco="${esc(p.key)}" aria-pressed="${abiertos.includes(p.key)}">${esc(p.nombre)}</button>`).join('')
+        : '<button type="button" data-foco-todo="1">Abrir todo</button><button type="button" data-foco-todo="0">Cerrar todo</button>'}</div>
+      <button type="button" class="pfoco-volver btn btn-ghost small" data-foco-volver>← Volver a la vista general</button>`;
+  }
+  $('#pfoco')?.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.focoVolver != null) { scene.desenfocar(); mostrarFoco(); return; }
+    if (b.dataset.focoTodo != null) { scene.todos(b.dataset.focoTodo === '1'); mostrarFoco(); return; }
+    if (b.dataset.foco) { const k = b.dataset.foco; if (k === 'vueltaA' || k === 'vueltaB') scene.alternar(null, k.slice(-1)); else scene.alternar(k); mostrarFoco(); }
+  });
   $('#pinpop [data-cancel]').addEventListener('click', closePinPop);
   $('#pinpop').addEventListener('submit', async (e) => {
     e.preventDefault();

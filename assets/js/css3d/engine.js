@@ -72,7 +72,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     const T = (k, fw, fh) => (typeof tex === 'function' ? tex(k, fw, fh) : tex) || {};
     const add = (k, fw, fh, at, rot, n) => {
       if (caras && !caras.includes(k)) return;
-      const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, ref, cara: ref ? k : undefined, emisiva });
+      const t = T(k, fw, fh); face(parent, { w: fw, h: fh, at, rot, n: nrot(n), bg: t.bg, size: t.size, clip: t.clip, ref, cara: ref ? k : undefined, emisiva }); // clip: recorte de la cara (ej. bandeja redonda)
     };
     add('front', w, h, [x, cy, z + d / 2], '', [0, 0, 1]);
     add('back', w, h, [x, cy, z - d / 2], 'rotateY(180deg)', [0, 0, -1]);

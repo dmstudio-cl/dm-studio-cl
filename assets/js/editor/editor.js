@@ -17,7 +17,7 @@ import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
-import { SOLUCIONES, ORDEN_SOLUCIONES, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria } from './esquinero.js';
+import { SOLUCIONES, ORDEN_SOLUCIONES, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria, partesInterior, repisasL } from './esquinero.js';
 const CORREDERAS_LARGOS = [25, 30, 35, 40, 45, 50, 55, 60];
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -38,6 +38,7 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros' | 'medir'
 let medF = null, cursorF = null; // huincha en Frente: primer punto y cursor
+let v34 = null; // vista fija 3/4 del interior de un esquinero: { id, abiertos: [claves] }
 let zoom = 1;
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false, cliente: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
@@ -711,7 +712,8 @@ $('#muro-frente').addEventListener('change', (e) => {
 });
 function render({ panel = true } = {}) {
   const mv = modeloVista();
-  dibujar(st, conCliente(mv), { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : capas, mats: mats(), sel: selRef(), fabricacion: true });
+  if (v34 && (vista !== '3d' || !modulo(v34.id) || !geoEsquinero(modulo(v34.id)).sol)) salir34(false);
+  dibujar(st, conCliente(mv), { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : v34 ? { ...capas, cantoMuro: false } : capas, mats: mats(), sel: v34 ? null : selRef(), fabricacion: true, interior: v34 });
   const fuera = fueraCliente(); // muebles que el cliente no cotiza: atenuados (siguen editables)
   if (fuera.size) st.rig.querySelectorAll('[data-ref]').forEach((f) => { if (fuera.has(f.dataset.ref.split('|')[0])) f.classList.add('c3-fuera'); });
   if (vista !== 'inferior' && (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros)) pisoGrilla(mv); // desde abajo el piso taparía el mueble
@@ -719,6 +721,7 @@ function render({ panel = true } = {}) {
   encuadrar(false);
   dibujarPlano();
   if (panel) { arbol(); props(); }
+  if (v34) giroAuto(); // la puerta giratoria sigue girando después de redibujar
   opcionesMuroFrente();
   ponerManija();
   $('#nombre').value = modelo.nombre || '';
@@ -752,6 +755,12 @@ function pisoGrilla(mv = modelo) {
 // Encuadre: en Frente cabe completo a escala; en 3D, con margen para girar.
 let encuadreHecho = '';
 function encuadrar(forzar = true) {
+  if (v34) { // vista 3/4: encuadra solo el esquinero
+    const m = modulo(v34.id); if (!m) return;
+    const h = huella(m), cx = (h[0][0] + h[2][0]) / 2, cz = (h[0][1] + h[2][1]) / 2;
+    st.frame([cx, +m.elevacion + +m.alto / 2, cz], Math.hypot(+m.ancho, +m.profundidad, +m.alto) * 1.05, 1);
+    return;
+  }
   if (!forzar && encuadreHecho && (herr === 'muros' || herr === 'medir')) return; // dibujando muros o midiendo: la vista no se mueve
   const L = limites(modeloVista(), { conMuros: vista === 'frente' ? !!muroActivo() : capas.muros });
   const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
@@ -1546,6 +1555,11 @@ escena.addEventListener('pointerdown', (e) => {
 escena.addEventListener('pointerdown', (e) => { toque = { x: e.clientX, y: e.clientY }; });
 escena.addEventListener('pointerup', (e) => {
   if (!toque || Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > 5) return;
+  if (v34) { // vista 3/4: solo abre y cierra (en la puerta giratoria, la hoja tocada da una vuelta)
+    const f = document.elementFromPoint(e.clientX, e.clientY), h = /\|esq34\|giro\|([AB])$/.exec(f?.closest?.('[data-ref]')?.dataset.ref || '');
+    if (h) { vuelta34(h[1]); return; }
+    const p = f?.closest('[data-esq-anim]'); if (p) alternar34(p.dataset.esqAnim); return;
+  }
   // El motor captura el puntero al arrastrar: se busca la cara que está bajo el cursor.
   const f = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-ref]');
   sel = f ? desdeRef(f.dataset.ref) : null;
@@ -1967,12 +1981,17 @@ function panelEsquinero(m) {
       ${opciones('esquina', 'Rincón del muro', m.esquina === 'izq' ? 'izq' : 'der', { der: 'A la derecha', izq: 'A la izquierda' }, 'ancho2')}
       ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.cuadrado) return num('esq_hoja_a', 'Hoja de la puerta en L', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
       ${g.sol === '1' ? num('soporte_alto', 'Alto de la barra delantera', g.sop) : ''}
+      ${g.sol === '2a' ? `<div class="ed-repisas ancho2"><span>Repisas en L</span><button data-a="esq-rep-" title="Quitar una repisa">−</button><b>${repisasL(m)}</b><button data-a="esq-rep+" title="Agregar una repisa">+</button></div>` : ''}
       ${S?.niveles ? opciones('niveles', 'Cajones por lado', String(g.niveles), { 2: '2 cajones', 3: '3 cajones' }, 'ancho2') : ''}
       ${S?.frenteCajon ? num('frente_cajon', 'Frente del cajón (por lado)', g.ld) : ''}
       ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
       ${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
     </div>
     <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>
+    ${g.sol ? (v34?.id === m.id
+      ? `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Vista 3/4 · abrir y cerrar</p><div class="ed-botones">${partesInterior(m, g).map((p) => `<button data-a="esq34:${p.key}"${v34.abiertos.includes(p.key) ? ' class="ed-primario"' : ''}>${esc(p.nombre)}</button>`).join('')}</div>
+        <div class="ed-botones"><button data-a="esq34-salir">Salir de la vista 3/4</button></div><p class="ed-ayuda">También con un clic sobre el cajón o la puerta. La vista queda fija; Esc sale.</p></div>`
+      : '<div class="ed-botones"><button data-a="esq34-entrar" class="ed-primario">Ver por dentro (vista 3/4)</button></div>') : ''}
     <div class="ed-botones"><button data-a="esq-sugerido">Medidas sugeridas (${sug.ancho} × ${sug.profundidad})</button><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="borrar-modulo" class="peligro">Eliminar</button></div>
     ${S && !['1', '3'].includes(g.sol) || g.sol === '1' ? `<p class="ed-ayuda">Línea de aire en el rincón entre las dos hojas: ${cm(luzRincon(g) * 10)} mm (mínimo 3 mm; crece si el ancho de la hoja no la deja girar).</p>` : ''}
     ${g.sol === '1' ? '<p class="ed-ayuda">La puerta pasa bajo la barra delantera (7 cm por defecto) y sobre la base, con 3 mm de aire arriba, abajo y a los lados: si cambias la barra, la puerta se ajusta sola.</p>' : ''}
@@ -2005,6 +2024,57 @@ function pegarAlEsquinero(mods) {
 }
 // Esquinero agrupado: al cambiar sus medidas, los basales del grupo lo siguen (quedan pegados a 0 cm)
 function repegar(m) { if (m.grupo) pegarAlEsquinero(modelo.modulos.filter((x) => x.grupo === m.grupo)); }
+// ----- vista fija 3/4 del interior de un esquinero (dueño, 2026-11-22/25): la cámara mira el rincón desde la
+// habitación en diagonal y no se puede girar; clic en un cajón o puerta lo abre o lo cierra (o el botón del panel).
+function entrar34(m) {
+  if (vista !== '3d') setVista('3d');
+  v34 = { id: m.id, abiertos: geoEsquinero(m).sol === '1' ? ['auto'] : [] }; // la puerta giratoria parte girando sola
+  sel = { tipo: 'modulo', m: m.id };
+  const r = +m.rotacion || 0;
+  st.lock(true); st.set(-30, (m.esquina === 'izq' ? -45 : 45) - r);
+  render(); encuadrar(true); giroAuto();
+  aviso('Vista 3/4: haz clic en un cajón o una puerta para abrirlo o cerrarlo (también con los botones del panel). Esc sale.');
+}
+function salir34(redibujar = true) {
+  if (!v34) return;
+  v34 = null; st.lock(vista !== '3d');
+  if (redibujar) { render(); encuadrar(true); }
+}
+// Puerta giratoria «girar sola» (dueño, 2026-11-25): la puerta en L y sus 2 bandejas giran en círculo sin parar.
+// Son 14 caras (2 bandejas de 1 cara + 2 hojas de 6) y solo cambia el transform del grupo: lo anima el navegador
+// sin volver a dibujar ni a pintar, así que casi no pesa.
+function giroAuto() {
+  const g = st.rig.querySelector('[data-esq-anim="giro"]'); if (!g) return;
+  g.getAnimations().forEach((a) => a.cancel());
+  if (!v34?.abiertos.includes('auto')) return;
+  const paso = (deg) => ({ transform: g.dataset.cerrado.replace(/rotateY\([^)]*\)/, `rotateY(${deg}deg)`) });
+  g.animate([paso(0), paso(360)], { duration: 14000, iterations: Infinity, easing: 'linear' });
+}
+// Clic en una hoja de la puerta giratoria (dueño, 2026-11-25): da una vuelta completa hacia el lado de la otra hoja
+// (la de la derecha gira hacia la izquierda y al revés) y se detiene al volver a quedar cerrada.
+function vuelta34(hoja) {
+  const g = st.rig.querySelector('[data-esq-anim="giro"]'); if (!g || !v34) return;
+  v34.abiertos = v34.abiertos.filter((k) => k !== 'auto' && k !== 'giro');
+  g.getAnimations().forEach((a) => a.cancel()); g.style.transform = g.dataset.cerrado;
+  const izq = modulo(v34.id)?.esquina === 'izq', s = (hoja === 'B' ? -1 : 1) * (izq ? -1 : 1);
+  const paso = (deg) => ({ transform: g.dataset.cerrado.replace(/rotateY\([^)]*\)/, `rotateY(${deg}deg)`) });
+  g.animate([paso(0), paso(360 * s)], { duration: 7000, iterations: 1, easing: 'ease-in-out' });
+  props();
+}
+function alternar34(key) {
+  if (!v34) return;
+  if (key === 'vueltaA' || key === 'vueltaB') { vuelta34(key.slice(-1)); return; }
+  if (key === 'auto' || (key === 'giro' && !alternar34.boton)) { // girar sola: prende o apaga (también con clic en la puerta)
+    v34.abiertos = v34.abiertos.includes('auto') ? v34.abiertos.filter((k) => k !== 'auto') : [...v34.abiertos.filter((k) => k !== 'giro'), 'auto'];
+    const g = st.rig.querySelector('[data-esq-anim="giro"]'); if (g) g.style.transform = g.dataset.cerrado;
+    giroAuto(); props(); return;
+  }
+  if (key === 'giro') { v34.abiertos = v34.abiertos.filter((k) => k !== 'auto'); giroAuto(); }
+  const abierto = !v34.abiertos.includes(key);
+  v34.abiertos = abierto ? [...v34.abiertos, key] : v34.abiertos.filter((k) => k !== key);
+  for (const g of st.rig.querySelectorAll(`[data-esq-anim="${key}"]`)) g.style.transform = abierto ? g.dataset.abierto : g.dataset.cerrado;
+  props();
+}
 // Cambia el largo del lado 1 de un esquinero sin mover el rincón (con el rincón a la derecha, el origen se corre)
 function anchoEsquinero(m, v) {
   if (m.esquina !== 'izq') { const [ux, uz] = girar(1, 0, +m.rotacion || 0), d = v - +m.ancho; m.x = r1(+m.x - d * ux); m.z = r1(+m.z - d * uz); }
@@ -2275,6 +2345,10 @@ $('#props').addEventListener('click', (e) => {
     aviso(k ? `«${m.nombre}»: ${SOLUCIONES[k].nombre}.` : `«${m.nombre}» queda sin solución (se ve el «?» rojo).`);
     return;
   }
+  if (a === 'esq-rep-' || a === 'esq-rep+') { cambiar(() => { m.repisas_l = Math.max(0, Math.min(4, repisasL(m) + (a === 'esq-rep+' ? 1 : -1))); }); return; } // repisas en L del 2a (se reparten parejo)
+  if (a === 'esq34-entrar') { entrar34(m); return; }
+  if (a === 'esq34-salir') { salir34(); props(); return; }
+  if (a.startsWith('esq34:')) { alternar34.boton = true; alternar34(a.slice(6)); alternar34.boton = false; return; }
   if (a === 'esq-sugerido') { const s1 = medidasSugeridas(m); cambiar(() => { anchoEsquinero(m, s1.ancho); m.profundidad = s1.profundidad; repegar(m); }); return; }
   if (a === 'borrar-modulo') { cambiar((d) => { d.modulos = d.modulos.filter((x) => x.id !== m.id); }); sel = null; render(); return; }
   if (a === 'div-h') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirH(m, sel.col, sel.fila, c.y)); return; }
@@ -2399,6 +2473,8 @@ function borrarSel() {
 
 // ===================== barra superior, vistas y herramientas =====================
 function setVista(v) {
+  const salia34 = !!v34;
+  v34 = null; // cualquier botón de vista (también 3D) sale de la vista 3/4: vuelven la cubierta y la cámara libre
   vista = v;
   $$('[data-vista]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
   lienzo.classList.toggle('frente', v === 'frente');
@@ -2409,7 +2485,7 @@ function setVista(v) {
   else if (v === 'planta') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(-90, 0); if (herr.startsWith('div')) setHerr('sel'); }
   else if (v === 'inferior') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(90, 0); if (herr !== 'sel') setHerr('sel'); }
   else { st.lock(false); st.limits(-70, 0); st.ortho(false); st.set(-24, -30); if (herr !== 'sel') setHerr('sel'); }
-  render({ panel: false });
+  render({ panel: salia34 }); // al salir de la vista 3/4 el panel vuelve a mostrar «Ver por dentro»
   encuadrar(true); dibujarPlano();
   referencias.pintarPanel();
   estadoEl.textContent = ayuda();
@@ -2689,6 +2765,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'w') setHerr('muros');
   else if (k === 'u') setHerr('medir');
   else if (k === 'escape' && medF) { medF = null; cursorF = null; dibujarPlano(); }
+  else if (k === 'escape' && v34) { salir34(); props(); }
   else if (k === 'v' || k === 'escape') { setHerr('sel'); if (k === 'escape') { sel = null; render(); } }
   else if (k === 'm') setHerr('dibujar');
   else if (k === 'd') setHerr('div-v');
