@@ -1,0 +1,26 @@
+# Biblioteca de acabados de muros y suelo (azulejos, palmetas, baldosas), editable en /admin → Acabados de muros y suelo.
+# Se dibujan a escala real y con el color que se quiera; en el editor son esferas en la pestaña Materiales (como las melaminas).
+# patron: liso | recto | trabado | espiga | hexagonal | tablas | damero. Medidas en cm; junta en mm; variacion en % (tono).
+acabados:
+  - { id: metro-blanco, nombre: "Metro blanco 7,5 × 15", grupo: Azulejos, para: muro, patron: trabado, largo: 15, ancho: 7.5, junta: 2, color: "#f2f0eb", color_junta: "#d6d2ca", variacion: 4 }
+  - { id: metro-vertical, nombre: "Metro vertical 6,5 × 20", grupo: Azulejos, para: muro, patron: recto, largo: 20, ancho: 6.5, junta: 2, color: "#e9ece6", color_junta: "#cdd0ca", variacion: 5, giro: 90 }
+  - { id: azulejo-20, nombre: "Azulejo 20 × 20", grupo: Azulejos, para: muro, patron: recto, largo: 20, ancho: 20, junta: 2, color: "#e8e4dc", color_junta: "#cfcac0", variacion: 3 }
+  - { id: ceramica-30x60, nombre: "Cerámica 30 × 60", grupo: Azulejos, para: muro, patron: recto, largo: 60, ancho: 30, junta: 2, color: "#d9d6cf", color_junta: "#bdb8ae", variacion: 3 }
+  - { id: hexagonal-10, nombre: "Hexagonal 10 cm", grupo: Azulejos, para: ambos, patron: hexagonal, largo: 10, ancho: 10, junta: 2, color: "#f4f3ef", color_junta: "#b9b4aa", variacion: 3 }
+  - { id: palmeta-roble, nombre: "Palmeta roble 120 × 20", grupo: Palmetas, para: suelo, patron: tablas, largo: 120, ancho: 20, junta: 0.5, color: "#a97d4d", color_junta: "#6b4c2f", variacion: 14 }
+  - { id: palmeta-gris, nombre: "Piso flotante gris 120 × 20", grupo: Palmetas, para: suelo, patron: tablas, largo: 120, ancho: 20, junta: 0.5, color: "#9a948b", color_junta: "#625d56", variacion: 10 }
+  - { id: espiga-roble, nombre: "Espiga roble 60 × 10", grupo: Palmetas, para: suelo, patron: espiga, largo: 60, ancho: 10, junta: 0.5, color: "#b08a5c", color_junta: "#6e5034", variacion: 12 }
+  - { id: porcelanato-60, nombre: "Porcelanato 60 × 60", grupo: Baldosas, para: suelo, patron: recto, largo: 60, ancho: 60, junta: 2, color: "#c9c4bb", color_junta: "#a7a196", variacion: 4 }
+  - { id: porcelanato-60x120, nombre: "Porcelanato 60 × 120", grupo: Baldosas, para: ambos, patron: trabado, largo: 120, ancho: 60, junta: 2, color: "#b9b4ac", color_junta: "#9a958c", variacion: 4 }
+  - { id: baldosa-30, nombre: "Baldosa 30 × 30", grupo: Baldosas, para: suelo, patron: recto, largo: 30, ancho: 30, junta: 3, color: "#b07a5a", color_junta: "#8c8378", variacion: 10 }
+  - { id: damero-30, nombre: "Damero blanco y negro 30 × 30", grupo: Baldosas, para: suelo, patron: damero, largo: 30, ancho: 30, junta: 1, color: "#ece9e2", color2: "#2a2a2a", color_junta: "#9a958c" }
+# Pinturas para los muros (se eligen en el editor; el color también se puede ajustar a mano o con el cuentagotas)
+pinturas:
+  - { id: blanco-invierno, nombre: Blanco invierno, color: "#f1efe9" }
+  - { id: blanco-hueso, nombre: Blanco hueso, color: "#e6dfd2" }
+  - { id: gris-perla, nombre: Gris perla, color: "#cfcbc4" }
+  - { id: greige, nombre: Greige, color: "#b9b0a3" }
+  - { id: verde-salvia, nombre: Verde salvia, color: "#a3ad98" }
+  - { id: azul-niebla, nombre: Azul niebla, color: "#9fb0b8" }
+  - { id: terracota, nombre: Terracota, color: "#b9745a" }
+  - { id: grafito, nombre: Grafito, color: "#4a4a4c" }

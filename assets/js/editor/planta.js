@@ -1,7 +1,7 @@
 // Vista Planta del editor: dibujar los muros del espacio, etiquetarlos y ubicar los muebles
 // (mover, girar) con cotas de distancia a los muros. Coordenadas en cm: x a lo largo del muro
 // principal, z hacia la habitación. En pantalla, z crece hacia abajo (el muro del fondo queda arriba).
-import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar, metaMuro, murosContorno, uid } from './modelo.js';
+import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar, metaMuro, murosContorno, uid, moverArtefacto, centroArtefacto, distanciasArtefacto } from './modelo.js';
 import { ARTEFACTOS } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { cubiertaDe, tablero, celdas, fondoTotal, GAP } from './modelo.js';
@@ -156,9 +156,9 @@ export function crearPlanta(ctx) {
       const aMundo = (lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
       for (const a of artefactosDe(m)) {
         const esSel = sel?.tipo === 'artefacto' && sel.m === m.id && sel.a === a.id;
-        const pts = [aMundo(a.x0, a.z0), aMundo(a.x1, a.z0), aMundo(a.x1, a.z1), aMundo(a.x0, a.z1)];
+        const pts = a.pts.map(([x, z]) => aMundo(x, z));
         el('polygon', { points: pts.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `artefacto${esSel ? ' sel' : ''}${ARTEFACTOS[a.tipo]?.cubas ? ' lava' : ''}`, 'data-tipo': 'artefacto', 'data-m': m.id, 'data-a': a.id }, plano);
-        if (!esSel) continue;
+        if (!esSel || a.giro || m.tipo === 'esquinero') continue; // cotas a los bordes solo en muebles derechos
         const g = el('g', { class: 'cota' }, plano), W = +m.ancho, zc = (a.z0 + a.z1) / 2, xc = (a.x0 + a.x1) / 2, Dc = a.z1 + a.frente;
         const lin = (p, q, t) => {
           const [x1, z1] = aMundo(...p), [x2, z2] = aMundo(...q);
@@ -180,6 +180,18 @@ export function crearPlanta(ctx) {
         el('line', { x1: M.X(a[0]), y1: M.Y(a[1]), x2: M.X(b[0]), y2: M.Y(b[1]) }, dg);
         el('circle', { cx: M.X(b[0]), cy: M.Y(b[1]), r: 2.5 }, dg);
         el('text', { x: M.X((a[0] + b[0]) / 2) + 6, y: M.Y((a[1] + b[1]) / 2) - 6, class: 'editable', 'data-pcota': 'dist', 'data-lado': lado, 'data-m': ms.id }, dg).textContent = `${cm(Math.max(0, v.d))}`;
+      }
+    }
+    // artefacto seleccionado (lavaplatos o encimera): distancias a los muros, editables como las de un mueble
+    const ma = sel?.tipo === 'artefacto' && modelo.modulos.find((m) => m.id === sel.m);
+    if (ma && W.length) {
+      const dg = el('g', { class: 'cota distancia' }, plano);
+      for (const [lado, v] of Object.entries(distanciasArtefacto(ma, sel.a, esp))) {
+        if (v.d > 2000) continue;
+        const a = v.desde, b = [a[0] + v.dir[0] * v.d, a[1] + v.dir[1] * v.d];
+        el('line', { x1: M.X(a[0]), y1: M.Y(a[1]), x2: M.X(b[0]), y2: M.Y(b[1]) }, dg);
+        el('circle', { cx: M.X(b[0]), cy: M.Y(b[1]), r: 2.5 }, dg);
+        el('text', { x: M.X((a[0] + b[0]) / 2) + 6, y: M.Y((a[1] + b[1]) / 2) - 6, class: 'editable', 'data-pcota': 'dist-art', 'data-lado': lado, 'data-m': ma.id, 'data-a': sel.a }, dg).textContent = `${cm(Math.max(0, v.d))}`;
       }
     }
     // medidas de la huincha (Planta)
@@ -335,7 +347,7 @@ export function crearPlanta(ctx) {
     let valor = '';
     if (k === 'largo') valor = cm(W.largo);
     if (k === 'etiqueta') valor = W?.etiqueta || '';
-    if (k === 'dist') valor = t.textContent;
+    if (k === 'dist' || k === 'dist-art') valor = t.textContent;
     const inp = document.createElement('input');
     inp.className = 'ed-cota-input' + (k === 'etiqueta' ? ' texto' : '');
     inp.value = valor;
@@ -356,6 +368,14 @@ export function crearPlanta(ctx) {
         const ds = distancias(m, esp)[t.dataset.lado]; if (!ds) return;
         const mov = ds.d - v; // acercar o alejar del muro
         ctx.cambiar(() => { m.x = r1(+m.x + ds.dir[0] * mov); m.z = r1(+m.z + ds.dir[1] * mov); });
+      }
+      if (k === 'dist-art') { // acercar o alejar el artefacto del muro (sigue sobre la cubierta; si ahí no se apoya, avisa)
+        const m = modelo.modulos.find((x) => x.id === t.dataset.m), aId = t.dataset.a;
+        const ds = m && distanciasArtefacto(m, aId, esp)[t.dataset.lado], c = m && centroArtefacto(m, aId); if (!ds || !c) return;
+        const mov = ds.d - v; let mid = null;
+        ctx.cambiar((d) => { mid = moverArtefacto(d, m.id, aId, c[0] + ds.dir[0] * mov, c[1] + ds.dir[1] * mov); });
+        if (mid) ctx.setSel({ tipo: 'artefacto', m: mid, a: aId }); else ctx.estado('Ahí no se apoya completo: necesita cubierta debajo');
+        ctx.render();
       }
     };
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); cerrar(true); } if (e.key === 'Escape') { e.preventDefault(); cerrar(false); } });
@@ -432,7 +452,7 @@ export function crearPlanta(ctx) {
     if (d.tipo === 'artefacto') { // encimera o lavaplatos: seleccionar y arrastrar sobre la cubierta
       const m = modelo.modulos.find((x) => x.id === d.m), a = (m?.artefactos || []).find((x) => x.id === d.a); if (!a) return;
       ctx.setSel({ tipo: 'artefacto', m: m.id, a: a.id });
-      gesto = { tipo: 'artefacto', m: m.id, a: a.id, p0: p, desde: +a.desde || 0, frente: +a.frente || 0, antes: JSON.stringify(modelo) };
+      gesto = { tipo: 'artefacto', m: m.id, a: a.id, p0: p, c0: centroArtefacto(m, a.id), antes: JSON.stringify(modelo) };
       ctx.render(); return;
     }
     if (d.tipo === 'vertice') { gesto = { tipo: 'vertice', i: +d.i, antes: JSON.stringify(modelo) }; return; }
@@ -455,7 +475,8 @@ export function crearPlanta(ctx) {
     if (gesto.tipo === 'objeto') {
       const o = (modelo.objetos || []).find((x) => x.id === gesto.o); if (!o) return;
       o.x = snap(gesto.x0 + p.x - gesto.p0.x, .5); o.z = snap(gesto.z0 + p.z - gesto.p0.z, .5);
-      ctx.apoyar?.(o); // sigue sobre la cubierta o repisa si hay una debajo; si no, al piso
+      if (ctx.apoyar?.(o) === false) { o.x = gesto.ux ?? gesto.x0; o.z = gesto.uz ?? gesto.z0; ctx.estado('El microondas y los demás de mesa necesitan una cubierta, repisa o base debajo'); ctx.render({ panel: false }); return; }
+      gesto.ux = o.x; gesto.uz = o.z; // sigue sobre la cubierta o repisa que tenga debajo (los de piso, al piso)
       ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'cub-borde') {
@@ -470,10 +491,12 @@ export function crearPlanta(ctx) {
       ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'artefacto') {
-      const m = modelo.modulos.find((x) => x.id === gesto.m), a = m?.artefactos?.find((x) => x.id === gesto.a); if (!a) return;
-      const [lx, lz] = girar(p.x - gesto.p0.x, p.z - gesto.p0.z, -(+m.rotacion || 0)); // movimiento en ejes del mueble
-      const v = artefactosDe({ ...m, artefactos: [{ ...a, desde: snap(gesto.desde + lx, .5), frente: snap(gesto.frente - lz, .5) }] })[0];
-      a.desde = v.desde; a.frente = v.frente;
+      // se mueve libre por las cubiertas: pasa de un mueble a otro y puede quedar sobre la unión si la cubierta es
+      // continua; donde no se apoya completo (sin cubierta debajo), se queda en el último lugar válido
+      if (!gesto.c0) return;
+      const mid = moverArtefacto(modelo, gesto.m, gesto.a, snap(gesto.c0[0] + p.x - gesto.p0.x, .5), snap(gesto.c0[1] + p.z - gesto.p0.z, .5));
+      if (!mid) { ctx.estado('Ahí no se apoya completo: necesita cubierta debajo'); return; }
+      if (mid !== gesto.m) { gesto.m = mid; ctx.setSel({ tipo: 'artefacto', m: mid, a: gesto.a }); }
       ctx.render({ panel: false }); return;
     }
     if (gesto.tipo === 'mover') {

@@ -16,7 +16,7 @@
 //   división compartida con otra puerta. Cajones: un par de correderas del largo más cercano (sin pasarse).
 // - Tapacanto de 1 mm: puertas y frentes los 4 cantos; base y techo 3 (frente y laterales); costados,
 //   divisiones y soporte delantero solo el frontal. La medida de corte descuenta 1 mm por canto enchapado.
-import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias, hojasDe, CHOLGUAN, unionesL, zocaloL, soportesL } from './modelo.js';
+import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias, hojasDe, CHOLGUAN, unionesL, zocaloL, soportesL, partesCostado, rectParte, repisaFija, divisionesH } from './modelo.js';
 import { despieceEsquinero } from './esquinero.js';
 
 export const BLANCA = 'blanco-softwood'; // Masisa Blanco
@@ -125,7 +125,8 @@ export function despiece(modelo) {
       esquineros.push(despieceEsquinero(m, { add, pino, herrajes, mat, cuerpoDef, frente: 'frente', BLANCA }));
       if (m.cubierta) { // cubierta en L como 2 rectángulos: el lado 1 completo y el resto del lado 2
         const T2 = tablero(m), fa = Math.min(+m.fondo_a || 58, +m.profundidad - T2 - 5), fb = Math.min(+m.fondo_b || 58, +m.ancho - T2 - 5);
-        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.ancho), ancho: r1(fa + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
+        const artE = Array.isArray(m.artefactos) ? m.artefactos.filter(Boolean) : [], bajoE = artE.filter((x) => String(x.tipo).startsWith('lavaplatos') && x.montaje === 'bajo').length; // sacados (lavaplatos y encimeras sobre la L): van en la primera pieza
+        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.ancho), ancho: r1(fa + T2 + 6), sobrepuestos: artE.length - bajoE, bajo: bajoE, encimeras: artE.filter((x) => !String(x.tipo).startsWith('lavaplatos')).length, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
         cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.profundidad - fa - T2 - 6), ancho: r1(fb + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
       }
       const corE = {}; for (const [l, n] of Object.entries(herrajes.correderas)) { const d = n - (h0.c[l] || 0); if (d) corE[l] = d; }
@@ -140,7 +141,29 @@ export function despiece(modelo) {
     for (const [p, n] of [['izq', 'Costado izquierdo'], ['der', 'Costado derecho']]) {
       const def = modoCostado === 'frente' && (m.costados === 'frente' || costadoVisible(m, p, modelo)) ? 'frente' : cuerpoDef;
       // costado alargado hacia atrás hasta el piso (isla con sillas): se ven también su canto trasero e inferior
-      if (!quitar.includes(p)) add(`cuerpo|${p}`, `${n}${def === 'frente' ? ' (visible)' : ''}`, mat(`cuerpo|${p}`, mat('cuerpo', def)), Dk + ext, ext ? Hc : hs, { ancho: ext ? 1 : 0, alto: ext ? 2 : 1 });
+      if (quitar.includes(p)) continue;
+      const ps = partesCostado(m, p), vis = def === 'frente' ? ' (visible)' : '';
+      if (!ps) { add(`cuerpo|${p}`, `${n}${vis}`, mat(`cuerpo|${p}`, mat('cuerpo', def)), Dk + ext, ext ? Hc : hs, { ancho: ext ? 1 : 0, alto: ext ? 2 : 1 }); continue; }
+      // Costado dividido (dueño, 2026-11-25): cada parte que queda es una pieza aparte. Canto en el borde delantero
+      // (y, si se alarga atrás, también en el trasero y el inferior), igual que el costado entero.
+      const bc = { y0: ext ? Z : Z + (conBase ? T : 0), y1: H - (conTecho ? T : 0), z0: CHOLGUAN - ext, z1: D };
+      // Borde cortado que queda a la vista (no toca otra parte), ej. el que se apoya sobre la cubierta: lleva tapacanto
+      // (dueño, 2026-11-25). El que queda contra otra parte del mismo costado va sin canto.
+      const rs = ps.map((q) => rectParte(q, bc));
+      const cubre = (r, borde) => rs.some((o) => o !== r && (borde === 'y0' || borde === 'y1'
+        ? Math.abs(o[borde === 'y0' ? 'y1' : 'y0'] - r[borde]) < .05 && Math.min(o.z1, r.z1) - Math.max(o.z0, r.z0) > (r.z1 - r.z0) / 2
+        : Math.abs(o[borde === 'z0' ? 'z1' : 'z0'] - r[borde]) < .05 && Math.min(o.y1, r.y1) - Math.max(o.y0, r.y0) > (r.y1 - r.y0) / 2));
+      const corte = (r, borde, alBorde) => (!alBorde && !cubre(r, borde) ? 1 : 0); // corte a la vista
+      rs.forEach((r, i) => {
+        const fondo = r1(r.z1 - r.z0), alto = r1(r.y1 - r.y0);
+        if (fondo < .5 || alto < .5) return;
+        const enAd = r.z1 >= bc.z1 - .05, enAt = r.z0 <= bc.z0 + .05, enAb = r.y0 <= bc.y0 + .05, enAr = r.y1 >= bc.y1 - .05;
+        const adelante = enAd ? 1 : corte(r, 'z1', false), atras = enAt ? (ext ? 1 : 0) : corte(r, 'z0', false);
+        const abajo = enAb ? (ext ? 1 : 0) : corte(r, 'y0', false), arriba = corte(r, 'y1', enAr);
+        const cortados = (enAd ? 0 : adelante) + (enAt ? 0 : atras) + (enAb ? 0 : abajo) + arriba;
+        add(`cuerpo|${p}`, `${n}${ps.length > 1 ? `, parte ${i + 1} de ${ps.length}` : ' (cortado)'}${vis}`, mat(`cuerpo|${p}`, mat('cuerpo', def)), fondo, alto,
+          { ancho: abajo + arriba, alto: adelante + atras }, 'tablero', cortados ? { nota: `Tapacanto en ${cortados === 1 ? 'el borde cortado' : `${cortados} bordes cortados`} a la vista` } : {});
+      });
     }
     // (las bases de los aéreos se ven desde abajo, pero van en blanco por decisión del estudio)
     if (conBase) add('cuerpo|piso', 'Base', mat('cuerpo|piso', mat('cuerpo', cuerpoDef)), W, Dk, { ancho: 1, alto: 2 });
@@ -183,17 +206,19 @@ export function despiece(modelo) {
       const interior = x > .05 && x < W - .05, otra = interior && conFrente(vecino(c, x));
       herrajes.bisagras += n; if (otra) herrajes.bisagras_semicurvas += n; else herrajes.bisagras_rectas += n;
     };
+    const divsH = divisionesH(m); // divisiones fijas entre secciones (las mismas que dibuja el 3D)
     for (const c of cs) {
       const k = `f|${c.col}|${c.fila}`;
       const frente = mat(k, mat('frentes', 'frente'));
       const { y0: fy0, y1: fy1, w: fw, h: fh } = medidaFrente(m, c);
       // ancho interior de la sección (entre costados o divisiones)
       const wi = (c.x1 - c.x0) - (c.x0 < .05 ? T : T / 2) - (c.x1 > W - .05 ? T : T / 2);
-      const fija = E.clase.startsWith('torre');
-      if (c.tipo !== 'cajon') nivelesRepisa(c).forEach((y, i) => add(`${k}|rep|${i}`, fija ? `División horizontal fija ${i + 1}` : `Repisa ${i + 1}`,
-        mat(`${k}|rep|${i}`, mat(`${k}|rep`, mat('cuerpo', cuerpoDef))), fija ? wi : wi - .2, fija ? Dk : Dk - 1, { ancho: 1, alto: 0 }));
-      if (c.tipo === 'abierto' && !(c.y0 <= Z + .05) && (c.y1 < H - .05)) { // división horizontal de una sección abierta
-        add(`${k}|div`, 'División horizontal', mat(`${k}|div`, mat('cuerpo', cuerpoDef)), wi, Dk, { ancho: 1, alto: 0 });
+      // repisa fija = justa y atornillada; móvil = 2 mm más corta de ancho y 1 cm menos de fondo (dueño, 2026-11-25)
+      if (c.tipo !== 'cajon') nivelesRepisa(c).forEach((y, i) => { const fija = repisaFija(m, c, i);
+        add(`${k}|rep|${i}`, `Repisa ${i + 1} (${fija ? 'fija, justa' : 'móvil, más corta'})`,
+          mat(`${k}|rep|${i}`, mat(`${k}|rep`, mat('cuerpo', cuerpoDef))), fija ? wi : wi - .2, fija ? Dk : Dk - 1, { ancho: 1, alto: 0 }); });
+      if (divsH.some((d) => d.col === c.col && d.fila === c.fila)) { // división fija bajo esta sección (justa, atornillada)
+        add(`${k}|div`, 'División horizontal (fija, justa)', mat(`${k}|div`, mat('cuerpo', cuerpoDef)), wi, Dk, { ancho: 1, alto: 0 });
       }
       const c4 = { ancho: 2, alto: 2 };
       if (c.tipo === 'puerta') {

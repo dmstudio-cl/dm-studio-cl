@@ -25,29 +25,42 @@ export const SOLUCIONES = {
 // Soluciones que se ofrecen en el panel (las claves numéricas se ordenarían solas primero). El tipo 4, cajones
 // pivotantes, queda guardado para más adelante (dueño, 2026-11-25): su código sigue aquí, pero no se ofrece.
 export const ORDEN_SOLUCIONES = ['1', '2a', '2b', '3'];
+// Esquinero aéreo (dueño, 2026-11-25): solo puertas con repisa en L (2a) o repisas intercaladas (2b), con las reglas de
+// un aéreo (base y techo, sin zócalo ni cubierta, 3 soportes de 10 cm, puertas 1 cm bajo el alto total).
+export const ORDEN_AEREO = ['2a', '2b'];
+export const FONDO_AEREO = 35; // fondo del cuerpo por defecto, como los aéreos de las cocinas de referencia
 export const esEsquinero = (m) => m?.tipo === 'esquinero';
 
-export function nuevoEsquinero(id, { x = 0, z = 0, rotacion = 0, esquina = 'der', fondo = 58, alto = 85 } = {}) {
-  return { id, nombre: 'Esquinero', tipo: 'esquinero', esquina, solucion: '', ancho: fondo + 32, profundidad: fondo + 32, fondo_a: fondo, fondo_b: fondo,
-    alto, zocalo: 10, x, z, rotacion, elevacion: 0, cubierta: false, niveles: 3, frente_cajon: 40, columnas: [], tiradores: [] };
+export function nuevoEsquinero(id, { x = 0, z = 0, rotacion = 0, esquina = 'der', aereo = false, fondo = aereo ? FONDO_AEREO : 58, alto = aereo ? 70 : 85, elevacion = 0 } = {}) {
+  return { id, nombre: aereo ? 'Esquinero aéreo' : 'Esquinero', tipo: 'esquinero', esquina, solucion: '', ancho: fondo + 32, profundidad: fondo + 32, fondo_a: fondo, fondo_b: fondo,
+    alto, zocalo: aereo ? 0 : 10, x, z, rotacion, elevacion: aereo ? elevacion : 0, cubierta: false, niveles: 3, frente_cajon: 40, columnas: [], tiradores: [], ...(aereo ? { aereo: true } : {}) };
 }
 // Medidas sugeridas para una solución (el dueño las ajusta en el panel)
 export function medidasSugeridas(m, sol = m.solucion) {
-  const s = SOLUCIONES[sol], lado = s ? s.lado : 32, fa = +m.fondo_a || 58, fb = +m.fondo_b || 58;
+  const f0 = m.aereo ? FONDO_AEREO : 58, s = SOLUCIONES[sol], lado = s ? s.lado : 32, fa = +m.fondo_a || f0, fb = +m.fondo_b || f0;
   if (s?.cuadrado) { const S = Math.round(Math.max(fa, fb) + lado); return { ancho: S, profundidad: S }; } // puerta giratoria: cuadrado con el fondo más largo
   return { ancho: Math.round(fb + lado), profundidad: Math.round(fa + lado) };
 }
 
+// Cubierta en L del esquinero en coordenadas locales del mueble (ya reflejada si el rincón va a la izquierda):
+// [brazo 1 (lado A, completo), brazo 2 (resto del lado B)], cada uno { x0, x1, z0, z1 }. Sirve para apoyar artefactos.
+export function zonasCubiertaEsq(m) {
+  const g = geoEsquinero(m), f = g.fa + g.T + VUELO, xs = (a, b) => (g.izq ? [g.W - b, g.W - a] : [a, b]);
+  const [a0, a1] = xs(0, g.W), [b0, b1] = xs(g.xb - g.T - VUELO, g.W);
+  return [{ x0: a0, x1: a1, z0: 0, z1: f }, { x0: b0, x1: b1, z0: f, z1: g.L }];
+}
+
 // Medidas válidas del esquinero, con el rincón a la derecha. X() refleja una x si el rincón va a la izquierda.
 export function geoEsquinero(m) {
-  const T = (+m.tablero || 15) / 10, W = +m.ancho, L = +m.profundidad, H = +m.alto, Z = +m.zocalo || 0;
-  const fa = Math.max(20, Math.min(+m.fondo_a || 58, L - T - 5)), fb = Math.max(20, Math.min(+m.fondo_b || 58, W - T - 5));
-  const izq = m.esquina === 'izq', sol = SOLUCIONES[m.solucion] ? m.solucion : '';
+  const aereo = !!m.aereo, T = (+m.tablero || 15) / 10, W = +m.ancho, L = +m.profundidad, H = +m.alto, Z = aereo ? 0 : +m.zocalo || 0, f0 = aereo ? FONDO_AEREO : 58;
+  const fa = Math.max(20, Math.min(+m.fondo_a || f0, L - T - 5)), fb = Math.max(20, Math.min(+m.fondo_b || f0, W - T - 5));
+  const izq = m.esquina === 'izq', sol = SOLUCIONES[m.solucion] && (!aereo || ORDEN_AEREO.includes(m.solucion)) ? m.solucion : '';
   const niveles = Math.max(2, Math.min(3, Math.round(+m.niveles || 3)));
   const ld = Math.max(20, Math.min(+m.frente_cajon || 40, W - fb - T - 5, L - fa - T - 5)); // ancho del frente del cajón space corner por lado
   // barra (soporte delantero): 7 cm en la puerta giratoria (dueño, 2026-11-25, editable), 10 cm en los demás
   const sop = sol === '1' ? Math.max(3, Math.min(20, +m.soporte_alto || 7)) : SOPORTE;
-  return { m, T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, arriba: m.cubierta ? 7 : 1, X: (x) => (izq ? W - x : x) };
+  // yTop: techo del interior útil (bajo la barra delantera; en el aéreo, bajo su techo de melamina)
+  return { m, T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, aereo, yTop: aereo ? H - T : H - sop, arriba: m.cubierta && !aereo ? 7 : 1, X: (x) => (izq ? W - x : x) };
 }
 
 // Contorno en planta (cuerpo + frentes) en coordenadas locales del mueble
@@ -221,15 +234,21 @@ export function dibujarEsquinero(G, m, o) {
   if (ver('zocalo') && Z > 0) for (const t of zocaloEsquinero(g, T, m)) B(t.x0, t.x1, 0, Z, t.z0, t.z1, propio('zocalo') || (fab ? PINO : M.zocalo), `${id}|zocalo`);
   if (ver('cuerpo')) {
     B(0, W, Z, Z + T, 0, fa, MC, `${id}|cuerpo|piso`); B(xb, W, Z, Z + T, fa, L, MC, `${id}|cuerpo|piso`); // base en L
-    B(0, T, Z + T, H, 0, fa, MC, `${id}|cuerpo|izq`); B(xb, W, Z + T, H, L - T, L, MC, `${id}|cuerpo|der`); // laterales
+    const yl = g.aereo ? H - T : H; // en el aéreo los laterales van entre la base y el techo
+    B(0, T, Z + T, yl, 0, fa, MC, `${id}|cuerpo|izq`); B(xb, W, Z + T, yl, L - T, L, MC, `${id}|cuerpo|der`); // laterales
+    if (g.aereo) { B(0, W, H - T, H, 0, fa, MC, `${id}|cuerpo|techo`); B(xb, W, H - T, H, fa, L, MC, `${id}|cuerpo|techo`); } // techo en L
     B(0, W, Z, H, 0, CHOL, MC, `${id}|cuerpo|fondo`); B(W - CHOL, W, Z, H, CHOL, L, MC, `${id}|cuerpo|fondo`); // fondos
     for (const d of divisionesEsquinero(m, g)) { // divisiones diagonales (space corner): un tablero girado 45°
       const gd = G.group({ x: d.cx, y: (Z + T + H) / 2, z: d.cz, ry: d.ry });
       gd.box({ w: d.largo, h: H - Z - T, d: T, x: 0, y: 0, z: 0, tex: propio('cuerpo') || MC, ref: `${id}|esq|div` });
     }
     if (fab) { // soportes de 10 cm: delanteros de melamina y traseros de pino, unidos a 45° (se dibujan sin encimarse)
-      B(T, xb, H - g.sop, H, fa - T, fa, propio('soporte') || MC, `${id}|soporte|frente`); B(xb, xb + T, H - g.sop, H, fa - T, L - T, propio('soporte') || MC, `${id}|soporte|frente`);
-      B(T, W - CHOL - PINO_E, H - SOPORTE, H, CHOL, CHOL + PINO_E, PINO, `${id}|soporte|atras`); B(W - CHOL - PINO_E, W - CHOL, H - SOPORTE, H, CHOL, L - T, PINO, `${id}|soporte|atras`);
+      const ys = g.aereo ? H - T : H; // en el aéreo, bajo el techo
+      B(T, xb, ys - g.sop, ys, fa - T, fa, propio('soporte') || MC, `${id}|soporte|frente`); B(xb, xb + T, ys - g.sop, ys, fa - T, L - T, propio('soporte') || MC, `${id}|soporte|frente`);
+      B(T, W - CHOL - PINO_E, ys - SOPORTE, ys, CHOL, CHOL + PINO_E, PINO, `${id}|soporte|atras`); B(W - CHOL - PINO_E, W - CHOL, ys - SOPORTE, ys, CHOL, L - T, PINO, `${id}|soporte|atras`);
+      if (g.aereo) { // aéreo: tercer soporte, atrás abajo (pino), para anclar al muro
+        const y0 = Z + T; B(T, W - CHOL - PINO_E, y0, y0 + SOPORTE, CHOL, CHOL + PINO_E, PINO, `${id}|soporte|anclaje`); B(W - CHOL - PINO_E, W - CHOL, y0, y0 + SOPORTE, CHOL, L - T, PINO, `${id}|soporte|anclaje`);
+      }
     }
   }
   if (o.interior && g.sol) { dibujarInterior(G, m, g, o, fab ? H - g.arriba : H); return; } // vista 3/4: interior y partes que se mueven (sin cubierta)
@@ -251,7 +270,8 @@ export function dibujarEsquinero(G, m, o) {
         if (otra) mg = Math.max(mg, distanciaTirador(otra.corte, luzRincon(g), sale) - luzRincon(g));
       }
       const sT = f.tir.en === 'medio' ? (f.s0 + f.s1) / 2 : f.tir.en === 's0' ? f.s0 + mg : f.s1 - mg;
-      const yT = f.tir.horizontal ? y1 - Math.min(5, (y1 - y0) / 3) : Math.max(y0 + largo / 2 + 2, y1 - largo / 2 - 4);
+      // aéreo (dueño, 2026-11-25): el tirador va en la esquina inferior de la puerta (solo en el modelo; en el taller se ajusta)
+      const yT = f.tir.horizontal ? y1 - Math.min(5, (y1 - y0) / 3) : g.aereo ? Math.min(y1 - largo / 2 - 2, y0 + largo / 2 + 4) : Math.max(y0 + largo / 2 + 2, y1 - largo / 2 - 4);
       const rz = f.tir.horizontal || espec.modelo?.startsWith?.('boton') ? 0 : 90;
       const gt = f.lado === 'A' ? G.group({ x: g.X(sT), y: yT, z: fa + T, rz }) : G.group({ x: g.X(xb - T), y: yT, z: sT, ry: g.izq ? 90 : -90, rz });
       const piezas = espec.modelo === 'perfil' ? def.piezas.map((p) => ({ ...p, w: (f.s1 - f.s0) * .96 })) : def.piezas;
@@ -321,7 +341,7 @@ function bandejaRecortada(r, kx, kz, espejo) {
 // cambia en el panel; la altura queda regulable en el taller)
 export const repisasL = (m) => Math.max(0, Math.min(4, Math.round(m.repisas_l ?? 1)));
 export function nivelesL(g, n = repisasL(g.m || {})) {
-  const y0 = g.Z + g.T, y1 = g.H - g.sop;
+  const y0 = g.Z + g.T, y1 = g.yTop;
   return Array.from({ length: n }, (_, i) => y0 + (y1 - y0) * (i + 1) / (n + 1));
 }
 function dibujarInterior(G, m, g, o, top) {
@@ -350,7 +370,7 @@ function dibujarInterior(G, m, g, o, top) {
       gr.box({ w: T, h: y1 - y0, d: f.s1 - f.s0 - .3, x: sx * T / 2, y: (y0 + y1) / 2, z: -(f.s1 - f.s0 - .3) / 2, tex: MF(i), ref: ref(key) });
     }
   };
-  const yIn = Z + T, yTop = H - g.sop; // interior útil: sobre la base y bajo la barra
+  const yIn = Z + T, yTop = g.yTop; // interior útil: sobre la base y bajo la barra (en el aéreo, bajo el techo)
   if (sol === '1') { // puerta en L unida a 2 bandejas de ¾ de círculo, gira 180° sobre el eje centrado
     const b = bandejaGiratoria(g), cx = g.X(b.cx), d = 2 * b.r;
     const gr = anim('giro', { x: cx, y: 0, z: b.cz }, { x: cx, y: 0, z: b.cz, ry: 180 }, 2.6);
@@ -444,8 +464,12 @@ export function despieceEsquinero(m, ctx) {
   // base rectangular (W × L sin el cholguán); el calado en L y su tapacanto se hacen en el taller
   add('cuerpo|piso', 'Base en L (se pide rectangular; calado y tapacanto del calado en el taller)', mat('cuerpo|piso', cuerpo), W - .3, L - .3, undefined, 'tablero',
     { nota: `Calado: quitar ${r1(xb)} × ${r1(L - fa)} cm en el rincón del frente`, tapacanto_taller: r1(xb + L - fa) });
-  add('cuerpo|izq', 'Lateral del lado 1', mat('cuerpo|izq', cuerpo), r1(fa - .3), hs, { ancho: 0, alto: 1 });
-  add('cuerpo|der', 'Lateral del lado 2', mat('cuerpo|der', cuerpo), r1(fb - .3), hs, { ancho: 0, alto: 1 });
+  // aéreo (dueño, 2026-11-25): lleva techo igual a la base y los laterales van entre ambos
+  if (g.aereo) add('cuerpo|techo', 'Techo en L (se pide rectangular; calado y tapacanto del calado en el taller)', mat('cuerpo|techo', cuerpo), W - .3, L - .3, undefined, 'tablero',
+    { nota: `Calado: quitar ${r1(xb)} × ${r1(L - fa)} cm en el rincón del frente`, tapacanto_taller: r1(xb + L - fa) });
+  const hl = g.aereo ? hs - T : hs;
+  add('cuerpo|izq', 'Lateral del lado 1', mat('cuerpo|izq', cuerpo), r1(fa - .3), r1(hl), { ancho: 0, alto: 1 });
+  add('cuerpo|der', 'Lateral del lado 2', mat('cuerpo|der', cuerpo), r1(fb - .3), r1(hl), { ancho: 0, alto: 1 });
   const f = m.materiales?.['cuerpo|fondo'] || m.materiales?.cuerpo, ch = `cholguan:${f ? String(f).replace(/^liston:/, '') : 'blanco'}`;
   add('cuerpo|fondo', 'Fondo del lado 1 (cholguán)', ch, W, Hc, undefined, 'cholguan');
   add('cuerpo|fondo', 'Fondo del lado 2 (cholguán)', ch, r1(L - .3), Hc, undefined, 'cholguan');
@@ -455,6 +479,10 @@ export function despieceEsquinero(m, ctx) {
   add('soporte|frente', 'Soporte delantero del lado 2 (corte a 45° en el rincón)', sop, r1(L - fa), g.sop, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
   pino('Soporte trasero del lado 1 (pino, 45° en la esquina)', r1(W - T), 'soporte|atras');
   pino('Soporte trasero del lado 2 (pino, 45° en la esquina)', r1(L - T), 'soporte|atras');
+  if (g.aereo) { // aéreo: tercer soporte atrás abajo, para anclar al muro
+    pino('Soporte inferior trasero del lado 1, anclaje al muro (pino, 45° en la esquina)', r1(W - T), 'soporte|anclaje');
+    pino('Soporte inferior trasero del lado 2, anclaje al muro (pino, 45° en la esquina)', r1(L - T), 'soporte|anclaje');
+  }
   if (Z > 0) for (const t of zocaloEsquinero(g, PINO_E, m)) pino(`Zócalo en L, ${t.nombre} (pino)`, r1(t.largo), 'zocalo');
   // frentes cerrados (medida final redondeada al mm hacia abajo; 4 cantos)
   const mm = (v) => Math.floor(v * 10 + 1e-2) / 10, c4 = { ancho: 2, alto: 2 };

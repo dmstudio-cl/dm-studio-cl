@@ -57,6 +57,7 @@
 /* En «Personalizar» el total queda fijo arriba mientras se recorren los materiales */
 /* mueble enfocado: lo demás tenue y sin tomar toques */
 .pcss .c3-tenue { opacity: .16; pointer-events: none; }
+.pcss { --c3-mover-abajo: 64px; } /* flechas para moverse, sobre la barra de la conversación */
 .pfoco { margin-bottom: 14px; display: grid; gap: 8px; }
 .pfoco .pfoco-cab { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .pfoco .pfoco-cab b { font-family: var(--serif, serif); font-size: 1.05rem; }
