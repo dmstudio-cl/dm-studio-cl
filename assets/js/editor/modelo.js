@@ -19,9 +19,10 @@
 // }
 // Capas: zócalo → cuerpo (costados, piso, techo, fondo) → frentes (puertas, cajones…) → tiradores → cubierta.
 
+import { fondoAcabado } from '../css3d/acabados.js';
 import { dibujarObjeto, OBJETOS } from './objetos.js';
 import { ARTEFACTOS, cubiertaCoccion, acabado, cubaDe, escurridorDe, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
-import { dibujarEsquinero, geoEsquinero } from './esquinero.js';
+import { dibujarEsquinero, geoEsquinero, zonasCubiertaEsq } from './esquinero.js';
 
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
 export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
@@ -289,6 +290,22 @@ export function soportesL(u, e = 2) {
 
 // Alturas (y local) de las repisas de una celda: repartidas parejo en su alto.
 export const nivelesRepisa = (c) => Array.from({ length: c.repisas || 0 }, (_, i) => c.y0 + c.h * (i + 1) / (c.repisas + 1));
+// Repisa fija o móvil (dueño, 2026-11-25). Fija: medida justa (ancho interior y fondo completo), va atornillada.
+// Móvil: 2 mm más corta de ancho y 1 cm menos de fondo, se corre por dentro sobre soportes. Se marca en el panel de la
+// repisa (fr.repisas_tipo = { [i]: 'fija' | 'movil' }); por defecto, fija en las torres y móvil en el resto.
+export const repisaFija = (m, c, i) => { const t = m?.columnas?.[c.col]?.frentes?.[c.fila]?.repisas_tipo?.[i]; return t ? t === 'fija' : m?.tipo === 'torre'; };
+// Divisiones horizontales entre secciones (dueño, 2026-11-25): un tablero fijo (justo, atornillado) en el borde entre
+// dos filas de una misma columna. Va solo si al menos una de las dos secciones es abierta, y se pone o se quita a mano
+// (fr.division = true | false en la fila de arriba). El 3D y el despiece usan esta misma lista.
+export function divisionesH(m) {
+  const cs = celdas(m), out = [];
+  for (const c of cs) {
+    const b = cs.find((o) => o.col === c.col && o.fila === c.fila + 1); if (!b) continue;
+    const fr = m.columnas?.[c.col]?.frentes?.[c.fila] || {}, def = c.tipo === 'abierto' || b.tipo === 'abierto';
+    if (fr.division ?? def) out.push({ col: c.col, fila: c.fila, y: c.y0, x0: c.x0, x1: c.x1, def });
+  }
+  return out;
+}
 
 // ----- bordes de cubierta -----
 // Luz y sombra sobre el canto (frente y costados de la cubierta) que sugieren el perfil del borde.
@@ -378,6 +395,21 @@ export function espacioPortal(esp) {
 
 // ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
 // Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
+// Costado dividido en partes (dueño, 2026-11-25): m.partes = { izq: [{ y0, y1, z0, z1 }], der: [...] }, en cm del mueble
+// (y desde abajo del mueble, z desde atrás); null = hasta el borde del costado. Las partes borradas no están en la lista
+// y cada parte que queda se pide como pieza aparte (ej. el costado de la caja del refrigerador que se apoya en el mesón).
+export const partesCostado = (m, p) => (Array.isArray(m?.partes?.[p]) && m.partes[p].length ? m.partes[p] : null);
+// Bordes del costado en el 3D: desde el zócalo (o el piso si se alarga atrás) hasta arriba; de atrás hacia el frente
+export function bordesCostado(m) {
+  const ext = Math.max(0, +m.costados_atras || 0), Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
+  return { y0: ext ? 0 : Z, y1: +m.alto, z0: -ext, z1: +m.profundidad };
+}
+// Rectángulo real de una parte dentro de unos bordes (las medidas null llegan al borde)
+export function rectParte(q, b) {
+  const lim = (v, def, lo, hi) => (v == null || v === '' ? def : Math.max(lo, Math.min(hi, +v)));
+  return { y0: lim(q.y0, b.y0, b.y0, b.y1), y1: lim(q.y1, b.y1, b.y0, b.y1), z0: lim(q.z0, b.z0, b.z0, b.z1), z1: lim(q.z1, b.z1, b.z0, b.z1) };
+}
+
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
 export const fondoTotal = (m) => +m.profundidad + (m.artefacto || m.tipo === 'esquinero' ? 0 : tablero(m)); // cuerpo + frentes (el esquinero ya los incluye)
 // Cubierta de un módulo en coordenadas locales: ancho W y fondo Dc (desde la pared hasta el canto)
@@ -389,14 +421,67 @@ export const cubiertaDe = (m) => {
   const v = vuelosDe(m), W = +m.ancho, z1 = +m.profundidad + tablero(m) + v.frente;
   return { W, Dc: z1, x0: -v.izq, x1: W + v.der, z0: -v.atras, z1, v };
 };
-// Artefactos sobre la cubierta, con medidas válidas y su rectángulo local (x0..x1, z0..z1; z crece hacia el frente)
+// Zonas de cubierta de un mueble en coordenadas locales ([{ x0, x1, z0, z1 }]): una en los muebles derechos y dos
+// (la L) en el esquinero. Vacío si no lleva cubierta.
+export function zonasCubierta(m) {
+  if (!m?.cubierta || m.artefacto) return [];
+  if (m.tipo === 'esquinero') return zonasCubiertaEsq(m);
+  const c = cubiertaDe(m); return [{ x0: c.x0, x1: c.x1, z0: c.z0, z1: c.z1 }];
+}
+const cubiertaArriba = (m) => (+m.elevacion || 0) + +m.alto + CT;
+const dentroZonas = (zs, x, z, e = .5) => zs.some((r) => x >= r.x0 - e && x <= r.x1 + e && z >= r.z0 - e && z <= r.z1 + e);
+// Artefactos sobre la cubierta, con medidas válidas y su rectángulo local (x0..x1, z0..z1; z crece hacia el frente).
+// Se guardan con desde (del costado izquierdo) y frente (del canto del brazo 1 de la cubierta). Desde el 2026-11-25
+// pueden quedar montados sobre la unión con el mueble vecino (cubierta continua), así que solo su centro queda dentro
+// de este mueble. En el esquinero llevan giro (0 = de frente al brazo 1, ±90 = brazo 2, ±45 = en el rincón).
+// pts = sus 4 esquinas en planta (locales, con el giro).
 export function artefactosDe(m) {
-  if (!m.cubierta || m.artefacto) return [];
-  const { W, Dc } = cubiertaDe(m);
+  const zs = zonasCubierta(m); if (!zs.length) return [];
+  const Dc = zs[0].z1, cl = (v, a, b) => Math.min(Math.max(v, a), b);
+  const bx0 = Math.min(...zs.map((r) => r.x0)), bx1 = Math.max(...zs.map((r) => r.x1)), bz0 = Math.min(...zs.map((r) => r.z0)), bz1 = Math.max(...zs.map((r) => r.z1));
   return (m.artefactos || []).filter(Boolean).map((a) => {
-    const v = ajustarArtefacto(a, W, Dc);
-    return { ...v, x0: v.desde, x1: v.desde + v.ancho, z1: Dc - v.frente, z0: Dc - v.frente - v.fondo };
+    const def = ARTEFACTOS[a.tipo] || ARTEFACTOS.encimera_gas;
+    const ancho = cl(+a.ancho || def.ancho, 20, 250), fondo = cl(+a.fondo || def.fondo, 20, 90);
+    const cx = cl((+a.desde || 0) + ancho / 2, bx0, bx1), cz = cl(Dc - (+a.frente || 0) - fondo / 2, bz0, bz1);
+    const giro = m.tipo === 'esquinero' ? +a.giro || 0 : 0;
+    const pts = [[-ancho / 2, -fondo / 2], [ancho / 2, -fondo / 2], [ancho / 2, fondo / 2], [-ancho / 2, fondo / 2]].map(([x, z]) => { const [dx, dz] = girar(x, z, giro); return [cx + dx, cz + dz]; });
+    const desde = cx - ancho / 2, frente = Dc - cz - fondo / 2;
+    return { ...a, ancho, fondo, desde, frente, giro, cx, cz, x0: desde, x1: desde + ancho, z0: cz - fondo / 2, z1: cz + fondo / 2, pts };
   });
+}
+// Centro de un artefacto en planta (coordenadas del espacio)
+export function centroArtefacto(m, aId) {
+  const v = artefactosDe(m).find((x) => x.id === aId); if (!v) return null;
+  const [dx, dz] = girar(v.cx, v.cz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz];
+}
+// Mueve un artefacto de cubierta para que su centro quede en (wx, wz) del espacio (dueño, 2026-11-25): pasa al mueble
+// cuya cubierta queda debajo de su centro y solo se acepta si las 4 esquinas se apoyan en alguna cubierta a la misma
+// altura (cubierta continua entre muebles pegados). En el esquinero toma el giro del brazo donde cae (en el rincón
+// conserva el que tenía); giro fuerza uno. Devuelve el id del mueble donde quedó, o null si ahí no se puede.
+export function moverArtefacto(modelo, mId, aId, wx, wz, giro = null) {
+  const m0 = modelo.modulos.find((x) => x.id === mId), raw = m0?.artefactos?.find((x) => x?.id === aId); if (!raw) return null;
+  const v0 = artefactosDe(m0).find((x) => x.id === aId); if (!v0) return null;
+  const local = (m, x, z) => girar(x - +m.x, z - +m.z, -(+m.rotacion || 0));
+  const conCub = modelo.modulos.filter((m) => zonasCubierta(m).length);
+  const dest = [m0, ...conCub.filter((m) => m !== m0)].find((m) => { const zs = zonasCubierta(m), [x, z] = local(m, wx, wz); return zs.length && dentroZonas(zs, x, z, 0); });
+  if (!dest) return null;
+  const zs = zonasCubierta(dest), [cx, cz] = local(dest, wx, wz);
+  let gi = 0;
+  if (dest.tipo === 'esquinero') {
+    const izq = dest.esquina === 'izq', enB = dentroZonas([zs[1]], cx, cz, 0), rincon = !enB && cx >= zs[1].x0 && cx <= zs[1].x1;
+    gi = giro != null ? giro : rincon ? (dest === m0 ? +raw.giro || 0 : 0) : enB ? (izq ? 90 : -90) : 0;
+  }
+  const cand = { ...raw, giro: gi, desde: cx - v0.ancho / 2, frente: zs[0].z1 - cz - v0.fondo / 2 };
+  const v = artefactosDe({ ...dest, artefactos: [cand] })[0], y = cubiertaArriba(dest);
+  const apoyada = v.pts.every(([lx, lz]) => {
+    const [dx, dz] = girar(lx, lz, +dest.rotacion || 0), px = +dest.x + dx, pz = +dest.z + dz;
+    return conCub.some((o) => Math.abs(cubiertaArriba(o) - y) < 1 && dentroZonas(zonasCubierta(o), ...local(o, px, pz)));
+  });
+  if (!apoyada) return null;
+  raw.desde = Math.round(v.desde * 10) / 10; raw.frente = Math.round(v.frente * 10) / 10;
+  if (dest.tipo === 'esquinero') raw.giro = gi; else delete raw.giro;
+  if (dest !== m0) { m0.artefactos = m0.artefactos.filter((x) => x !== raw); dest.artefactos = [...(dest.artefactos || []), raw]; }
+  return dest.id;
 }
 
 // Esquinas del mueble en planta (atrás-izq, atrás-der, frente-der, frente-izq), en coordenadas del espacio.
@@ -424,6 +509,20 @@ export function metaMuro(esp, i) {
   if (i >= n) return esp.tramos?.[i - n] || {};
   esp.muros = Array.isArray(esp.muros) ? esp.muros : [];
   return (esp.muros[i] ||= {});
+}
+// Acabados del espacio (dueño, 2026-11-25): son la habitación real del proyecto (el botón «Muros» del portal la oculta
+// completa y quedan solo los muebles). Suelo: esp.acabados.suelo. Muro: meta.acabado para el muro entero, o
+// meta.zonas = [{ x0, x1, y0, y1, acabado }] si se dividió en la vista Frente (x desde el extremo izquierdo mirado desde
+// adentro, y desde el piso; null = hasta el borde) para combinar materiales. Acabado = pintura lisa, azulejo, etc.
+export const metaMuroLeer = (esp, i) => { const n = murosContorno(esp); return (i < n ? esp?.muros?.[i] : esp?.tramos?.[i - n]) || {}; };
+export function rectZona(q, L, H) {
+  const lim = (v, d, hi) => (v == null || v === '' ? d : Math.max(0, Math.min(hi, +v)));
+  return { x0: lim(q?.x0, 0, L), x1: lim(q?.x1, L, L), y0: lim(q?.y0, 0, H), y1: lim(q?.y1, H, H) };
+}
+const conAcabado = (a) => (a?.patron && a.patron !== 'ninguno' ? a : null);
+export function zonasMuro(esp, i, L, H) {
+  const meta = metaMuroLeer(esp, i), zs = Array.isArray(meta.zonas) && meta.zonas.length ? meta.zonas : [{ acabado: meta.acabado }];
+  return zs.map((q, z) => ({ ...rectZona(q, L, H), z, acabado: conAcabado(q?.acabado), dividido: zs.length > 1 }));
 }
 export function muros(esp) {
   const P = esp?.puntos || [], T = (esp?.tramos || []).filter((t) => t?.a && t?.b);
@@ -513,6 +612,22 @@ export function distancias(m, esp) {
   return out;
 }
 
+// Distancias de un artefacto de cubierta a los muros (dueño, 2026-11-25), igual que las de un mueble: desde el centro
+// de cada lado, hacia afuera. { atras, derecha, frente, izquierda } → { d, desde, dir } (en el espacio).
+export function distanciasArtefacto(m, aId, esp) {
+  const v = artefactosDe(m).find((x) => x.id === aId); if (!v) return {};
+  const r = +m.rotacion || 0, mundo = ([lx, lz]) => { const [dx, dz] = girar(lx, lz, r); return [+m.x + dx, +m.z + dz]; };
+  const h = v.pts.map(mundo), c = mundo([v.cx, v.cz]), out = {};
+  const lados = { atras: [h[0], h[1]], derecha: [h[1], h[2]], frente: [h[2], h[3]], izquierda: [h[3], h[0]] };
+  for (const [k, [a, b]] of Object.entries(lados)) {
+    const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    let dir = [mid[0] - c[0], mid[1] - c[1]]; const L = Math.hypot(...dir) || 1; dir = [dir[0] / L, dir[1] / L];
+    const d = distanciaAMuro(esp, mid, dir);
+    if (isFinite(d)) out[k] = { d, desde: mid, dir };
+  }
+  return out;
+}
+
 // Límites del modelo completo (cm) para encuadrar: muebles girados y muros.
 export function limites(modelo, { conMuros = true } = {}) {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y1 = 0;
@@ -540,7 +655,7 @@ export function limites(modelo, { conMuros = true } = {}) {
 // (igual que three/mueble.js), así el editor y el portal ubican todo en el mismo lugar.
 // fabricacion: dibuja el mueble tal como se arma (basales sin techo, con soportes de 10 cm; puertas 7 cm bajo la
 // cubierta o 1 cm sin ella; zócalo de pino). Por ahora solo lo usa el editor; el portal del cliente va sin él.
-export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabricacion = false, interior = null, abrir = null } = {}) {
+export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabricacion = false, interior = null, abrir = null, pisoClic = false } = {}) {
   st.clear();
   const ver = (k) => capas[k] !== false;
   const SOPORTE = 10;                       // alto de los soportes horizontales (cm)
@@ -561,7 +676,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     piso: mats.piso || '#2a2826',
     material: mats.material, // resolver de materiales por pieza (lo usan también las ventanas y puertas)
   };
-  if (ver('muros')) dibujarEspacio(st, modelo.espacio, M, { canto: ver('cantoMuro') });
+  if (ver('muros')) dibujarEspacio(st, modelo.espacio, M, { canto: ver('cantoMuro'), acab: ver('acabados'), pisoClic });
   const uniones = unionesL(modelo); // muebles en L: zócalo y trasera compartidos
 
   modelo.modulos.forEach((m) => {
@@ -573,7 +688,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
     const propioE = (...claves) => { for (const k of claves) { const mid = m.materiales?.[k]; const bg = mid && mats.material?.(mid); if (bg) return { bg }; } return null; };
-    if (m.tipo === 'esquinero') { dibujarEsquinero(G, m, { M, ver, fab: fabricacion, propio: propioE, PINO, tiradorDef, colorTirador: (c) => COLORES_TIRADOR[c] || c, interior: interior?.id === m.id ? interior : null }); return; }
+    if (m.tipo === 'esquinero') {
+      dibujarEsquinero(G, m, { M, ver, fab: fabricacion, propio: propioE, PINO, tiradorDef, colorTirador: (c) => COLORES_TIRADOR[c] || c, interior: interior?.id === m.id ? interior : null });
+      if (ver('cubierta') && interior?.id !== m.id) for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M); // lavaplatos o encimera sobre la L
+      return;
+    }
     const esBasal = m.tipo !== 'aereo' && m.tipo !== 'torre';
     const fab = fabricacion && !m.artefacto;
     const recorteSup = fab ? (m.cubierta ? 7 : 1) : 0; // cuánto bajan los frentes del borde superior
@@ -608,8 +727,17 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       // Costados alargados hacia atrás (isla con barra): llegan hasta la línea de la cubierta y bajan al piso, y el fondo
       // (los listones) queda retirado: el hueco sirve para las sillas.
       const ext = Math.max(0, +m.costados_atras || 0), cy0 = ext ? 0 : Z, dz = D + ext;
-      if (!quitada('izq')) B({ w: T, h: H - cy0, d: dz, x: T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('left', 'izq'), `${id}|cuerpo|izq`);     // costado izq.
-      if (!quitada('der')) B({ w: T, h: H - cy0, d: dz, x: W - T / 2, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado('right', 'der'), `${id}|cuerpo|der`); // costado der.
+      const costado = (p, x, cara) => { // entero, o en partes si se dividió (cada parte se elige y se borra aparte)
+        if (quitada(p)) return;
+        const ps = partesCostado(m, p);
+        if (!ps) { B({ w: T, h: H - cy0, d: dz, x, y: cy0 + (H - cy0) / 2, z: (D - ext) / 2 }, lado(cara, p), `${id}|cuerpo|${p}`); return; }
+        const bc = { y0: cy0, y1: H, z0: -ext, z1: D };
+        ps.forEach((q, i) => {
+          const r = rectParte(q, bc);
+          if (r.y1 - r.y0 > .1 && r.z1 - r.z0 > .1) B({ w: T, h: r.y1 - r.y0, d: r.z1 - r.z0, x, y: (r.y0 + r.y1) / 2, z: (r.z0 + r.z1) / 2 }, lado(cara, p), `${id}|cuerpo|${p}|p${i}`);
+        });
+      };
+      costado('izq', T / 2, 'left'); costado('der', W - T / 2, 'right');
       if (!quitada('piso')) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, tab('piso'), `${id}|cuerpo|piso`); // base
       // Techo de melamina: por defecto los basales no llevan (quedan abiertos arriba) y aéreos y torres sí;
       // cada mueble puede forzarlo con m.techo = 'si' | 'no' (ej. el nicho del microondas o una torre con placa arriba)
@@ -633,6 +761,16 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       }
     }
     if (ver('frentes')) {
+      if (ver('cuerpo')) for (const dv of divisionesH(m)) { // divisiones entre secciones: dentro de los costados
+        const xa = dv.x0 + (dv.x0 < .05 ? T : T / 2), xb = dv.x1 - (dv.x1 > W - .05 ? T : T / 2), kd = `f|${dv.col}|${dv.fila}`;
+        B({ w: xb - xa, h: T, d: D, x: (xa + xb) / 2, y: dv.y, z: D / 2 }, propio(`${kd}|div`, 'cuerpo') || M.cuerpo, `${id}|${kd}|div`);
+      }
+      // Repisa: fija (justa, hasta el canto) o móvil (más corta; en el editor lleva una marca roja en su canto)
+      const repisas = (c, k, ref, xa, xb) => nivelesRepisa(c).forEach((y, i) => {
+        const fija = repisaFija(m, c, i), dr = fija ? D - .6 : D - 1.1, h = fija ? 0 : .1, mat = propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo;
+        B({ w: xb - xa - 2 * h, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, mat, `${ref}|rep|${i}`);
+        if (fab && !fija) B({ w: Math.max(1, xb - xa - 6), h: .3, d: .1, x: (xa + xb) / 2, y, z: .6 + dr + .05 }, { bg: '#b4322e' }, `${ref}|rep|${i}`);
+      });
       for (const c of celdas(m)) {
         const k = `f|${c.col}|${c.fila}`, ref = `${id}|${k}`;
         // En fabricación, los frentes de la fila de arriba bajan 7 cm (con cubierta) o 1 cm del borde superior
@@ -643,24 +781,19 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         if (c.tipo === 'abierto') { // sin puerta: se ve el interior blanco, con sus divisiones y repisas
           if (ver('cuerpo')) {
             const rd = `${ref}|div`;
-            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, rd);      // división izq.
-            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, rd);  // división der.
-            if (c.y1 < H - .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, MD, rd);  // división arriba
-            if (c.y0 > Z + .05) B({ w: c.w, h: T, d: D, x: c.x, y: c.y0, z: D / 2 }, MD, rd);  // división abajo
+            // regla del dueño (2026-11-25): repisas y divisiones horizontales van siempre DENTRO de los costados (y de las
+            // divisiones verticales); los costados son piezas completas y no se ve el canto de ninguna repisa por fuera
             const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2);
-            const dr = D - 1.1; // repisa completa: desde el fondo hasta 0,5 cm del canto
-            nivelesRepisa(c).forEach((y, i) => B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo, `${ref}|rep|${i}`));
+            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col - 1}`);  // división vertical izq.
+            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col}`); // división vertical der.
+            repisas(c, k, ref, xa, xb); // las divisiones de arriba y abajo van en divisionesH()
           }
         } else if (abre) { // mueble enfocado: divisiones y repisas a la vista al abrir, puertas que giran y cajones que salen
           if (ver('cuerpo')) {
-            const rd = `${ref}|div`;
-            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, rd);
-            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, rd);
-            if (c.y1 < H - .05 && c.tipo !== 'cajon') B({ w: c.w, h: T, d: D, x: c.x, y: c.y1, z: D / 2 }, MD, rd);
-            if (c.tipo !== 'cajon') {
-              const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2), dr = D - 1.1;
-              nivelesRepisa(c).forEach((y, i) => B({ w: xb - xa, h: T, d: dr, x: (xa + xb) / 2, y, z: .6 + dr / 2 }, propio(`${k}|rep|${i}`, `${k}|rep`, 'cuerpo') || M.cuerpo, `${ref}|rep|${i}`));
-            }
+            if (c.x0 > .05) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col - 1}`);
+            if (c.x1 < W - .05) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col}`);
+            const xa = c.x0 + (c.x0 < .05 ? T : T / 2), xb = c.x1 - (c.x1 > W - .05 ? T : T / 2); // dentro de los costados
+            if (c.tipo !== 'cajon') repisas(c, k, ref, xa, xb);
           }
           const fr = m.columnas?.[c.col]?.frentes?.[c.fila] || {}, x0f = c.x - fw / 2;
           const hoja = (x0, x1, lado, ang, key) => { // bisagra en el canto izquierdo o derecho; abre hacia afuera
@@ -765,6 +898,10 @@ export function anguloBisagra(m, c, x) {
 
 // Encimera o lavaplatos sobre la cubierta (y = altura de la cara superior de la cubierta)
 function dibujarArtefacto(G, a, y, ref, M) {
+  if (a.giro) { // girado (esquinero): se dibuja en su propio grupo, centrado en su lugar
+    const g2 = G.group({ x: a.cx, y: 0, z: a.cz, ry: a.giro });
+    return dibujarArtefacto(g2, { ...a, giro: 0, cx: 0, cz: 0, x0: -a.ancho / 2, x1: a.ancho / 2, z0: -a.fondo / 2, z1: a.fondo / 2 }, y, ref, M);
+  }
   const def = ARTEFACTOS[a.tipo] || ARTEFACTOS.encimera_gas, cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
   const caras = ['top', 'front', 'left', 'right', 'back'];
   if (!def.cubas) { // encimera: vidrio o acero negro casi a ras
@@ -834,7 +971,7 @@ function dibujarVano(g, v, m, xl, k, M) {
 // Muros "casa de muñecas": solo se dibuja la cara interior (y el canto superior). Como las caras
 // tienen backface-visibility: hidden, los muros que dan hacia la cámara desaparecen solos y siempre
 // se ve el interior. Piso con la forma de la planta (clip-path) si el espacio está cerrado.
-function dibujarEspacio(st, esp, M, { canto = true } = {}) {
+function dibujarEspacio(st, esp, M, { canto = true, acab = true, pisoClic = false } = {}) {
   const W = muros(esp);
   if (!W.length) return;
   const P = esp.puntos || [];
@@ -844,7 +981,9 @@ function dibujarEspacio(st, esp, M, { canto = true } = {}) {
   const f = document.createElement('div');
   f.className = 'c3-floor c3-piso';
   const w = Math.max(1, x1 - x0), d = Math.max(1, z1 - z0);
-  f.style.cssText = `width:${w}em;height:${d}em;border-radius:0;pointer-events:none;background:${M.piso};
+  const suelo = acab && esp.acabados?.suelo?.patron ? fondoAcabado(esp.acabados.suelo, { ox: x0, oy: z0, desdeArriba: true }) : M.piso; // palmeta, baldosa…
+  if (pisoClic) f.dataset.ref = 'suelo'; // en el editor el suelo se toca para darle su acabado
+  f.style.cssText = `width:${w}em;height:${d}em;border-radius:0;pointer-events:${pisoClic ? 'auto' : 'none'};background:${suelo};
     ${esp.cerrado && P.length > 2 ? `clip-path:polygon(${P.map((p) => `${((p.x - x0) / w * 100).toFixed(2)}% ${((p.z - z0) / d * 100).toFixed(2)}%`).join(',')});` : ''}
     transform: translate3d(${(x0 + x1) / 2}em, -.05em, ${(z0 + z1) / 2}em) rotateX(90deg) translate(-50%, -50%);`;
   st.rig.prepend(f);
@@ -865,6 +1004,17 @@ function dibujarEspacio(st, esp, M, { canto = true } = {}) {
     const xl = (d) => (E.O[0] + d * E.u[0] - mid[0]) * gx + (E.O[1] + d * E.u[1] - mid[1]) * gz;
     const k = Math.sign(E.u[0] * gx + E.u[1] * gz) || 1; // +1 si "derecha" del muro = +x local
     const V = vanosDe(m);
+    // acabado: pintura y franja de revestimiento; el dibujo parte en el extremo izquierdo del muro y en el piso
+    // zonas del muro con su acabado (sin acabado: el gris de siempre); el dibujo calza entre una franja y otra
+    const ZS = acab ? zonasMuro(esp, m.i, m.largo, m.alto) : [{ x0: 0, x1: m.largo, y0: 0, y1: m.alto, z: 0, acabado: null, dividido: false }];
+    const cara = (d0, d1, y0, y1) => {
+      for (const Z of ZS) {
+        const a = Math.max(d0, Z.x0), b = Math.min(d1, Z.x1), ya = Math.max(y0, Z.y0), yb = Math.min(y1, Z.y1);
+        if (b - a < .05 || yb - ya < .05) continue;
+        const w = b - a, xc = xl((a + b) / 2), tex = Z.acabado ? { bg: fondoAcabado(Z.acabado, { ox: xc - w / 2 + 5000, oy: ya }) } : M.muro;
+        g.box({ w, h: yb - ya, d: m.espesor, x: xc, y: (ya + yb) / 2, z: -m.espesor / 2, tex, ref: Z.dividido ? `${ref}|z${Z.z}` : ref, caras: ['front'] });
+      }
+    };
     // cara del muro en franjas verticales, sin los huecos
     const cortes = [...new Set([0, m.largo, ...V.flatMap((v) => [v.desde, v.desde + v.ancho])])].sort((p, q) => p - q);
     for (let j = 0; j < cortes.length - 1; j++) {
@@ -876,7 +1026,7 @@ function dibujarEspacio(st, esp, M, { canto = true } = {}) {
         const h0 = v.antepecho, h1 = v.antepecho + v.alto;
         tramos = tramos.flatMap(([y0, y1]) => [[y0, Math.min(y1, h0)], [Math.max(y0, h1), y1]]).filter(([y0, y1]) => y1 - y0 > .05);
       }
-      for (const [y0, y1] of tramos) g.box({ w: d1 - d0, h: y1 - y0, d: m.espesor, x: xl(dm), y: (y0 + y1) / 2, z: -m.espesor / 2, tex: M.muro, ref, caras: ['front'] });
+      for (const [y0, y1] of tramos) cara(d0, d1, y0, y1);
     }
     for (const v of V) dibujarVano(g, v, m, xl, k, M);
     // canto superior, alargado en las esquinas para cerrar el encuentro con el muro vecino

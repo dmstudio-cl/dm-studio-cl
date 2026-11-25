@@ -80,6 +80,7 @@ permalink: /admin/editor/
         <label><input type="checkbox" data-capa="tiradores" checked> Tiradores</label>
         <label><input type="checkbox" data-capa="cubierta" checked> Cubierta</label>
         <label><input type="checkbox" data-capa="muros" checked> Muros</label>
+        <label title="Azulejos, palmetas, baldosas y pintura de muros y suelo"><input type="checkbox" data-capa="acabados" checked> Acabados</label>
         <label title="En la vista Frente: repisas punteadas detrás de las puertas"><input type="checkbox" data-capa="repisas"> Repisas</label>
         <label title="Luces LED de los muebles"><input type="checkbox" data-capa="luces" checked> Luces</label>
         <label title="En un proyecto de cliente: el tirador, la cubierta y el borde que eligió en su portal, y atenuados los muebles que no cotiza"><input type="checkbox" data-capa="cliente" checked> Elección del cliente</label>
@@ -105,6 +106,7 @@ permalink: /admin/editor/
         <button type="button" data-plantilla="isla_trabajo" title="Dos cuerpos espalda con espalda, una cubierta, encimera o lavaplatos">Isla de trabajo</button>
         <button type="button" data-plantilla="isla_mesa" title="Almacenaje y la cubierta se alarga como mesa apoyada en un costado">Isla con mesa</button>
         <button type="button" data-esquinero title="Módulo para el rincón entre dos muros: elige después su solución (puerta giratoria, repisas, cajones)">Módulo esquinero</button>
+        <button type="button" data-esquinero-aereo title="Esquinero para los aéreos: puertas con repisa en L (2a) o repisas intercaladas (2b), con base, techo y soportes de un aéreo">Esquinero aéreo</button>
       </div>
     </details>
     <details class="ed-sec" data-sec="artefactosde">
@@ -175,6 +177,7 @@ permalink: /admin/editor/
     </section>
     <section id="tab-mat" hidden>
       <div id="materiales"></div>
+      <div id="mat-acab"></div>
     </section>
     <section id="tab-coment" hidden>
       <div class="ed-contacto" id="coment-cliente"></div>
@@ -214,6 +217,8 @@ permalink: /admin/editor/
 <script>
   window.DM = { base: "{{ site.baseurl }}", worker: "{{ site.data.sitio.worker_url }}", build: "{{ site.time | date: '%s' }}" };
   window.MELAMINAS = {{ site.data.melaminas | jsonify }};
+  window.ACABADOS = {{ site.data.acabados.acabados | default: empty | jsonify }};
+  window.PINTURAS = {{ site.data.acabados.pinturas | default: empty | jsonify }};
 </script>
 <script type="module" src="{{ '/assets/js/editor/acceso.js' | relative_url }}"></script>
 <script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>

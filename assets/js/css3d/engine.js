@@ -18,6 +18,12 @@ const STYLE = `
 .c3-f.c3-luz { pointer-events: none; backface-visibility: visible; } /* ilusión de luz: degradado translúcido sin sombra (mix-blend-mode aplanaría el 3D) */
 .c3-floor { backface-visibility: hidden; border-radius: 50%; }
 .c3-g > * { left: 0; top: 0; transform-origin: 0 0; } /* grupos (p. ej. un tirador girado): sus caras se ubican igual que en el rig */
+.c3.c3-pan { touch-action: none; }
+.c3-mover { position: absolute; left: 12px; bottom: var(--c3-mover-abajo, 12px); z-index: 5; display: grid; grid-template-columns: repeat(3, 34px); grid-template-rows: repeat(3, 34px); gap: 3px; }
+.c3-mover[hidden] { display: none; }
+.c3-mover button { font: 15px/1 system-ui, sans-serif; border: 1px solid rgba(236,231,221,.22); border-radius: 8px; background: rgba(11,11,13,.72); color: #ece7dd; cursor: pointer; padding: 0; }
+.c3-mover button:hover { background: rgba(60,56,52,.85); }
+.c3-mover .c3-centro { font-size: 12px; }
 `;
 let styled = false;
 function injectStyle() {
@@ -125,6 +131,33 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     rig.append(f);
   }
 
+  // ----- desplazamiento (dueño, 2026-11-25): además de girar, la cámara se mueve por el entorno hasta panMax cm del
+  // centro (clic derecho o 2 dedos arrastrando, o las flechas en pantalla). pan = [x, z] en cm, sumado al centro.
+  let panMax = 0, pan = [0, 0], tgtPan = [0, 0], pad = null;
+  const limitarPan = (p) => { const l = Math.hypot(p[0], p[1]); return l > panMax && l > 0 ? [p[0] * panMax / l, p[1] * panMax / l] : p; };
+  // ejes de la pantalla en el piso: derecha y hacia adentro, según el giro actual
+  const ejes = () => { const a = rad(angY()); return { der: [Math.cos(a), Math.sin(a)], fon: [Math.sin(a), -Math.cos(a)] }; };
+  function moverVista(dDer, dFon, suave = false) { // cm en pantalla: hacia la derecha y hacia el fondo
+    if (!panMax) return;
+    const { der, fon } = ejes(), b = suave ? tgtPan : pan;
+    const p = limitarPan([b[0] + der[0] * dDer + fon[0] * dFon, b[1] + der[1] * dDer + fon[1] * dFon]);
+    tgtPan = p; if (!suave) pan = p.slice();
+    if (suave) request(); else apply();
+  }
+  function crearPad() {
+    pad = document.createElement('div'); pad.className = 'c3-mover'; pad.hidden = true;
+    pad.innerHTML = '<span></span><button type="button" data-m="0,1" title="Avanzar" aria-label="Avanzar">↑</button><span></span>'
+      + '<button type="button" data-m="-1,0" title="Mover a la izquierda" aria-label="Mover a la izquierda">←</button><button type="button" class="c3-centro" data-m="c" title="Volver al centro" aria-label="Volver al centro">●</button><button type="button" data-m="1,0" title="Mover a la derecha" aria-label="Mover a la derecha">→</button>'
+      + '<span></span><button type="button" data-m="0,-1" title="Retroceder" aria-label="Retroceder">↓</button><span></span>';
+    for (const ev of ['pointerdown', 'pointerup', 'click']) pad.addEventListener(ev, (e) => e.stopPropagation()); // no gira ni elige piezas
+    pad.addEventListener('click', (e) => {
+      const m = e.target.closest('button')?.dataset.m; if (!m) return;
+      if (m === 'c') { tgtPan = [0, 0]; request(); return; }
+      const [a, b] = m.split(',').map(Number); moverVista(a * 40, b * 40, true);
+    });
+    el.append(pad);
+  }
+
   // ----- vista
   let locked = false, ortho = false;
   let rx0 = rx, ry0 = ry, curX = rx, curY = ry, tgtX = rx, tgtY = ry, frame = 0, spinning = autorotate;
@@ -147,7 +180,7 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
   }
   const alAplicar = []; // avisos cuando cambia la vista (p. ej. para reubicar pines en pantalla)
   function apply() {
-    rig.style.transform = `rotateX(${angX()}deg) rotateY(${angY()}deg) translate3d(${-center[0]}em, ${center[1]}em, ${-center[2]}em)`;
+    rig.style.transform = `rotateX(${angX()}deg) rotateY(${angY()}deg) translate3d(${-(center[0] + pan[0])}em, ${center[1]}em, ${-(center[2] + pan[1])}em)`;
     shadeAll();
     for (const fn of alAplicar) fn();
   }
@@ -156,8 +189,10 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     if (spinning) tgtY += .12;
     curX += (tgtX - curX) * .2; curY += (tgtY - curY) * .2;
     if (Math.abs(tgtX - curX) < .01 && Math.abs(tgtY - curY) < .01) { curX = tgtX; curY = tgtY; }
+    pan = pan.map((v, i) => v + (tgtPan[i] - v) * .2);
+    const panQuieto = Math.abs(tgtPan[0] - pan[0]) < .05 && Math.abs(tgtPan[1] - pan[1]) < .05; if (panQuieto) pan = tgtPan.slice();
     apply();
-    if (spinning || curX !== tgtX || curY !== tgtY) frame = requestAnimationFrame(loop);
+    if (spinning || curX !== tgtX || curY !== tgtY || !panQuieto) frame = requestAnimationFrame(loop);
   }
   const request = () => { if (!frame && visible) frame = requestAnimationFrame(loop); };
 
@@ -172,20 +207,35 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
 
   // ----- interacción: horizontal gira; vertical inclina poco (y deja hacer scroll en táctil)
   let drag = null;
+  const dedos = new Map(); // toques activos (2 dedos = mover la cámara)
+  const medio = () => { const p = [...dedos.values()]; return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; };
   el.addEventListener('pointerdown', (e) => {
-    if (e.button > 0 || locked) return;
+    if (locked) return;
+    if (e.pointerType === 'touch') dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (panMax && e.pointerType === 'touch' && dedos.size === 2) { const c = medio(); drag = { pan: true, x: c.x, y: c.y, dos: true }; return; }
+    if (e.button === 2 && panMax) { drag = { pan: true, x: e.clientX, y: e.clientY, id: e.pointerId }; try { el.setPointerCapture(e.pointerId); } catch {} el.classList.add('dragging'); spinning = false; return; }
+    if (e.button > 0) return;
     drag = { x: e.clientX, y: e.clientY, rx: tgtX, ry: tgtY, id: e.pointerId, mouse: e.pointerType === 'mouse' };
     spinning = false; hideHint();
     if (drag.mouse) el.setPointerCapture(e.pointerId);
     el.classList.add('dragging');
   });
   el.addEventListener('pointermove', (e) => {
+    if (dedos.has(e.pointerId)) dedos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (drag?.pan) { // mover: se «toma» el piso y se arrastra (más lento en profundidad según la inclinación)
+      const c = drag.dos ? (dedos.size === 2 ? medio() : null) : (e.pointerId === drag.id ? { x: e.clientX, y: e.clientY } : null);
+      if (!c) return;
+      const s = parseFloat(rig.style.fontSize) || 1, incl = Math.max(.35, Math.sin(Math.abs(rad(angX()))));
+      moverVista(-(c.x - drag.x) / s, (c.y - drag.y) / s / incl);
+      drag.x = c.x; drag.y = c.y; return;
+    }
     if (!drag || e.pointerId !== drag.id) return;
     tgtY = drag.ry + (e.clientX - drag.x) * .4;
     if (drag.mouse) tgtX = Math.max(minRx, Math.min(maxRx, drag.rx - (e.clientY - drag.y) * .25));
     request();
   });
-  const end = () => { drag = null; el.classList.remove('dragging'); };
+  el.addEventListener('contextmenu', (e) => { if (panMax) e.preventDefault(); });
+  const end = (e) => { if (e?.pointerId != null) dedos.delete(e.pointerId); if (drag?.dos && dedos.size === 2) return; drag = null; el.classList.remove('dragging'); };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
   el.addEventListener('keydown', (e) => {
@@ -242,5 +292,15 @@ export function createStage(el, { rx = -22, ry = -38, minRx = -40, maxRx = -4, l
     // Oscurece la escena (0 = día, ~0,6 = noche) para que se luzcan las caras emisivas (luces).
     noche(k = 0) { noche = Math.max(0, Math.min(.85, +k || 0)); for (const f of faces) f.o = null; shadeAll(); },
     reset() { tgtX = rx0; tgtY = ry0; request(); },
+    // Desplazamiento por el entorno: radio máximo en cm alrededor del centro (0 = apagado, vuelve al centro y oculta
+    // las flechas en pantalla).
+    panLimit(cm = 0) {
+      panMax = Math.max(0, +cm || 0); el.classList.toggle('c3-pan', panMax > 0);
+      if (panMax && !pad) crearPad();
+      if (pad) pad.hidden = !panMax;
+      if (!panMax) { pan = [0, 0]; tgtPan = [0, 0]; apply(); } else { tgtPan = limitarPan(tgtPan); request(); }
+    },
+    resetPan() { pan = [0, 0]; tgtPan = [0, 0]; apply(); },
+    get pan() { return pan.slice(); },
   };
 }

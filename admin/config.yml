@@ -114,3 +114,33 @@ collections:
               - { label: Comuna, name: nombre, widget: string }
               - { label: Distancia (km, solo ida), name: km, widget: number, value_type: float }
               - { label: TAG / peajes (CLP), name: tag, widget: number, value_type: int, default: 0 }
+      - name: acabados
+        label: Acabados de muros y suelo
+        file: _data/acabados.yml
+        fields:
+          - label: Acabados
+            name: acabados
+            widget: list
+            summary: "{{fields.grupo}} · {{fields.nombre}}"
+            fields:
+              - { label: Identificador (sin espacios), name: id, widget: string }
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Grupo, name: grupo, widget: select, options: [Azulejos, Palmetas, Baldosas, Otros], default: Azulejos }
+              - { label: Para, name: para, widget: select, options: [{ label: Muros, value: muro }, { label: Suelo, value: suelo }, { label: Muros y suelo, value: ambos }], default: ambos }
+              - { label: Patrón, name: patron, widget: select, options: [{ label: Liso, value: liso }, { label: Recto (cuadrícula), value: recto }, { label: Trabado (metro o ladrillo), value: trabado }, { label: Espiga (parquet), value: espiga }, { label: Hexagonal, value: hexagonal }, { label: Tablas (palmeta), value: tablas }, { label: Damero (2 colores), value: damero }], default: recto }
+              - { label: Largo (cm), name: largo, widget: number, value_type: float, hint: "En hexagonal: de cara a cara." }
+              - { label: Ancho (cm), name: ancho, widget: number, value_type: float, required: false }
+              - { label: Junta (mm), name: junta, widget: number, value_type: float, default: 2 }
+              - { label: Color, name: color, widget: color }
+              - { label: Segundo color (damero), name: color2, widget: color, required: false }
+              - { label: Color de la junta, name: color_junta, widget: color }
+              - { label: Variación de tono (%), name: variacion, widget: number, value_type: int, default: 0, required: false }
+              - { label: Girar 90°, name: giro, widget: select, options: [{ label: "No", value: 0 }, { label: "Sí", value: 90 }], default: 0, required: false }
+          - label: Pinturas de muros
+            name: pinturas
+            widget: list
+            summary: "{{fields.nombre}} · {{fields.color}}"
+            fields:
+              - { label: Identificador (sin espacios), name: id, widget: string }
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Color, name: color, widget: color }

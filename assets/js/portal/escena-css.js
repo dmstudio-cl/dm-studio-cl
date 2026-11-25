@@ -15,6 +15,7 @@ export function createScene(el) {
   host.style.cssText = 'position:absolute;inset:0;';
   el.prepend(host);
   const st = createStage(host, { rx: VISTAS['tres-cuartos'][0], ry: VISTAS['tres-cuartos'][1], minRx: -89, maxRx: -2 });
+  st.panLimit(300); // moverse por el entorno hasta 3 m del centro (clic derecho, 2 dedos o las flechas en pantalla)
 
   let soloMuebles = (() => { try { return localStorage.getItem('dm-portal-solo') === '1'; } catch { return false; } })();
   let proyecto = null, sel = {}, roomVisible = true, zoom = 1, modeloActual = null, catalogo = [], piezaSel = null;
@@ -175,12 +176,12 @@ export function createScene(el) {
       foco = { id, abiertos: esq?.sol === '1' ? ['auto'] : [] }; zoom = 1;
       build();
       const f = marcoDe(m), r = +m.rotacion || 0;
-      volarA(f.c, f.size);
+      st.resetPan(); volarA(f.c, f.size);
       st.view(esq?.sol ? -30 : -26, (esq ? (m.esquina === 'izq' ? -45 : 45) : -10) - r); // casi de frente al mueble, así los vecinos no lo tapan (el esquinero, hacia el rincón)
     },
     desenfocar() {
       if (!foco) return; foco = null; zoom = 1; build();
-      const f = marcoGeneral(); volarA(f.c, f.size); st.view(...VISTAS['tres-cuartos']);
+      const f = marcoGeneral(); st.resetPan(); volarA(f.c, f.size); st.view(...VISTAS['tres-cuartos']);
     },
     // abre o cierra una puerta o cajón del mueble enfocado (clave = data-esq-anim del grupo)
     alternar(key, hoja) {

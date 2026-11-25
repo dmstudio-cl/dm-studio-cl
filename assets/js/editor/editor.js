@@ -1,12 +1,13 @@
 // Editor de modelos CSS 3D por capas (zócalo → cuerpo → frentes → tiradores).
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
-import { nivelesRepisa, repartirPuertas, GAP, MAX_HOJA, artefactosDe, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
+import { PATRONES, normalizar as normalizarAcab, fondoAcabado, colorValido, mosaico } from '../css3d/acabados.js';
+import { nivelesRepisa, repartirPuertas, GAP, MAX_HOJA, artefactosDe, zonasCubierta, moverArtefacto, centroArtefacto, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { despiece, medidaFrente } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
-import { huella, girar, metaMuro, murosContorno } from './modelo.js';
+import { huella, centro, girar, metaMuro, murosContorno, partesCostado, bordesCostado, rectParte, repisaFija, divisionesH, zonasMuro, metaMuroLeer } from './modelo.js';
 import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo, tiradoresCliente } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
@@ -17,7 +18,7 @@ import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
-import { SOLUCIONES, ORDEN_SOLUCIONES, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria, partesInterior, repisasL } from './esquinero.js';
+import { SOLUCIONES, ORDEN_SOLUCIONES, ORDEN_AEREO, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria, partesInterior, repisasL } from './esquinero.js';
 const CORREDERAS_LARGOS = [25, 30, 35, 40, 45, 50, 55, 60];
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -38,9 +39,10 @@ let sel = null;            // { tipo: 'modulo'|'zocalo'|'cuerpo'|'frente'|'tirad
 let vista = '3d';          // '3d' | 'frente' | 'planta'
 let herr = 'sel';          // 'sel' | 'dibujar' | 'div-v' | 'div-h' | 'muros' | 'medir'
 let medF = null, cursorF = null; // huincha en Frente: primer punto y cursor
+let aislado = null; // «Ver solo este mueble» (dueño, 2026-11-25): id del mueble que se ve solo en 3D, desde sus 4 lados
 let v34 = null; // vista fija 3/4 del interior de un esquinero: { id, abiertos: [claves] }
 let zoom = 1;
-const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, repisas: false, luces: true, noche: false, cliente: true };
+const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, acabados: true, repisas: false, luces: true, noche: false, cliente: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let materialesCub = [];    // materiales de cubierta de la Configuración de precios (reglas físicas: vuelo, largo, lavaplatos bajo cubierta)
 let catalogoTir = [];      // tiradores de la Configuración de precios (nombre, forma, color, largo, grosor, precio)
@@ -97,7 +99,7 @@ const Zde = (m) => (m.tipo === 'aereo' ? 0 : (+m.zocalo || 0));
 
 // Cambia el modelo dejando un paso en el historial (deshacer).
 function cambiar(fn) {
-  hist.push(JSON.stringify(modelo)); if (hist.length > 150) hist.shift();
+  hist.push(vivoSnap ?? JSON.stringify(modelo)); vivoSnap = null; if (hist.length > 150) hist.shift(); // (vivoSnap: color probado en vivo)
   fut.length = 0;
   fn(modelo);
   modelo.modulos.forEach(normalizar);
@@ -107,7 +109,8 @@ function deshacer() { if (!hist.length) return; fut.push(JSON.stringify(modelo))
 function rehacer() { if (!fut.length) return; hist.push(JSON.stringify(modelo)); modelo = JSON.parse(fut.pop()); validarSel(); guardar(); render(); }
 function validarSel() {
   if (sel?.tipo === 'multi') { sel.ids = sel.ids.filter((id) => modulo(id)); if (sel.ids.length < 2) sel = sel.ids.length ? { tipo: 'modulo', m: sel.ids[0] } : null; }
-  else if (sel?.tipo === 'muro') { if (!murosDe(modelo.espacio)[sel.i]) sel = null; }
+  else if (sel?.tipo === 'muro') { const w = murosDe(modelo.espacio)[sel.i]; if (!w) sel = null; else if (sel.z != null && !(metaMuroLeer(modelo.espacio, sel.i).zonas || [])[sel.z]) sel = { tipo: 'muro', i: sel.i }; }
+  else if (sel?.tipo === 'suelo') { if (!murosDe(modelo.espacio).length) sel = null; }
   else if (sel?.tipo === 'medida') { if (!(modelo.medidas || []).some((x) => x.id === sel.id)) sel = null; }
   else if (sel?.tipo === 'vano') { if (!vanoSel()) sel = null; }
   else if (sel?.tipo === 'repisa') { const c = modulo(sel.m) && celdas(modulo(sel.m)).find((k) => k.col === sel.col && k.fila === sel.fila); if (!c || sel.i >= c.repisas) sel = c ? { tipo: 'frente', m: sel.m, col: sel.col, fila: sel.fila } : null; }
@@ -127,6 +130,7 @@ function registrar(antes) {
 function normalizar(m) {
   if (m.tipo === 'esquinero') { // sus frentes salen de la solución elegida; los tiradores, con el modelo general
     m.columnas = []; if (!(m.tiradores || []).some((t) => t?.esq && tiradorDef(t.modelo))) m.tiradores = [{ id: 'esq', esq: true, modelo: 'barra-128', color: 'negro' }];
+    if (m.aereo) { m.cubierta = false; m.zocalo = 0; if (m.solucion && !ORDEN_AEREO.includes(m.solucion)) m.solucion = ''; } // esquinero aéreo: reglas de un aéreo, solo 2a y 2b
     return;
   }
   const W = +m.ancho, HU = +m.alto - Zde(m);
@@ -258,16 +262,16 @@ function esfera(mid) {
 }
 // Clave de la pieza de un ref ("id|f|0|1", "id|cuerpo|piso"…) o de la selección actual
 const claveDeRef = (ref) => {
-  const [mid, ...r] = ref.split('|'); const k = r.join('|');
+  const [mid, ...r] = ref.split('|'); const k = r.join('|').replace(/\|p\d+$/, ''); // una parte del costado: su material es el del costado
   if (mid === 'vano') return { vano: { i: +r[0], v: r[1] } }; // puerta o ventana del muro
-  if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k)) return null;
+  if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k) || /^cuerpo\|dv\d+$/.test(k)) return null;
   return { m: mid, k };
 };
 function claveDeSel() {
   if (sel?.tipo === 'vano') return { vano: { i: sel.i, v: sel.v } };
   if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
   const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
-    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte' }[sel.tipo];
+    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte', div: sel.dir === 'h' ? `f|${sel.col}|${sel.fila}|div` : undefined }[sel.tipo];
   return k ? { m: sel.m, k } : null;
 }
 const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo', soporte: 'Soporte delantero' };
@@ -461,6 +465,239 @@ $('#colores').addEventListener('change', (e) => {
   cambiar((d) => { d.colores = { ...(d.colores || {}), [k]: e.target.value }; });
   pintarColores();
 });
+// ===================== Acabados de muros y suelo como esferas (dueño, 2026-11-25) =====================
+// Igual que las melaminas: en la pestaña Materiales hay esferas de pinturas, azulejos, palmetas y baldosas (biblioteca
+// en _data/acabados.yml, editable en /admin). Se selecciona un muro, una zona del muro (vista Frente) o el suelo y se
+// hace clic en la esfera, o se arrastra la esfera y se suelta encima. Cada material aplicado tiene su rueda de color
+// de las piezas y la del fragüe (con cuentagotas y los tonos del proyecto) y sus ajustes, que se despliegan al aplicarlo.
+const BIBLIO_ACAB = (window.ACABADOS || []).filter((a) => a && a.id && PATRONES[a.patron]);
+const PINTURAS = (window.PINTURAS || []).filter((p) => p && p.id && colorValido(p.color, null));
+const CAMPOS_ACAB = ['patron', 'largo', 'ancho', 'junta', 'color', 'color2', 'color_junta', 'variacion', 'giro'];
+const espAcab = (d = modelo) => ((d.espacio ||= {}).acabados ||= {});
+let ajustesAbiertos = false, vivoSnap = null;
+// Alcance: 'suelo' | 'muro:i' | 'muro:i:z' (zona de un muro dividido)
+function alcanceSel() {
+  if (sel?.tipo === 'suelo') return 'suelo';
+  if (sel?.tipo === 'muro') return sel.z != null ? `muro:${sel.i}:${sel.z}` : `muro:${sel.i}`;
+  return null;
+}
+const selDeAlcance = (s) => { if (s === 'suelo') return { tipo: 'suelo' }; const [, i, z] = s.split(':'); return z != null ? { tipo: 'muro', i: +i, z: +z } : { tipo: 'muro', i: +i }; };
+function nombreAlcance(s) {
+  if (s === 'suelo') return 'el suelo';
+  const [, i, z] = s.split(':'), w = murosDe(modelo.espacio)[+i], n = w?.etiqueta || `muro ${+i + 1}`;
+  return z != null ? `la zona ${+z + 1} del ${n}` : `el ${n}`;
+}
+// Acabados guardados en un alcance (un muro dividido sin zona elegida = todas sus zonas)
+function acabadosEn(s, d = modelo, crear = false) {
+  if (s === 'suelo') { const g = crear ? espAcab(d) : d.espacio?.acabados; return g?.suelo ? [g.suelo] : []; }
+  const [, i, z] = s.split(':'), meta = crear ? metaMuro(d.espacio, +i) : metaMuroLeer(d.espacio, +i);
+  if (Array.isArray(meta.zonas) && meta.zonas.length) return (z != null ? [meta.zonas[+z]] : meta.zonas).filter(Boolean).map((q) => q.acabado).filter(Boolean);
+  return meta.acabado ? [meta.acabado] : [];
+}
+function ponerAcabado(s, a, d) { // dentro de cambiar()
+  if (s === 'suelo') { espAcab(d).suelo = a; return; }
+  const [, i, z] = s.split(':'), meta = metaMuro(d.espacio, +i);
+  if (Array.isArray(meta.zonas) && meta.zonas.length) (z != null ? [meta.zonas[+z]] : meta.zonas).filter(Boolean).forEach((q) => { q.acabado = { ...a }; });
+  else meta.acabado = a;
+}
+function quitarAcabado(s, d) {
+  if (s === 'suelo') { delete espAcab(d).suelo; return; }
+  const [, i, z] = s.split(':'), meta = metaMuro(d.espacio, +i);
+  if (Array.isArray(meta.zonas) && meta.zonas.length) (z != null ? [meta.zonas[+z]] : meta.zonas).filter(Boolean).forEach((q) => { delete q.acabado; });
+  else delete meta.acabado;
+}
+const deBiblio = (id) => { // 'a:<id>' azulejo/palmeta…, 'p:<id>' pintura
+  if (id.startsWith('p:')) { const p = PINTURAS.find((x) => x.id === id.slice(2)); return p && { patron: 'liso', color: colorValido(p.color), nombre: p.nombre }; }
+  const p = BIBLIO_ACAB.find((x) => x.id === id.slice(2)); if (!p) return null;
+  const a = { nombre: p.nombre }; CAMPOS_ACAB.forEach((k) => { if (p[k] != null && p[k] !== '') a[k] = p[k]; }); return a;
+};
+function aplicarAcab(s, a) {
+  cambiar((d) => ponerAcabado(s, { ...a }, d));
+  sel = selDeAlcance(s); ajustesAbiertos = true; render(); pintarAcabTab(true);
+  aviso(`${a.nombre || 'Material'} aplicado en ${nombreAlcance(s)}. Ajusta sus colores en la pestaña Materiales. Ctrl+Z deshace.`);
+}
+function guardarTono(hex, d = modelo) { // tonos del proyecto (los últimos 12 sacados o usados)
+  const c = colorValido(hex, null); if (!c) return;
+  const g = espAcab(d); g.paleta = [c, ...(g.paleta || []).filter((x) => x !== c)].slice(0, 12);
+}
+// Esfera de un acabado: el dibujo a escala dentro de la bola (unas 3 piezas de ancho)
+function esferaAcab(a, px = 52) {
+  const n = normalizarAcab(a), fs = n.patron === 'liso' ? 1 : Math.max(.08, Math.min(3, px / (3 * Math.max(n.largo, n.ancho))));
+  return `font-size:${fs}px;background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.5), rgba(255,255,255,0) 40%), ${fondoAcabado(n)};`;
+}
+const ICONO_GOTAS = '<svg class="ed-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 22 1-1h3l9-9"/><path d="M3 21v-3l9-9"/><path d="m15 6 3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z"/></svg>'; // cuentagotas (pipeta)
+function campoColor(campo, nombre, v) {
+  const tonos = modelo.espacio?.acabados?.paleta || [];
+  return `<label class="ed-campo ancho2">${nombre}<span class="ed-color"><input type="color" data-ac="${campo}" value="${v}">
+    <button type="button" class="ed-gotas" data-gotas title="Cuentagotas: toca este botón y luego cualquier punto de la pantalla (también la foto del cliente en otra ventana)">${ICONO_GOTAS}</button>
+    ${tonos.map((t) => `<button type="button" class="ed-tono" data-tono="${t}" title="${t}" style="background:${t}"></button>`).join('')}</span></label>`;
+}
+// Bloque del material aplicado en lo seleccionado: ruedas de color y ajustes
+function bloqueAcabSel(s) {
+  const lista = acabadosEn(s), a0 = lista[0], a = a0 && normalizarAcab(a0), P = a && PATRONES[a.patron];
+  if (!a) return `<div class="ed-acab-sel"><p class="sub">Seleccionado: ${esc(nombreAlcance(s))}</p><p class="ed-ayuda">Sin material todavía: haz clic en una esfera de abajo (o arrástrala y suéltala encima).</p></div>`;
+  const num2 = (k, nombre, v, u, step = .5) => `<label class="ed-campo">${nombre}<span class="u" data-u="${u}"><input type="number" step="${step}" min="0" data-ac="${k}" value="${v}"></span></label>`;
+  const liso = a.patron === 'liso';
+  return `<div class="ed-acab-sel"><p class="sub">Seleccionado: ${esc(nombreAlcance(s))}${lista.length > 1 ? ` (${lista.length} zonas)` : ''}</p>
+    <div class="ed-mat-usado"><i class="ed-esfera" style="${esferaAcab(a0, 32)}"></i><span>${esc(a0.nombre || P.nombre)}<small>${liso ? 'Pintura' : `${P.nombre}${P.medidas === false ? '' : ` · ${cm(a.largo)}${P.soloLargo ? '' : ` × ${cm(a.ancho)}`} cm`}`}</small></span><button data-acab-quitar title="Sin material (gris)">Quitar</button></div>
+    <div class="ed-campos">${campoColor('color', liso ? 'Color' : P.color2 ? 'Color 1 de las piezas' : 'Color de las piezas', a.color)}
+      ${P.color2 ? campoColor('color2', 'Color 2 de las piezas', a.color2) : ''}${liso ? '' : campoColor('color_junta', 'Fragüe (junta)', a.color_junta)}</div>
+    ${liso ? '' : `<details class="ed-acab-ajustes"${ajustesAbiertos ? ' open' : ''}><summary>Ajustes de este material</summary><div class="ed-campos">
+      <label class="ed-campo ancho2">Patrón<select data-ac="patron">${Object.entries(PATRONES).map(([k, p]) => `<option value="${k}"${k === a.patron ? ' selected' : ''}>${p.nombre}</option>`).join('')}</select></label>
+      ${num2('largo', P.soloLargo ? 'Medida (cara a cara)' : 'Largo', a.largo, 'cm')}${P.soloLargo ? '' : num2('ancho', 'Ancho', a.ancho, 'cm')}
+      ${num2('junta', 'Junta', a.junta, 'mm')}${num2('variacion', 'Variación de tono', a.variacion, '%', 1)}
+      ${a.patron === 'hexagonal' || a.patron === 'espiga' ? '' : `<label class="ed-check" style="grid-column:span 2"><input type="checkbox" data-ac="giro"${a.giro === 90 ? ' checked' : ''}> Girar 90° (piezas paradas o tablas en el otro sentido)</label>`}
+    </div></details>`}
+    ${s.startsWith('muro:') ? '<div class="ed-botones"><button data-acab-todos>Usar este material en todos los muros</button></div>' : ''}</div>`;
+}
+function pintarAcabTab(forzar = false) {
+  const box = $('#mat-acab'); if (!box || $('#tab-mat').hidden) return;
+  const s = alcanceSel(), clave = JSON.stringify([s, s && acabadosEn(s), modelo.espacio?.acabados?.paleta, ajustesAbiertos]);
+  // con un muro, una zona o el suelo elegido, sus materiales van arriba de la pestaña (si no, al final, bajo las melaminas)
+  const mel = $('#materiales'); if (s && box.nextElementSibling !== mel) mel.before(box); else if (!s && mel.nextElementSibling !== box) mel.after(box);
+  if (!forzar && box.dataset.clave === clave) return; box.dataset.clave = clave;
+  const esfera1 = (id, a) => `<div class="ed-mat" data-acab-mat="${esc(id)}" title="Arrastra sobre un muro, una zona o el suelo, o selecciónalo y haz clic aquí"><i class="ed-esfera" style="${esferaAcab(a)}"></i><span>${esc(a.nombre)}</span></div>`;
+  const grupos = [...new Set(BIBLIO_ACAB.map((a) => a.grupo || 'Otros'))];
+  const g = modelo.espacio?.acabados || {};
+  box.innerHTML = `<div class="ed-mat-grupo">Muros y suelo</div>
+    <p class="ed-mat-ayuda">Toca un <b>muro</b>, una <b>zona</b> del muro (vista Frente) o el <b>suelo</b> y haz clic en un material, o <b>arrástralo</b> y suéltalo encima.</p>
+    ${s ? bloqueAcabSel(s) : ''}
+    ${PINTURAS.length ? `<div class="ed-mat-grupo">Pinturas</div><div class="ed-mat-grid">${PINTURAS.map((p) => esfera1(`p:${p.id}`, deBiblio(`p:${p.id}`))).join('')}</div>` : ''}
+    ${grupos.map((gr) => `<div class="ed-mat-grupo">${esc(gr)}</div><div class="ed-mat-grid">${BIBLIO_ACAB.filter((a) => (a.grupo || 'Otros') === gr).map((a) => esfera1(`a:${a.id}`, deBiblio(`a:${a.id}`))).join('')}</div>`).join('')}
+    <div class="ed-mat-grupo">Tonos del proyecto</div>
+    <div class="ed-tonos">${(g.paleta || []).map((t) => `<span class="ed-tono-g" style="background:${t}" title="${t}"><button type="button" data-tono-quitar="${t}" title="Quitar este tono">×</button></span>`).join('') || '<small style="color:var(--muted)">Todavía no hay tonos.</small>'}
+      <button type="button" class="ed-gotas" data-gotas-guardar title="Saca un tono de la pantalla y lo guarda en la lista">${ICONO_GOTAS} Sacar un tono</button></div>
+    <p class="ed-ayuda">Abre la foto de inspiración del cliente en otra ventana, toca el cuentagotas y luego el color en la foto: queda en «Tonos del proyecto» para usarlo en cualquier rueda de color.</p>`;
+}
+// Cuentagotas del navegador (Chrome y Edge): toma un color de cualquier punto de la pantalla
+async function cuentagotas() {
+  if (!window.EyeDropper) { aviso('El cuentagotas funciona en Chrome o Edge. Aquí puedes elegir el color con la rueda.'); return null; }
+  try { const { sRGBHex } = await new window.EyeDropper().open(); const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(sRGBHex);
+    return m ? `#${m.slice(1, 4).map((x) => (+x).toString(16).padStart(2, '0')).join('')}` : colorValido(sRGBHex, null); } catch { return null; }
+}
+function cambiarCampoAcab(campo, v, tono = false) { // aplica un ajuste al material de lo seleccionado
+  const s = alcanceSel(); if (!s) return;
+  cambiar((d) => { acabadosEn(s, d, true).forEach((a) => { a[campo] = v; }); if (tono) guardarTono(v, d); });
+  pintarAcabTab(true);
+}
+const caja = $('#mat-acab');
+caja?.addEventListener('change', (e) => {
+  const t = e.target, k = t.dataset.ac; if (!k) return;
+  const v = t.type === 'checkbox' ? (t.checked ? 90 : 0) : t.type === 'number' ? parseFloat(t.value) : t.value;
+  if (t.type === 'number' && !isFinite(v)) return;
+  cambiarCampoAcab(k, v, t.type === 'color');
+});
+caja?.addEventListener('input', (e) => { // rueda de color en vivo: el 3D cambia al tiro; al soltar queda un solo paso de deshacer
+  const t = e.target, s = alcanceSel(); if (t.type !== 'color' || !t.dataset.ac || !s) return;
+  vivoSnap ??= JSON.stringify(modelo);
+  acabadosEn(s).forEach((a) => { a[t.dataset.ac] = t.value; });
+  render({ panel: false });
+});
+caja?.addEventListener('toggle', (e) => { if (e.target.matches?.('.ed-acab-ajustes')) ajustesAbiertos = e.target.open; }, true);
+caja?.addEventListener('click', async (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  const inp = b.parentElement?.querySelector('input[type=color]');
+  if (b.dataset.gotas != null) { const hex = await cuentagotas(); if (hex && inp) cambiarCampoAcab(inp.dataset.ac, hex, true); return; }
+  if (b.dataset.tono) { if (inp) cambiarCampoAcab(inp.dataset.ac, b.dataset.tono); return; }
+  if (b.dataset.gotasGuardar != null) { const hex = await cuentagotas(); if (hex) { cambiar((d) => guardarTono(hex, d)); pintarAcabTab(true); aviso(`Tono ${hex} guardado en la lista.`); } return; }
+  if (b.dataset.tonoQuitar) { cambiar((d) => { const g = espAcab(d); g.paleta = (g.paleta || []).filter((x) => x !== b.dataset.tonoQuitar); }); pintarAcabTab(true); return; }
+  const s = alcanceSel(); if (!s) return;
+  if (b.dataset.acabQuitar != null) { cambiar((d) => quitarAcabado(s, d)); pintarAcabTab(true); return; }
+  if (b.dataset.acabTodos != null) {
+    const a = acabadosEn(s)[0]; if (!a) return;
+    cambiar((d) => { murosDe(d.espacio).filter((w) => !w.oculto).forEach((w) => ponerAcabado(`muro:${w.i}`, { ...a }, d)); });
+    pintarAcabTab(true); aviso(`${a.nombre || 'Material'} aplicado en todos los muros. Ctrl+Z deshace.`);
+  }
+});
+// Arrastrar una esfera: al soltarla sobre un muro, una zona o el suelo se aplica; un clic la aplica a lo seleccionado
+function destinoAcab(ev) {
+  const bajo = document.elementFromPoint(ev.clientX, ev.clientY);
+  const z = bajo?.closest?.('[data-tipo="zona-muro"]'); // vista Frente
+  if (z) return z.dataset.z != null ? `muro:${z.dataset.i}:${z.dataset.z}` : `muro:${z.dataset.i}`;
+  const c = bajo?.closest?.('[data-ref]'); if (!c || !lienzo.contains(c)) return null;
+  if (c.dataset.ref === 'suelo') return 'suelo';
+  const m = /^muro\|(\d+)(?:\|z(\d+))?$/.exec(c.dataset.ref);
+  return m ? (m[2] != null ? `muro:${m[1]}:${m[2]}` : `muro:${m[1]}`) : null;
+}
+caja?.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest('[data-acab-mat]'); if (!b) return;
+  e.preventDefault();
+  const a = deBiblio(b.dataset.acabMat); if (!a) return;
+  const x0 = e.clientX, y0 = e.clientY; let fantasma = null;
+  const mover = (ev) => {
+    if (!fantasma && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 5) { fantasma = document.createElement('div'); fantasma.className = 'ed-fantasma-mat ed-esfera'; fantasma.style.cssText += esferaAcab(a); document.body.append(fantasma); }
+    if (!fantasma) return;
+    fantasma.style.left = ev.clientX + 'px'; fantasma.style.top = ev.clientY + 'px';
+    const d = destinoAcab(ev);
+    estadoEl.textContent = d ? `Soltar en ${nombreAlcance(d)}` : 'Suelta el material sobre un muro, una zona del muro o el suelo';
+  };
+  const soltar = (ev) => {
+    window.removeEventListener('pointermove', mover); window.removeEventListener('pointerup', soltar);
+    if (!fantasma) { const s = alcanceSel(); if (s) aplicarAcab(s, a); else aviso('Selecciona un muro, una zona del muro o el suelo (tócalo en 3D o en Frente), o arrastra el material encima.'); return; }
+    fantasma.remove();
+    const d = destinoAcab(ev);
+    if (d) aplicarAcab(d, a); else aviso('Suelta el material sobre un muro, una zona del muro o el suelo.');
+  };
+  window.addEventListener('pointermove', mover); window.addEventListener('pointerup', soltar);
+});
+
+// ----- zonas del muro (vista Frente): se corta en horizontal o vertical y cada zona lleva su material
+function bloqueZonasMuro(w) {
+  const meta = metaMuroLeer(modelo.espacio, w.i), ZS = zonasMuro(modelo.espacio, w.i, w.largo, w.alto), dividido = ZS.length > 1;
+  const z = dividido ? sel.z : 0, Z = z != null ? ZS[z] : null, s = alcanceSel(), a = s && acabadosEn(s)[0];
+  const enFrente = vista === 'frente' && muroActivo()?.i === w.i;
+  const campo = (eje, nombre, v) => `<label class="ed-campo">${nombre}<span class="u" data-u="cm"><input type="number" step="1" data-corte-zona="${eje}" value="${cm(v)}"></span></label>`;
+  const vecinos = Z ? ['arriba', 'abajo', 'izq', 'der'].filter((dir) => vecinoZona(ZS, Z, dir)) : [];
+  const nomDir = { arriba: 'la de arriba', abajo: 'la de abajo', izq: 'la de la izquierda', der: 'la de la derecha' };
+  return `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Material ${Z && dividido ? `de la zona ${z + 1}` : 'del muro'}</p>
+    <div class="ed-material-pieza"><i class="ed-esfera" style="${a ? esferaAcab(a, 28) : 'background:#57534e'}"></i><span style="flex:1">${a ? `<b>${esc(a.nombre || PATRONES[a.patron]?.nombre || '')}</b>` : '<small>Sin material (gris)</small>'}</span><button data-a="ver-materiales">Cambiar…</button></div>
+    <p class="sub" style="margin-top:10px">Zonas del muro${dividido ? ` · ${ZS.length}` : ''}</p>
+    ${dividido ? `<div class="ed-botones">${ZS.map((q) => `<button data-a="zona:${q.z}"${q.z === sel.z ? ' class="ed-primario"' : ''}>Zona ${q.z + 1} · ${cm(q.x1 - q.x0)} × ${cm(q.y1 - q.y0)}</button>`).join('')}</div>` : ''}
+    ${Z ? `<p class="ed-ayuda">${dividido ? `Zona ${z + 1}: ` : ''}de ${cm(Z.x0)} a ${cm(Z.x1)} cm desde la izquierda y de ${cm(Z.y0)} a ${cm(Z.y1)} cm de alto.</p>
+      <div class="ed-campos">${campo('y', 'Corte horizontal a (alto)', Math.min(Z.y1 - 2, Math.max(Z.y0 + 2, Z.y0 < 90 && Z.y1 > 92 ? 90 : (Z.y0 + Z.y1) / 2)))}${campo('x', 'Corte vertical a (desde la izq.)', (Z.x0 + Z.x1) / 2)}</div>
+      <div class="ed-botones"><button data-a="zona-cortar:y">Cortar horizontal</button><button data-a="zona-cortar:x">Cortar vertical</button></div>
+      ${vecinos.length ? `<div class="ed-botones">${vecinos.map((dir) => `<button data-a="zona-unir:${dir}">Unir con ${nomDir[dir]}</button>`).join('')}</div>` : ''}`
+    : '<p class="ed-ayuda">Elige una zona (aquí o tocándola en la vista Frente) para cortarla o cambiar su material.</p>'}
+    ${dividido ? '<div class="ed-botones"><button data-a="zonas-quitar" class="peligro">Quitar todas las divisiones</button></div>' : ''}
+    <p class="ed-ayuda">Divide el muro en zonas para combinar materiales (ej. pintura arriba, azulejo entre 90 y 150 cm y otra pintura abajo). ${enFrente ? 'Toca una zona para elegirla.' : 'Se ve mejor de frente: botón «Ver de frente».'}</p></div>`;
+}
+function vecinoZona(ZS, Z, dir) { // zona que comparte el borde completo
+  const eq = (p, q) => Math.abs(p - q) < .05;
+  return ZS.find((o) => o !== Z && (dir === 'arriba' ? eq(o.y0, Z.y1) && eq(o.x0, Z.x0) && eq(o.x1, Z.x1)
+    : dir === 'abajo' ? eq(o.y1, Z.y0) && eq(o.x0, Z.x0) && eq(o.x1, Z.x1)
+      : dir === 'izq' ? eq(o.x1, Z.x0) && eq(o.y0, Z.y0) && eq(o.y1, Z.y1)
+        : eq(o.x0, Z.x1) && eq(o.y0, Z.y0) && eq(o.y1, Z.y1)));
+}
+function cortarZona(eje) {
+  const i = sel.i, w = murosDe(modelo.espacio)[i]; if (!w) return;
+  const v = parseFloat($(`#props [data-corte-zona="${eje}"]`)?.value);
+  const ZS = zonasMuro(modelo.espacio, i, w.largo, w.alto), z = ZS.length > 1 ? sel.z : 0, Z = ZS[z]; if (!Z) return;
+  const a = Z[`${eje}0`], b = Z[`${eje}1`];
+  if (!(isFinite(v) && v > a + 1 && v < b - 1)) { aviso(`El corte tiene que quedar dentro de la zona: entre ${cm(a + 1)} y ${cm(b - 1)} cm.`); return; }
+  const n = Math.round(v * 10) / 10;
+  cambiar((d) => {
+    const mm = metaMuro(d.espacio, i), base = mm.zonas?.length ? mm.zonas : [{ ...(mm.acabado ? { acabado: mm.acabado } : {}) }];
+    const q = JSON.parse(JSON.stringify(base[z]));
+    mm.zonas = [...base.slice(0, z), { ...q, [`${eje}1`]: n }, { ...JSON.parse(JSON.stringify(q)), [`${eje}0`]: n }, ...base.slice(z + 1)];
+    delete mm.acabado;
+  });
+  sel = { tipo: 'muro', i, z }; render();
+  aviso(`Muro dividido a ${cm(n)} cm ${eje === 'y' ? 'de alto' : 'desde la izquierda'}. Elige una zona y suéltale un material (pestaña Materiales).`);
+}
+function unirZona(dir) {
+  const i = sel.i, w = murosDe(modelo.espacio)[i]; if (!w || sel.z == null) return;
+  const ZS = zonasMuro(modelo.espacio, i, w.largo, w.alto), Z = ZS[sel.z], o = Z && vecinoZona(ZS, Z, dir); if (!o) return;
+  cambiar((d) => {
+    const mm = metaMuro(d.espacio, i), q = mm.zonas[Z.z];
+    const u = { x0: Math.min(Z.x0, o.x0), x1: Math.max(Z.x1, o.x1), y0: Math.min(Z.y0, o.y0), y1: Math.max(Z.y1, o.y1) };
+    const borde = (k, v) => ((k.endsWith('0') && v <= .05) || (k === 'x1' && v >= w.largo - .05) || (k === 'y1' && v >= w.alto - .05) ? null : v); // al borde: null (sigue al muro)
+    const nueva = { ...(q.acabado ? { acabado: q.acabado } : {}) }; Object.entries(u).forEach(([k, v]) => { const b = borde(k, v); if (b != null) nueva[k] = b; });
+    mm.zonas = mm.zonas.filter((_, j) => j !== o.z); mm.zonas[mm.zonas.indexOf(q)] = nueva;
+    if (mm.zonas.length === 1) { if (mm.zonas[0].acabado) mm.acabado = mm.zonas[0].acabado; delete mm.zonas; }
+  });
+  const quedan = metaMuroLeer(modelo.espacio, i).zonas?.length;
+  sel = quedan ? { tipo: 'muro', i, z: Z.z > o.z ? Z.z - 1 : Z.z } : { tipo: 'muro', i }; render();
+}
 // ----- muebles agrupados (ej. en L): siguen siendo módulos separados pero se mueven y giran juntos
 const grupoDe = (m) => (m?.grupo ? modelo.modulos.filter((x) => x.grupo === m.grupo) : m ? [m] : []);
 function girarGrupo(m, grados) {
@@ -498,12 +735,12 @@ function selRef() {
   if (sel.tipo === 'vano') return `vano|${sel.i}|${sel.v}`;
   if (sel.tipo === 'artefacto') return `${sel.m}|a|${sel.a}`;
   if (sel.tipo === 'objeto') return `obj|${sel.o}`;
-  if (sel.tipo === 'pieza') return `${sel.m}|cuerpo|${sel.p}`;
+  if (sel.tipo === 'pieza') return `${sel.m}|cuerpo|${sel.p}${sel.parte != null ? `|p${sel.parte}` : ''}`;
   if (sel.tipo === 'repisa') return `${sel.m}|f|${sel.col}|${sel.fila}|rep|${sel.i}`;
-  if (sel.tipo === 'div') return null;
+  if (sel.tipo === 'div') return sel.dir === 'h' ? `${sel.m}|f|${sel.col}|${sel.fila}|div` : `${sel.m}|cuerpo|dv${sel.col}`;
   return {
     modulo: `${sel.m}|`, cuerpo: `${sel.m}|cuerpo`, zocalo: `${sel.m}|zocalo`, cubierta: `${sel.m}|cubierta`,
-    frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`, muro: `muro|${sel.i}`,
+    frente: `${sel.m}|f|${sel.col}|${sel.fila}`, tirador: `${sel.m}|t|${sel.t}`, muro: `muro|${sel.i}${sel.z != null ? `|z${sel.z}` : ''}`, suelo: 'suelo',
   }[sel.tipo];
 }
 // En la vista Frente se trabaja el mueble seleccionado de frente y sin girar (si no hay
@@ -552,13 +789,19 @@ $('#vanos').addEventListener('click', (e) => {
 function agregarArtefacto(tipo) {
   const def = ARTEFACTOS[tipo]; if (!def) return;
   if (def.zona === 'cubierta') {
+    // lavaplatos y encimeras (dueño, 2026-11-25): el lugar debe tener cubierta. Sirve cualquier mueble seleccionado
+    // (también el esquinero) en Planta, Frente o 3D; después se mueve libre por las cubiertas.
     const m = sel?.m && modulo(sel.m);
-    if (!m || m.artefacto || !m.cubierta) { aviso('Haz clic en la cubierta de un mueble (o selecciona un mueble con cubierta) y luego elige la encimera o el lavaplatos.'); return; }
-    const { W, Dc } = cubiertaDe(m), ancho = Math.min(def.ancho, W), fondo = Math.min(def.fondo, Dc - 2);
-    const a = { id: uid('a'), tipo, ancho, fondo, desde: r1((W - ancho) / 2), frente: Math.min(5, Dc - fondo), ...(def.cubas ? { lado: 'derecha' } : {}) };
+    if (!m || m.artefacto) { aviso('Selecciona un mueble con cubierta (en Planta, Frente o 3D) y luego elige la encimera o el lavaplatos.'); return; }
+    if (!m.cubierta) { aviso(`«${m.nombre}» no tiene cubierta: el ${def.cubas ? 'lavaplatos' : 'encimera'} necesita una. Márcala en el panel del mueble («Lleva cubierta») y vuelve a intentarlo.`); return; }
+    const zs = zonasCubierta(m), z1 = zs[0], Dc = z1.z1, esq = m.tipo === 'esquinero';
+    const largo = esq ? Math.abs((m.esquina === 'izq' ? z1.x1 - zs[1].x1 : zs[1].x0 - z1.x0)) : z1.x1 - z1.x0; // brazo 1 sin el rincón
+    const ancho = Math.min(def.ancho, Math.max(30, largo)), fondo = Math.min(def.fondo, Dc - 2);
+    const x0 = esq && m.esquina === 'izq' ? zs[1].x1 : Math.max(0, z1.x0);
+    const a = { id: uid('a'), tipo, ancho, fondo, desde: r1(x0 + (largo - ancho) / 2), frente: Math.min(5, Dc - fondo), ...(def.cubas ? { lado: 'derecha' } : {}) };
     cambiar(() => { m.artefactos = [...(m.artefactos || []), a]; });
     sel = { tipo: 'artefacto', m: m.id, a: a.id }; render();
-    aviso(`${def.nombre} en «${m.nombre}». Arrástralo en Planta o Frente, o escribe sus distancias en el panel.`);
+    aviso(`${def.nombre} en «${m.nombre}». Arrástralo en Planta (pasa de un mueble a otro por la cubierta) o escribe sus distancias en el panel.`);
     return;
   }
   const m = { ...nuevoModulo({ ancho: def.ancho, alto: def.alto, profundidad: def.fondo, zocalo: 0 }), nombre: def.nombre, artefacto: tipo, zocalo: 0, cubierta: false, tiradores: [] };
@@ -604,7 +847,7 @@ function apoyosEn(x, z) {
     const [lx, lz] = girar(x - +m.x, z - +m.z, -(+m.rotacion || 0)), T = tablero(m), H = +m.alto, e = +m.elevacion || 0;
     if (m.cubierta) { const c = cubiertaDe(m); if (lx >= c.x0 && lx <= c.x1 && lz >= c.z0 && lz <= c.z1) out.push({ y: e + H + CT, nombre: `Cubierta de ${m.nombre}` }); }
     if (lx < 0 || lx > +m.ancho || lz < 0 || lz > +m.profundidad) continue;
-    if (!m.cubierta && m.tipo !== 'aereo' && !m.artefacto) out.push({ y: e + H, nombre: `Sobre ${m.nombre}` });
+    if (!m.cubierta && m.tipo !== 'aereo' && !m.aereo && !m.artefacto) out.push({ y: e + H, nombre: `Sobre ${m.nombre}` });
     for (const c of celdas(m)) {
       if (c.tipo !== 'abierto' || lx < c.x0 || lx > c.x1) continue;
       const baseMueble = c.y0 <= Zde(m) + .05;
@@ -616,10 +859,16 @@ function apoyosEn(x, z) {
   return out.sort((a, b) => a.y - b.y);
 }
 // Al moverlo, queda sobre la superficie más alta que tenga debajo sin pasar por encima de donde estaba
+// Los de mesa (microondas, horno, cafetera…) necesitan una base física: cubierta, repisa o la base de una sección
+// (dueño, 2026-11-25: el piso no sirve). Devuelve false si ahí no hay dónde apoyarlo (quien mueve lo deja donde estaba).
 function apoyar(o) {
-  if (OBJETOS[o.tipo]?.apoyo === 'techo') return; // cuelga del techo: se queda a su altura
-  const ap = apoyosEn(+o.x, +o.z).filter((a) => a.y <= (+o.elevacion || 0) + 1);
-  o.elevacion = r1(ap.length ? ap[ap.length - 1].y : 0);
+  const def = OBJETOS[o.tipo];
+  if (def?.apoyo === 'techo') return true; // cuelga del techo: se queda a su altura
+  let ap = apoyosEn(+o.x, +o.z);
+  if (def?.apoyo === 'mesa') { ap = ap.filter((a) => a.y > 0); if (!ap.length) return false; }
+  const bajo = ap.filter((a) => a.y <= (+o.elevacion || 0) + 1), elegido = bajo.length ? bajo[bajo.length - 1] : ap[0];
+  o.elevacion = r1(elegido ? elegido.y : 0);
+  return true;
 }
 function agregarObjeto(tipo) {
   const def = OBJETOS[tipo]; if (!def) return;
@@ -635,6 +884,10 @@ function agregarObjeto(tipo) {
   } else if (mc) { // sobre una cubierta: centrado, mirando hacia el frente del mueble
     const c = cubiertaDe(mc), [dx, dz] = girar((c.x0 + c.x1) / 2, (c.z1 - def.fondo / 2 - 4), +mc.rotacion || 0);
     o.x = r1(+mc.x + dx); o.z = r1(+mc.z + dz); o.rotacion = +mc.rotacion || 0; o.elevacion = r1(+mc.elevacion + +mc.alto + CT);
+  } else if (def.apoyo === 'mesa') { // sin cubierta: en una sección abierta o repisa del mueble seleccionado; si no hay, no se agrega
+    const ap = m && !m.artefacto ? (() => { const [cx, cz] = centro(m); return { cx, cz, l: apoyosEn(cx, cz).filter((a) => a.y > 0) }; })() : null;
+    if (!ap?.l.length) { aviso(`${def.nombre}: necesita una base (cubierta, repisa o sección abierta de un mueble), no el piso. Selecciona ese mueble y vuelve a intentarlo.`); return; }
+    o.x = r1(ap.cx); o.z = r1(ap.cz); o.rotacion = +m.rotacion || 0; o.elevacion = r1(ap.l[0].y);
   } else {
     const i = muroParaVano(), w = i != null ? murosDe(modelo.espacio)[i] : null;
     if (w && !w.oculto) { // en el primer espacio libre del muro, con la espalda contra él
@@ -651,6 +904,33 @@ function cambiarObjeto(f) { const id = sel.o; cambiar((d) => { const o = (d.obje
 function cambiarArtefacto(f) {
   const s = { ...sel };
   cambiar((d) => { sel = s; const m = d.modulos.find((x) => x.id === s.m), a = m?.artefactos?.find((x) => x.id === s.a); if (a) f(a, m, cubiertaDe(m)); });
+}
+
+// Lavaplatos o encimera en el esquinero: de frente al lado 1, al lado 2 o girado en el rincón (dueño, 2026-11-25).
+// Busca el primer lugar de ese tramo donde se apoya completo sobre la L.
+function posicionEnL(pos) {
+  const s = { ...sel }, m0 = modulo(s.m), a = m0 && artefactosDe(m0).find((x) => x.id === s.a); if (!a || m0.tipo !== 'esquinero') return;
+  const izq = m0.esquina === 'izq', [A, Bz] = zonasCubierta(m0), sg = izq ? 1 : -1;
+  const mundo = ([lx, lz]) => { const [dx, dz] = girar(lx, lz, +m0.rotacion || 0); return [+m0.x + dx, +m0.z + dz]; };
+  const cand = [];
+  const ent = (n) => Array.from({ length: n + 1 }, (_, i) => i / n);
+  if (pos === 'lado1') { // a lo largo del brazo 1, a 5 cm del canto, partiendo del medio del tramo sin rincón
+    const xa = izq ? Bz.x1 : A.x0, xb = izq ? A.x1 : Bz.x0, z = A.z1 - 5 - a.fondo / 2;
+    for (const t of ent(40).sort((p, q) => Math.abs(p - .5) - Math.abs(q - .5))) cand.push([[xa + (xb - xa) * t, z], 0]);
+  } else if (pos === 'lado2') { // a lo largo del brazo 2, de frente a él
+    const x = izq ? Bz.x1 - 5 - a.fondo / 2 : Bz.x0 + 5 + a.fondo / 2;
+    for (const t of ent(40)) cand.push([[x, A.z0 + (Bz.z1 - A.z0) * t], sg * 90]);
+    cand.sort((p, q) => Math.abs(p[0][1] - (Bz.z0 + Bz.z1) / 2) - Math.abs(q[0][1] - (Bz.z0 + Bz.z1) / 2));
+  } else { // en el rincón: sobre la diagonal, desde la esquina de los muros hacia afuera, el primero que cabe
+    const c0 = [izq ? A.x0 : A.x1, A.z0], c1 = [izq ? Bz.x1 : Bz.x0, A.z1];
+    for (const t of ent(100)) cand.push([[c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t], sg * 45]);
+  }
+  let ok = null;
+  cambiar((d) => {
+    for (const [p, giro] of cand) { const [wx, wz] = mundo(p); const mid = moverArtefacto(d, s.m, s.a, wx, wz, giro); if (mid) { ok = mid; break; } }
+  });
+  if (!ok) aviso('No cabe en esa posición: achica el artefacto o agranda la cubierta.');
+  sel = { ...s, m: ok || s.m }; render();
 }
 
 function cambiarVano(f) {
@@ -689,6 +969,7 @@ function modulosFrente() {
 // Vista «Abajo»: el mueble seleccionado visto desde el piso (sin girar), para ver y ajustar el marco del zócalo
 const moduloInferior = () => { const m = sel?.m && modulo(sel.m); return m && !m.artefacto ? m : null; };
 function modeloVista() {
+  if (aislado && vista === '3d' && !v34) { const m = modulo(aislado); if (m) return { ...modelo, espacio: null, objetos: [], modulos: [m] }; aislado = null; }
   if (vista === 'inferior') { const m = moduloInferior(); return { ...modelo, espacio: null, objetos: [], modulos: m ? [{ ...m, x: 0, z: 0, rotacion: 0, elevacion: 0 }] : [] }; }
   if (vista !== 'frente') return modelo;
   const W = muroActivo();
@@ -710,17 +991,22 @@ $('#muro-frente').addEventListener('change', (e) => {
   if (sel?.tipo === 'muro') sel = null;
   render(); encuadrar(true);
 });
+// Moverse por el entorno en 3D (dueño, 2026-11-25): hasta 3 m del centro con clic derecho o las flechas en pantalla.
+// No en Planta, Frente ni en la vista 3/4 fija. Ajustar el radio aquí después de probarlo.
+const RADIO_PAN = 300;
+let panActual = -1;
 function render({ panel = true } = {}) {
+  const panOn = vista === '3d' && !v34 ? RADIO_PAN : 0; if (panOn !== panActual) { panActual = panOn; st.panLimit(panOn); }
   const mv = modeloVista();
   if (v34 && (vista !== '3d' || !modulo(v34.id) || !geoEsquinero(modulo(v34.id)).sol)) salir34(false);
-  dibujar(st, conCliente(mv), { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : v34 ? { ...capas, cantoMuro: false } : capas, mats: mats(), sel: v34 ? null : selRef(), fabricacion: true, interior: v34 });
+  dibujar(st, conCliente(mv), { capas: vista === 'frente' || vista === 'inferior' ? { ...capas, muros: false } : v34 ? { ...capas, cantoMuro: false } : capas, mats: mats(), sel: v34 ? null : selRef(), fabricacion: true, interior: v34, pisoClic: true });
   const fuera = fueraCliente(); // muebles que el cliente no cotiza: atenuados (siguen editables)
   if (fuera.size) st.rig.querySelectorAll('[data-ref]').forEach((f) => { if (fuera.has(f.dataset.ref.split('|')[0])) f.classList.add('c3-fuera'); });
   if (vista !== 'inferior' && (vista === 'frente' || !murosDe(modelo.espacio).length || !capas.muros)) pisoGrilla(mv); // desde abajo el piso taparía el mueble
   if (vista !== 'frente' && vista !== 'inferior') dibujarPines();
   encuadrar(false);
   dibujarPlano();
-  if (panel) { arbol(); props(); }
+  if (panel) { arbol(); props(); pintarAcabTab(); }
   if (v34) giroAuto(); // la puerta giratoria sigue girando después de redibujar
   opcionesMuroFrente();
   ponerManija();
@@ -835,6 +1121,25 @@ function dibujarInferior() {
   cota(xm, 0, xm, z.z0, z.atras, 'zocalo_atras'); cota(xm, z.z1, xm, D, z.frente, 'zocalo_retiro');
   el('text', { x: M.X(xm), y: M.Y(zm) + 4, 'text-anchor': 'middle', class: 'inf-txt' }, plano).textContent = `zócalo ${cm(z.x1 - z.x0)} × ${cm(z.z1 - z.z0)} · alto ${cm(Z)}`;
 }
+// Zonas del muro visto de frente, rellenas con su material (el mismo dibujo del 3D, a escala)
+function zonasFrente(W, M) {
+  const ZS = zonasMuro(modelo.espacio, W.i, W.largo, W.alto), defs = el('defs', {}, plano);
+  for (const Z of ZS) {
+    let fill = 'transparent';
+    if (Z.acabado) {
+      const a = normalizarAcab(Z.acabado), t = a.patron === 'liso' ? null : mosaico(a);
+      if (!t) fill = a.color;
+      else {
+        const id = `pz${W.i}-${Z.z}`, pat = el('pattern', { id, patternUnits: 'userSpaceOnUse', x: M.X(0), y: M.Y(0), width: t.w * M.s, height: t.h * M.s }, defs);
+        el('image', { href: `data:image/svg+xml,${encodeURIComponent(t.svg)}`, width: t.w * M.s, height: t.h * M.s, preserveAspectRatio: 'none' }, pat);
+        fill = `url(#${id})`;
+      }
+    }
+    const esSel = sel?.tipo === 'muro' && sel.i === W.i && (Z.dividido ? sel.z === Z.z : sel.z == null);
+    el('rect', { x: M.X(Z.x0), y: M.Y(Z.y1), width: (Z.x1 - Z.x0) * M.s, height: (Z.y1 - Z.y0) * M.s, fill, class: `zona-muro${esSel ? ' sel' : ''}`, 'data-tipo': 'zona-muro', 'data-i': W.i, ...(Z.dividido ? { 'data-z': Z.z } : {}) }, plano);
+    if (Z.dividido) el('text', { x: M.X(Z.x0) + 6, y: M.Y(Z.y0) - 6, class: 'zona-muro-txt' }, plano).textContent = `Zona ${Z.z + 1}`;
+  }
+}
 function dibujarPlano() {
   if (vista === 'planta') return planta.dibujar();
   if (vista === 'inferior') return dibujarInferior();
@@ -851,6 +1156,7 @@ function dibujarPlano() {
   referencias.pintar(plano, M, 'frente'); // foto o plano del cliente, a escala
   const W = muroActivo();
   if (W) { // contorno del muro que se está viendo, con su largo
+    if (capas.acabados !== false) zonasFrente(W, M);
     el('rect', { x: M.X(0), y: M.Y(W.alto), width: W.largo * M.s, height: W.alto * M.s, class: 'muro-frente' }, plano);
     el('text', { x: M.X(0) + 8, y: M.Y(W.alto) + 18, class: 'muro-frente-txt' }, plano).textContent = `Muro ${W.i + 1}${W.etiqueta ? ' · ' + W.etiqueta : ''} · ${cm(W.largo)} × ${cm(W.alto)} cm`;
     for (const v of vanosDe(W)) {
@@ -927,7 +1233,8 @@ function dibujarPlano() {
     if (esSel) cotas(m, M);
     for (const a of artefactosDe(m)) {
       const sa = sel?.tipo === 'artefacto' && sel.m === m.id && sel.a === a.id, yt = oy + H + CT;
-      el('rect', { x: M.X(ox + a.x0), y: M.Y(yt + 3), width: a.ancho * M.s, height: 3 * M.s, class: `artefacto${sa ? ' sel' : ''}`, 'data-tipo': 'artefacto', 'data-m': m.id, 'data-a': a.id }, plano);
+      const ax0 = Math.min(...a.pts.map((q) => q[0])), ax1 = Math.max(...a.pts.map((q) => q[0]));
+      el('rect', { x: M.X(ox + ax0), y: M.Y(yt + 3), width: (ax1 - ax0) * M.s, height: 3 * M.s, class: `artefacto${sa ? ' sel' : ''}`, 'data-tipo': 'artefacto', 'data-m': m.id, 'data-a': a.id }, plano);
       if (sa) { // cotas a los costados del mueble
         const g = el('g', { class: 'cota' }, plano), y = M.Y(yt + 3) - 14;
         const lin = (x1, x2) => { if (x2 - x1 < .05) return; el('line', { x1: M.X(ox + x1), y1: y, x2: M.X(ox + x2), y2: y }, g); el('text', { x: M.X(ox + (x1 + x2) / 2), y: y - 6, 'text-anchor': 'middle' }, g).textContent = cm(x2 - x1); };
@@ -1155,7 +1462,7 @@ plano.addEventListener('pointerdown', (e) => {
   if (t?.dataset.tipo === 'medida') { sel = { tipo: 'medida', id: t.dataset.id }; render(); return; }
   if (herr === 'dibujar') { gesto = { tipo: 'dibujar', a: { x: snap(p.x, 1), y: Math.max(0, snap(p.y, 1)) }, b: null }; return; }
   // Espacio vacío: recuadro de selección (si casi no se mueve, solo deselecciona)
-  if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
+  if (!t || t.dataset.tipo === 'zona-muro') { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey, zona: t ? { i: +t.dataset.i, ...(t.dataset.z != null ? { z: +t.dataset.z } : {}) } : null }; return; }
   if (t.dataset.tipo === 'objeto') {
     const o = objeto(t.dataset.o); if (!o) return;
     sel = { tipo: 'objeto', o: o.id };
@@ -1165,7 +1472,7 @@ plano.addEventListener('pointerdown', (e) => {
   if (t.dataset.tipo === 'artefacto') { // encimera o lavaplatos: seleccionar y arrastrar a lo largo
     const a = modulo(t.dataset.m)?.artefactos?.find((x) => x.id === t.dataset.a); if (!a) return;
     sel = { tipo: 'artefacto', m: t.dataset.m, a: a.id };
-    gesto = { tipo: 'artef-f', m: t.dataset.m, a: a.id, p0: p, desde: +a.desde || 0, antes: JSON.stringify(modelo) };
+    gesto = { tipo: 'artef-f', m: t.dataset.m, a: a.id, p0: p, c0: centroArtefacto(modulo(t.dataset.m), a.id), antes: JSON.stringify(modelo) };
     render(); return;
   }
   if (t.dataset.tipo === 'vano') { // ventana o puerta: seleccionar y arrastrar
@@ -1235,13 +1542,18 @@ plano.addEventListener('pointermove', (e) => {
   if (gesto.tipo === 'obj-f') {
     const o = objeto(gesto.o); if (!o) return;
     const W = muroActivo(), d = snap(p.x - gesto.p0.x, .5);
+    const px = o.x, pz = o.z, pe = o.elevacion;
     o.x = r1(gesto.x0 + d * (W ? W.u[0] : 1)); o.z = r1(gesto.z0 + d * (W ? W.u[1] : 0));
     o.elevacion = Math.max(0, snap(gesto.e0 + p.y - gesto.p0.y, .5));
+    if (OBJETOS[o.tipo]?.apoyo === 'mesa' && !apoyar(o)) { o.x = px; o.z = pz; o.elevacion = pe; estadoEl.textContent = `${o.nombre}: necesita una cubierta, repisa o base debajo (el piso no sirve)`; return; }
     render({ panel: false }); return;
   }
   if (gesto.tipo === 'artef-f') {
-    const m = modulo(gesto.m), a = m?.artefactos?.find((x) => x.id === gesto.a); if (!a) return;
-    a.desde = Math.min(Math.max(0, snap(gesto.desde + p.x - gesto.p0.x, .5)), +m.ancho - (+a.ancho || 0));
+    if (!gesto.c0) return;
+    const W = muroActivo(), d = snap(p.x - gesto.p0.x, .5); // a lo largo del muro; pasa al mueble vecino si la cubierta sigue
+    const mid = moverArtefacto(modelo, gesto.m, gesto.a, gesto.c0[0] + d * (W ? W.u[0] : 1), gesto.c0[1] + d * (W ? W.u[1] : 0));
+    if (!mid) { estadoEl.textContent = 'Ahí no se apoya completo: necesita cubierta debajo'; return; }
+    if (mid !== gesto.m) { gesto.m = mid; sel = { tipo: 'artefacto', m: mid, a: gesto.a }; }
     render({ panel: false }); return;
   }
   if (gesto.tipo === 'mover-f') { // mover el mueble a lo largo del frente (o del muro)
@@ -1249,7 +1561,7 @@ plano.addEventListener('pointermove', (e) => {
     if (!gesto.movido) { // aún es un clic; al pasar 4 px se decide el eje: hacia los lados o en altura
       const ax = Math.abs(p.x - gesto.p0.x) * M.s, ay = Math.abs(p.y - gesto.p0.y) * M.s;
       if (Math.max(ax, ay) < 4) return;
-      gesto.eje = ay > ax ? 'v' : 'h';
+      gesto.eje = ay > ax && !m.artefacto ? 'v' : 'h'; // las cocinas van directo al piso
     }
     gesto.movido = true;
     if (gesto.eje === 'v') { // en altura (ej. un aéreo): imán al piso, la cubierta o el mueble de abajo, el de arriba y el techo
@@ -1340,7 +1652,7 @@ plano.addEventListener('pointerup', (e) => {
   }
   if (g.tipo === 'marco') {
     const M = mapa();
-    if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.y - g.a.y) * M.s) < 4) { if (!g.suma) sel = null; render(); return; }
+    if (!g.b || Math.hypot((g.b.x - g.a.x) * M.s, (g.b.y - g.a.y) * M.s) < 4) { if (!g.suma) sel = g.zona ? { tipo: 'muro', ...g.zona } : null; render(); return; }
     const x0 = Math.min(g.a.x, g.b.x), x1 = Math.max(g.a.x, g.b.x), y0 = Math.min(g.a.y, g.b.y), y1 = Math.max(g.a.y, g.b.y);
     const ids = modulosFrente().filter((m) => xF(m) + +m.ancho > x0 && xF(m) < x1 && +m.elevacion + +m.alto > y0 && +m.elevacion < y1).map((m) => m.id);
     seleccionarVarios(ids, g.suma);
@@ -1552,7 +1864,7 @@ escena.addEventListener('pointerdown', (e) => {
   const lado = { front: 'frente', back: 'atras', left: 'izq', right: 'der' }[f?.dataset.cara];
   if (f?.dataset.ref === `${sel.m}|cubierta` && lado === sel.cara) empezarExtruir(e);
 }, { capture: true });
-escena.addEventListener('pointerdown', (e) => { toque = { x: e.clientX, y: e.clientY }; });
+escena.addEventListener('pointerdown', (e) => { toque = e.button === 0 && e.isPrimary ? { x: e.clientX, y: e.clientY } : null; }); // clic derecho o 2 dedos mueven la cámara
 escena.addEventListener('pointerup', (e) => {
   if (!toque || Math.hypot(e.clientX - toque.x, e.clientY - toque.y) > 5) return;
   if (v34) { // vista 3/4: solo abre y cierra (en la puerta giratoria, la hoja tocada da una vuelta)
@@ -1583,9 +1895,12 @@ function alternar(id) {
 
 function desdeRef(ref) {
   const [m, k, a, b, e, i] = ref.split('|');
-  if (k === 'cuerpo' && a) return { tipo: 'pieza', m, p: a };
+  if (k === 'cuerpo' && /^dv\d+$/.test(a || '')) return { tipo: 'div', m, dir: 'v', col: +a.slice(2), fila: 0 }; // división vertical
+  if (k === 'f' && e === 'div') return { tipo: 'div', m, dir: 'h', col: +a, fila: +b }; // división entre dos secciones
+  if (k === 'cuerpo' && a) return /^p\d+$/.test(b || '') ? { tipo: 'pieza', m, p: a, parte: +b.slice(1) } : { tipo: 'pieza', m, p: a };
   if (k === 'f' && e === 'rep') return { tipo: 'repisa', m, col: +a, fila: +b, i: +i };
-  if (m === 'muro') return { tipo: 'muro', i: +k };
+  if (m === 'muro') return /^z\d+$/.test(a || '') ? { tipo: 'muro', i: +k, z: +a.slice(1) } : { tipo: 'muro', i: +k };
+  if (m === 'suelo') return { tipo: 'suelo' };
   if (m === 'vano') return { tipo: 'vano', i: +k, v: a };
   if (m === 'obj') return { tipo: 'objeto', o: k };
   if (k === 'a') return { tipo: 'artefacto', m, a };
@@ -1741,26 +2056,33 @@ function props() {
   if (sel.tipo === 'artefacto') {
     const m = modulo(sel.m), a = m && artefactosDe(m).find((x) => x.id === sel.a);
     if (!a) { sel = m ? { tipo: 'modulo', m: m.id } : null; return props(); }
-    const def = ARTEFACTOS[a.tipo], { W, Dc } = cubiertaDe(m);
-    P.innerHTML = `<div class="ed-props"><p class="tit">${def.nombre}</p><p class="sub">Sobre la cubierta de ${esc(m.nombre)} · ${cm(W)} × ${cm(Dc)} cm</p>
+    const def = ARTEFACTOS[a.tipo], esq = m.tipo === 'esquinero', W = +m.ancho, Dc = zonasCubierta(m)[0].z1;
+    const pos = !a.giro ? 'lado1' : Math.abs(a.giro) === 45 ? 'rincon' : 'lado2';
+    P.innerHTML = `<div class="ed-props"><p class="tit">${def.nombre}</p><p class="sub">Sobre la cubierta de ${esc(m.nombre)}${esq ? ' (en L)' : ` · ${cm(W)} × ${cm(Dc)} cm`}</p>
+      ${esq ? `<p class="sub" style="margin-top:8px">Posición en la L</p><div class="ed-botones">${[['lado1', 'Lado 1'], ['rincon', 'En el rincón (45°)'], ['lado2', 'Lado 2']].map(([k, t]) => `<button data-a="art-pos:${k}"${pos === k ? ' class="ed-primario"' : ''}>${t}</button>`).join('')}</div>
+      <p class="ed-ayuda">De frente a un lado de la L o girado mirando al rincón. También puedes arrastrarlo en Planta: al pasar al otro lado se gira solo.</p>` : ''}
       <div class="ed-campos">
         <label class="ed-campo ancho2">Modelo<select data-k="a.tipo">${DE_CUBIERTA.map((k) => `<option value="${k}"${k === a.tipo ? ' selected' : ''}>${ARTEFACTOS[k].nombre}</option>`).join('')}</select></label>
         ${num('a.ancho', 'Ancho', a.ancho)}${num('a.fondo', 'Fondo', a.fondo)}
-        ${num('a.desde', 'Al costado izq.', a.desde)}${num('a.hasta', 'Al costado der.', r1(W - a.x1))}
-        ${num('a.frente', 'Al canto (frente)', a.frente)}${num('a.atras', 'A la pared (fondo)', r1(a.z0))}
+        ${esq ? '' : `${num('a.desde', 'Al costado izq.', a.desde, { min: -999 })}${num('a.hasta', 'Al costado der.', r1(W - a.x1), { min: -999 })}
+        ${num('a.frente', 'Al canto (frente)', a.frente)}${num('a.atras', 'A la pared (fondo)', r1(a.z0))}`}
         ${def.cubas ? opciones('a.lado', 'Escurridor', a.lado || 'derecha', { derecha: 'A la derecha', izquierda: 'A la izquierda' }, 'ancho2') : ''}
         ${def.cubas ? opciones('a.montaje', 'Montaje (sacado en la cubierta)', a.montaje || 'sobrepuesto', { sobrepuesto: 'Sobrepuesto', bajo: 'Bajo cubierta (pulido)' }, 'ancho2') : ''}
       </div>
-      <div class="ed-botones"><button data-a="centrar-art">Centrar en el mueble</button><button data-a="borrar-art" class="peligro">Eliminar</button></div>
-      <p class="ed-ayuda">Medidas en cm hasta los bordes del mueble. Arrástralo en Planta (o hacia los lados en Frente); las flechas lo mueven (Mayús: 10 cm).</p></div>`;
+      <div class="ed-botones">${esq ? '' : '<button data-a="centrar-art">Centrar en el mueble</button>'}<button data-a="borrar-art" class="peligro">Eliminar</button></div>
+      <p class="ed-ayuda">Arrástralo en Planta (o hacia los lados en Frente): se mueve libre por las cubiertas y puede quedar sobre la unión de dos muebles si la cubierta sigue. Donde no hay cubierta no se deja. Las flechas lo mueven (Mayús: 10 cm).</p></div>`;
     return;
   }
   if (sel.tipo === 'div') {
     const m = modulo(sel.m); if (!m) { sel = null; return props(); }
     P.innerHTML = `<div class="ed-props"><p class="tit">División ${sel.dir === 'v' ? 'vertical' : 'horizontal'}</p>
       <p class="sub">${esc(m.nombre)} · ${sel.dir === 'v' ? `entre las columnas ${sel.col + 1} y ${sel.col + 2}` : `columna ${sel.col + 1}, entre las filas ${sel.fila + 1} y ${sel.fila + 2}`}</p>
-      <div class="ed-botones"><button data-a="borrar-div" class="peligro">Eliminar división (Supr)</button></div>
-      <p class="ed-ayuda">Al eliminarla, las dos secciones quedan en una. Arrástrala para cambiar las medidas.</p></div>`;
+      ${sel.dir === 'h' ? (() => { const on = divisionesH(m).some((d) => d.col === sel.col && d.fila === sel.fila);
+        return `<p class="sub" style="margin-top:10px">Tablero de división</p>
+      <div class="ed-botones"><button data-a="div-tablero:1"${on ? ' class="ed-primario"' : ''}>Lleva división fija</button><button data-a="div-tablero:0"${on ? '' : ' class="ed-primario"'}>Sin tablero</button></div>
+      <p class="ed-ayuda">La división fija va justa y atornillada entre los costados. Aparece sola cuando una de las dos secciones es abierta; aquí la pones o la quitas (ej. entre dos puertas de una torre).</p>${on ? bloqueMaterial() : ''}`; })() : ''}
+      <div class="ed-botones"><button data-a="borrar-div" class="peligro">Unir las dos secciones (Supr)</button></div>
+      <p class="ed-ayuda">Al unirlas, las dos secciones quedan en una. En Frente, arrástrala para cambiar las medidas.</p></div>`;
     return;
   }
   if (sel.tipo === 'vano') {
@@ -1794,6 +2116,13 @@ function props() {
       <p class="ed-ayuda" id="unir-aviso"><b>Unir</b>: módulos uno junto al otro en la misma pared, con el mismo alto y zócalo; quedan con un solo cuerpo y una sola cubierta.<br><b>Agrupar</b>: para muebles en L o que no miran hacia el mismo lado; cada parte conserva su forma, pero se mueven y giran juntas como un solo mueble.</p></div>`;
     return;
   }
+  if (sel.tipo === 'suelo') { // suelo del espacio: su material (palmeta, baldosa…) se elige en la pestaña Materiales
+    const a = acabadosEn('suelo')[0];
+    P.innerHTML = `<div class="ed-props"><p class="tit">Suelo</p><p class="sub">Espacio</p>
+      <div class="ed-material-pieza"><i class="ed-esfera" style="${a ? esferaAcab(a, 28) : 'background:#2a2826'}"></i><span style="flex:1">${a ? `<b>${esc(a.nombre || PATRONES[a.patron]?.nombre || '')}</b>` : '<small>Sin material</small>'}</span><button data-a="ver-materiales">Cambiar…</button></div>
+      <p class="ed-ayuda">Elige una palmeta, baldosa o porcelanato en la pestaña Materiales (clic en la esfera, o arrástrala al suelo). Supr le quita el material.</p></div>`;
+    return;
+  }
   if (sel.tipo === 'muro') {
     const w = murosDe(modelo.espacio)[sel.i];
     if (!w) { sel = null; return props(); }
@@ -1809,7 +2138,8 @@ function props() {
         : `<button data-a="ver-muro" class="ed-primario">Ver de frente</button>${w.tramo != null ? '<button data-a="invertir-muro" title="Cambia hacia qué lado mira la cara interior">Invertir lado</button>' : ''}<button data-a="eliminar-muro" class="peligro">Eliminar este muro</button>`}<button data-a="borrar-muros" class="peligro">Borrar todos los muros</button></div>
       ${w.tramo != null ? '<p class="ed-ayuda">Muro suelto: arrastra sus puntas en Planta; si acercas una a la punta de otro muro, se pegan (y si es el extremo del contorno, se une a él).</p>' : ''}
       ${w.oculto ? '<p class="ed-ayuda">Muro eliminado: no se dibuja ni lo ve el cliente. Queda punteado en Planta para poder restaurarlo.</p>' : ''}
-      <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p></div>`;
+      <p class="ed-ayuda">Cambiar el largo corre los muros que siguen y mantiene la escuadra. El cliente ve los muros, pero no las etiquetas.</p>
+      ${w.oculto ? '' : bloqueZonasMuro(w)}</div>`;
     return;
   }
   const m = modulo(sel.m); if (!m) { sel = null; return props(); }
@@ -1923,10 +2253,13 @@ function props() {
     const quitable = ['piso', 'techo', 'fondo', 'izq', 'der'].includes(sel.p);
     h = `<p class="tit">${NOMBRE_PIEZA[sel.p] || sel.p}</p><p class="sub">${esc(m.nombre)} · tablero de ${+m.tablero || 15} mm</p>
       ${sel.p === 'piso' ? '<p class="ed-ayuda">Si el mueble va apoyado sobre una cubierta u otro mueble, puedes quitar la base: el interior llega hasta abajo.</p>' : ''}
-      ${quitable ? '<div class="ed-botones"><button data-a="quitar-pieza" class="peligro">Quitar esta pieza (Supr)</button></div>' : ''}${bloqueMaterial()}`;
+      ${sel.p === 'izq' || sel.p === 'der' ? bloquePartes(m, sel) : quitable ? '<div class="ed-botones"><button data-a="quitar-pieza" class="peligro">Quitar esta pieza (Supr)</button></div>' : ''}${bloqueMaterial()}`;
   } else if (sel.tipo === 'repisa') {
     const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila);
     h = `<p class="tit">Repisa ${sel.i + 1} de ${c.repisas}</p><p class="sub">${esc(m.nombre)} · columna ${sel.col + 1}, fila ${sel.fila + 1}</p>
+      ${(() => { const fija = repisaFija(m, c, sel.i); return `<p class="sub" style="margin-top:10px">¿Cómo va?</p>
+      <div class="ed-botones"><button data-a="rep-tipo:fija"${fija ? ' class="ed-primario"' : ''}>Fija (justa, atornillada)</button><button data-a="rep-tipo:movil"${fija ? '' : ' class="ed-primario"'}>Móvil (más corta)</button></div>
+      <p class="ed-ayuda">Fija: ancho interior exacto y fondo completo, se atornilla. Móvil: 2 mm más corta de ancho y 1 cm menos de fondo, para correrla por dentro sobre soportes; en 3D lleva una raya roja en el canto.</p>`; })()}
       <div class="ed-botones"><button data-a="quitar-repisa" class="peligro">Quitar esta repisa (Supr)</button><button data-a="ver-seccion">Ver la sección</button></div>
       <p class="ed-ayuda">Las repisas se reparten parejo en el alto de la sección.</p>${bloqueMaterial()}`;
   } else if (sel.tipo === 'cubierta') {
@@ -1946,6 +2279,7 @@ function props() {
   if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo', 'soporte'].includes(sel.tipo)) h += bloqueMaterial();
   if (['frente', 'cuerpo', 'modulo', 'repisa', 'cubierta'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
   // Techo y soporte también al tocar una sección, una pieza o el soporte (ej. el nicho del microondas)
+  if (['modulo', 'cuerpo', 'frente', 'pieza', 'soporte', 'repisa', 'zocalo'].includes(sel.tipo) && m && !m.artefacto) h += bloqueAislar(m);
   // Girar el mueble desde cualquiera de sus partes (en 3D, al tocar el mueble se elige una parte y antes no había cómo girarlo)
   if (['frente', 'pieza', 'soporte', 'repisa', 'zocalo', 'cubierta'].includes(sel.tipo) && m && !m.artefacto) {
     h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Girar el mueble · ${esc(m.nombre)}</p>
@@ -1965,19 +2299,75 @@ function props() {
   P.innerHTML = `<div class="ed-props">${h}</div>`;
 }
 
+// Costado en partes (dueño, 2026-11-25): se divide con un corte horizontal (a una altura) o vertical (a un fondo) y se
+// borran las partes que no van (ej. la caja del refrigerador apoyada en el mesón). Cada parte que queda es una pieza.
+function bloquePartes(m, s) {
+  const ps = partesCostado(m, s.p), bc = bordesCostado(m), i = ps ? s.parte : 0;
+  const lista = ps ? ps.map((q, j) => { const r = rectParte(q, bc); return `<button data-a="parte:${j}"${j === s.parte ? ' class="ed-primario"' : ''}>Parte ${j + 1} · ${cm(r.y1 - r.y0)} alto × ${cm(r.z1 - r.z0)} fondo</button>`; }).join('') : '';
+  const r = i != null && rectParte((ps || [{}])[i] || {}, bc);
+  const campo = (eje, nombre, v) => `<label class="ed-campo">${nombre}<span class="u" data-u="cm"><input type="number" step=".5" data-corte="${eje}" value="${cm(v)}"></span></label>`;
+  return `<div class="ed-plantilla" style="margin-top:10px"><p class="sub">${ps ? `Costado en ${ps.length} parte${ps.length > 1 ? 's' : ''}` : 'Dividir el costado'}</p>
+    ${ps ? `<div class="ed-botones">${lista}</div>` : ''}
+    ${r ? `<p class="ed-ayuda">${ps ? `Parte ${i + 1}: ` : ''}de ${cm(r.y0)} a ${cm(r.y1)} cm de alto (desde abajo del mueble) y de ${cm(r.z0)} a ${cm(r.z1)} cm de fondo (desde atrás).</p>
+    <div class="ed-campos">${campo('y', 'Corte horizontal a (alto)', (r.y0 + r.y1) / 2)}${campo('z', 'Corte vertical a (fondo)', (r.z0 + r.z1) / 2)}</div>
+    <div class="ed-botones"><button data-a="cortar:y">Cortar horizontal</button><button data-a="cortar:z">Cortar vertical</button>${ps ? '<button data-a="borrar-parte" class="peligro">Borrar esta parte (Supr)</button>' : ''}</div>`
+    : '<p class="ed-ayuda">Elige una parte (aquí o tocándola en 3D) para cortarla o borrarla.</p>'}
+    <div class="ed-botones">${ps ? '<button data-a="unir-costado">Volver a una pieza</button>' : ''}<button data-a="quitar-pieza" class="peligro">Quitar el costado completo</button></div>
+    <p class="ed-ayuda">Corta el costado y borra lo que no va (ej. la parte de abajo, donde se apoya en el mesón). Las medidas son desde abajo del mueble y desde atrás. Cada parte que queda se pide a Imperial como pieza aparte.</p></div>`;
+}
+function cortarCostado(eje) {
+  const m = modulo(sel.m), s = { ...sel }; if (!m) return;
+  const v = parseFloat($('#props [data-corte="' + eje + '"]')?.value);
+  const ps = partesCostado(m, s.p) || [{ y0: null, y1: null, z0: null, z1: null }], i = s.parte ?? 0, q = ps[i];
+  if (!q) return;
+  const r = rectParte(q, bordesCostado(m)), a = r[`${eje}0`], b = r[`${eje}1`];
+  if (!(isFinite(v) && v > a + 1 && v < b - 1)) { aviso(`El corte tiene que quedar dentro de la parte: entre ${cm(a + 1)} y ${cm(b - 1)} cm.`); return; }
+  const n = Math.round(v * 10) / 10;
+  cambiar(() => { m.partes = { ...(m.partes || {}), [s.p]: [...ps.slice(0, i), { ...q, [`${eje}1`]: n }, { ...q, [`${eje}0`]: n }, ...ps.slice(i + 1)] }; });
+  sel = { ...s, parte: i }; render();
+  aviso(eje === 'y' ? `Costado cortado a ${cm(n)} cm de alto: elige la parte que no va y bórrala (Supr).` : `Costado cortado a ${cm(n)} cm de fondo: elige la parte que no va y bórrala (Supr).`);
+}
+function borrarParte() {
+  const m = modulo(sel.m), s = { ...sel }, ps = m && partesCostado(m, s.p); if (!ps || s.parte == null || !ps[s.parte]) return;
+  cambiar(() => {
+    const resto = ps.filter((_, j) => j !== s.parte);
+    if (resto.length) m.partes = { ...m.partes, [s.p]: resto };
+    else { delete m.partes[s.p]; m.quitar = [...new Set([...(m.quitar || []), s.p])]; } // sin partes = sin costado
+    if (m.partes && !Object.keys(m.partes).length) delete m.partes;
+  });
+  sel = partesCostado(m, s.p) ? { tipo: 'pieza', m: m.id, p: s.p, parte: null } : { tipo: 'modulo', m: m.id };
+  render(); aviso('Parte del costado borrada (Ctrl+Z la trae de vuelta).');
+}
+// Ver solo este mueble, desde sus 4 lados (dueño, 2026-11-25)
+function bloqueAislar(m) {
+  if (vista !== '3d' || v34) return '';
+  if (aislado !== m.id) return `<div class="ed-plantilla" style="margin-top:12px"><div class="ed-botones"><button data-a="aislar">Ver solo este mueble</button></div>
+    <p class="ed-ayuda">Oculta lo demás para trabajar este mueble y verlo de frente, atrás y de cada lado.</p></div>`;
+  return `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Solo este mueble · verlo desde</p>
+    <div class="ed-botones"><button data-a="lado:frente">Frente</button><button data-a="lado:atras">Atrás</button><button data-a="lado:izq">Izquierda</button><button data-a="lado:der">Derecha</button></div>
+    <div class="ed-botones"><button data-a="aislar-salir">Volver al proyecto (Esc)</button></div></div>`;
+}
+function verLado(m, lado) { // gira la cámara para mirar esa cara del mueble (por el camino corto)
+  const r = +m.rotacion || 0, obj = { frente: -r, atras: 180 - r, izq: 90 - r, der: -90 - r }[lado];
+  const [, ry] = st.angles, d = ((((obj - ry) % 360) + 540) % 360) - 180;
+  st.view(-12, ry + d);
+}
+function salirAislado() { aislado = null; render(); encuadrar(true); }
+
 // Panel del módulo esquinero: solución de esquina, medidas de cada lado y cajones
 function panelEsquinero(m) {
   const g = geoEsquinero(m), S = SOLUCIONES[g.sol], sug = medidasSugeridas(m);
   const bot = (k, n) => `<button data-a="esq-sol:${k}"${g.sol === k ? ' class="ed-primario"' : ''}>${n}</button>`;
-  return `<div class="ed-props"><p class="tit">${esc(m.nombre)}</p><p class="sub">Módulo esquinero · ${S ? esc(S.nombre) : 'sin solución elegida'}</p>
+  return `<div class="ed-props"><p class="tit">${esc(m.nombre)}</p><p class="sub">${g.aereo ? 'Esquinero aéreo' : 'Módulo esquinero'} · ${S ? esc(S.nombre) : 'sin solución elegida'}</p>
     <p class="sub" style="margin-top:10px">Solución de esquina</p>
-    <div class="ed-botones">${ORDEN_SOLUCIONES.map((k) => bot(k, `${k} · ${SOLUCIONES[k].nombre}`)).join('')}${bot('', 'Sin elegir')}</div>
+    <div class="ed-botones">${(g.aereo ? ORDEN_AEREO : ORDEN_SOLUCIONES).map((k) => bot(k, `${k} · ${SOLUCIONES[k].nombre}`)).join('')}${bot('', 'Sin elegir')}</div>
+    ${g.aereo ? '<p class="ed-ayuda">Aéreo: lleva base y techo (en L, calado en el taller), sin zócalo ni cubierta, 3 soportes de 10 cm (adelante arriba en melamina; atrás arriba y abajo en pino, para anclar al muro) y puertas 1 cm bajo el alto total. Solo 2a o 2b.</p>' : ''}
     <p class="ed-ayuda">${S ? esc(S.ayuda) : 'Mientras no se elija, se ve un «?» rojo en el rincón y el cliente ve «precio por confirmar».'}</p>
     <div class="ed-campos">
       <label class="ed-campo ancho2">Nombre<input type="text" data-k="nombre" value="${esc(m.nombre)}"></label>
       ${num('ancho', 'Largo lado 1 (muro de atrás)', m.ancho)}${num('profundidad', 'Largo lado 2 (muro del costado)', m.profundidad)}
       ${num('fondo_a', 'Fondo del lado 1', g.fa)}${num('fondo_b', 'Fondo del lado 2', g.fb)}
-      ${num('alto', 'Alto', m.alto)}${num('zocalo', 'Zócalo', m.zocalo)}
+      ${num('alto', 'Alto', m.alto)}${g.aereo ? num('elevacion', 'Altura desde el piso', m.elevacion) : num('zocalo', 'Zócalo', m.zocalo)}
       ${opciones('esquina', 'Rincón del muro', m.esquina === 'izq' ? 'izq' : 'der', { der: 'A la derecha', izq: 'A la izquierda' }, 'ancho2')}
       ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.cuadrado) return num('esq_hoja_a', 'Hoja de la puerta en L', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
       ${g.sol === '1' ? num('soporte_alto', 'Alto de la barra delantera', g.sop) : ''}
@@ -1987,7 +2377,7 @@ function panelEsquinero(m) {
       ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
       ${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
     </div>
-    <label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>
+    ${g.aereo ? '' : `<label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>`}
     ${g.sol ? (v34?.id === m.id
       ? `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Vista 3/4 · abrir y cerrar</p><div class="ed-botones">${partesInterior(m, g).map((p) => `<button data-a="esq34:${p.key}"${v34.abiertos.includes(p.key) ? ' class="ed-primario"' : ''}>${esc(p.nombre)}</button>`).join('')}</div>
         <div class="ed-botones"><button data-a="esq34-salir">Salir de la vista 3/4</button></div><p class="ed-ayuda">También con un clic sobre el cajón o la puerta. La vista queda fija; Esc sale.</p></div>`
@@ -2011,7 +2401,8 @@ function pegarAlEsquinero(mods) {
   let n = 0;
   delete e.vecino_a; delete e.vecino_b;
   for (const b of mods) {
-    if (b === e || b.artefacto || b.tipo === 'esquinero' || b.tipo === 'aereo') continue;
+    if (b === e || b.artefacto || b.tipo === 'esquinero' || (b.tipo === 'aereo') !== !!e.aereo) continue; // esquinero aéreo con aéreos; basal con basales
+    if (e.aereo) b.elevacion = +e.elevacion || 0;
     const dr = ((((+b.rotacion || 0) - r) % 360) + 360) % 360, Wb = +b.ancho;
     if (Math.abs(dr) < 1 || Math.abs(dr - 360) < 1) { // lado 1: junto al muro de atrás
       [b.x, b.z] = mundo(izq ? W : -Wb, 0); e.vecino_a = true; n++;
@@ -2081,10 +2472,12 @@ function anchoEsquinero(m, v) {
   m.ancho = v;
 }
 // Agrega un esquinero en el primer rincón libre del espacio (dos muros en escuadra que se tocan)
-function agregarEsquinero() {
+function agregarEsquinero(aereo = false) {
   const ws = murosDe(modelo.espacio).filter((w) => !w.oculto), cerca = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 3;
-  const ocupado = (p) => modelo.modulos.some((x) => x.tipo === 'esquinero' && huella(x).some((q) => cerca(q, p)));
-  const m = nuevoEsquinero(uid());
+  const ocupado = (p) => modelo.modulos.some((x) => x.tipo === 'esquinero' && !!x.aereo === aereo && huella(x).some((q) => cerca(q, p)));
+  // esquinero aéreo (dueño, 2026-11-25): a la altura de los aéreos que ya hay (o 151,8 cm: 88 + 3,8 de cubierta + 60)
+  const otroAereo = modelo.modulos.find((x) => x.tipo === 'aereo');
+  const m = nuevoEsquinero(uid(), aereo ? { aereo: true, elevacion: otroAereo ? +otroAereo.elevacion : 151.8, alto: otroAereo ? +otroAereo.alto : 70 } : {});
   let ok = false;
   for (const A of ws) {
     const E = ejeMuro(A), fin = [E.O[0] + A.largo * E.u[0], E.O[1] + A.largo * E.u[1]];
@@ -2101,6 +2494,7 @@ function agregarEsquinero() {
   sel = { tipo: 'modulo', m: m.id };
   if (vista === 'frente') setVista('planta');
   render(); encuadrar(true);
+  if (aereo) { aviso(ok ? 'Esquinero aéreo agregado en un rincón, a la altura de los aéreos. Elige 2a o 2b en el panel derecho.' : 'No encontré un rincón libre entre dos muros: muévelo a la esquina en Planta. Elige 2a o 2b en el panel derecho.'); return; }
   aviso(ok ? 'Esquinero agregado en un rincón. Elige su solución en el panel derecho y ajusta el largo y el fondo de cada lado.' : 'No encontré un rincón libre entre dos muros: muévelo a la esquina en Planta. Elige su solución en el panel derecho.');
 }
 
@@ -2154,7 +2548,7 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if (k === 'zocalo') {
     if (v < 0 || v > +m.alto - 10) return aviso('El zócalo tiene que dejar al menos 10 cm de cuerpo.');
     m.zocalo = v;
-  } else if (m.tipo === 'esquinero' && ['profundidad', 'esquina'].includes(k)) {
+  } else if (m.tipo === 'esquinero' && ['profundidad', 'esquina', 'elevacion'].includes(k)) { // el aéreo sube o baja con sus aéreos del grupo
     m[k] = v; repegar(m);
   } else if (k === 'rotacion') {
     rotarEnCentro(m, v); // gira alrededor del centro del mueble
@@ -2282,8 +2676,15 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'obj-duplicar') { const o = objeto(sel.o), c = { ...o, id: uid('o'), x: r1(+o.x + +o.ancho + 2), ...(o.links ? { links: o.links.map((l) => ({ ...l })) } : {}) }; cambiar((d) => { d.objetos.push(c); }); sel = { tipo: 'objeto', o: c.id }; render(); return; }
   if (b.dataset.a.startsWith('ver-art:')) { sel = { tipo: 'artefacto', m: sel.m, a: b.dataset.a.slice(8) }; render(); return; }
   if (b.dataset.a === 'borrar-art') { borrarSel(); return; }
+  if (b.dataset.a.startsWith('art-pos:')) { posicionEnL(b.dataset.a.slice(8)); return; }
   if (b.dataset.a === 'centrar-art') { cambiarArtefacto((a, m, { W }) => { a.desde = r1((W - Math.min(+a.ancho, W)) / 2); }); return; }
   if (b.dataset.a === 'borrar-div') { borrarSel(); return; }
+  if (b.dataset.a.startsWith('div-tablero:')) { // poner o quitar el tablero de la división entre dos secciones
+    const s = { ...sel }, m = modulo(s.m), fr = m?.columnas?.[s.col]?.frentes?.[s.fila]; if (!fr) return;
+    const v = b.dataset.a.endsWith('1'), def = divisionesH({ ...m, columnas: m.columnas.map((c, i) => (i === s.col ? { ...c, frentes: c.frentes.map((f, j) => (j === s.fila ? { ...f, division: undefined } : f)) } : c)) }).some((d) => d.col === s.col && d.fila === s.fila);
+    cambiar(() => { if (v === def) delete fr.division; else fr.division = v; });
+    aviso(v ? 'División fija agregada: se suma a Materiales (justa, atornillada).' : 'Tablero de división quitado.'); return;
+  }
   if (b.dataset.a === 'quitar-material' && sel.tipo === 'vano') { const v = { i: sel.i, v: sel.v }; cambiar((d) => { delete vanoRaw(d, v).material; }); return; }
   if (b.dataset.a === 'ver-materiales' && sel.tipo === 'vano') { $('.ed-tabs [data-tab="mat"]').click(); return; }
   if (b.dataset.a === 'borrar-vano' || b.dataset.a === 'centrar-vano') {
@@ -2292,6 +2693,11 @@ $('#props').addEventListener('click', (e) => {
     else cambiarVano((r, w, def) => { r.desde = Math.round((w.largo - (+r.ancho || def.ancho)) / 2 * 10) / 10; });
     return;
   }
+  if (b.dataset.a === 'ver-materiales' && (sel?.tipo === 'muro' || sel?.tipo === 'suelo')) { $('.ed-tabs [data-tab="mat"]').click(); return; }
+  if (b.dataset.a?.startsWith('zona:')) { sel = { tipo: 'muro', i: sel.i, z: +b.dataset.a.slice(5) }; render(); return; }
+  if (b.dataset.a?.startsWith('zona-cortar:')) { cortarZona(b.dataset.a.slice(12)); return; }
+  if (b.dataset.a?.startsWith('zona-unir:')) { unirZona(b.dataset.a.slice(10)); return; }
+  if (b.dataset.a === 'zonas-quitar') { const i = sel.i; cambiar((d) => { const mm = metaMuro(d.espacio, i), a = mm.zonas?.[sel.z ?? 0]?.acabado; delete mm.zonas; if (a) mm.acabado = a; }); sel = { tipo: 'muro', i }; render(); return; }
   if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
   if (b.dataset.a === 'agrupar') {
     const ids = sel.ids, gid = uid('g'), nombre = 'Mueble en L';
@@ -2366,7 +2772,20 @@ $('#props').addEventListener('click', (e) => {
     return;
   }
   if (a === 'quitar-soporte') { cambiar(() => { m.quitar = [...new Set([...(m.quitar || []), 'soporte'])]; }); sel = { tipo: 'modulo', m: m.id }; render(); aviso(`Se quitó el soporte delantero de «${m.nombre}». Se restaura desde el panel del mueble o con Ctrl+Z.`); return; }
-  if (a === 'quitar-pieza' || a === 'quitar-repisa') { borrarSel(); return; }
+  if (a === 'quitar-pieza') { sel = { tipo: 'pieza', m: m.id, p: sel.p }; borrarSel(); return; }
+  if (a === 'quitar-repisa') { borrarSel(); return; }
+  if (a.startsWith('rep-tipo:')) { // repisa fija o móvil (dueño, 2026-11-25)
+    const s = { ...sel }, fr = m.columnas?.[s.col]?.frentes?.[s.fila]; if (!fr) return;
+    cambiar(() => { fr.repisas_tipo = { ...(fr.repisas_tipo || {}), [s.i]: a.slice(9) }; });
+    sel = s; render(); return;
+  }
+  if (a.startsWith('parte:')) { sel = { ...sel, parte: +a.slice(6) }; render(); return; }
+  if (a.startsWith('cortar:')) { cortarCostado(a.slice(7)); return; }
+  if (a === 'borrar-parte') { borrarParte(); return; }
+  if (a === 'unir-costado') { const p = sel.p; cambiar(() => { delete m.partes[p]; if (!Object.keys(m.partes).length) delete m.partes; }); sel = { tipo: 'pieza', m: m.id, p }; render(); return; }
+  if (a === 'aislar') { aislado = m.id; render(); encuadrar(true); verLado(m, 'frente'); aviso(`Solo «${m.nombre}»: míralo desde sus 4 lados con los botones del panel. Esc vuelve al proyecto.`); return; }
+  if (a === 'aislar-salir') { salirAislado(); return; }
+  if (a.startsWith('lado:')) { verLado(m, a.slice(5)); return; }
   if (a.startsWith('tono:')) { tonoLuz = a.slice(5); props(); return; }
   const nuevaLuz = (o) => ({ id: uid('l'), tono: tonoLuz, intensidad: .8, lado: 'arriba', ...o });
   if (a.startsWith('luz+:')) { cambiar(() => { m.luces = [...(m.luces || []), nuevaLuz({ en: 'modulo', lado: a.slice(5) })]; }); return; }
@@ -2439,6 +2858,7 @@ function borrarSel() {
     aviso(`Se quitó el soporte delantero de «${m.nombre}». Se restaura desde el panel del mueble o con Ctrl+Z.`);
     sel = { tipo: 'modulo', m: m.id }; render(); return;
   }
+  if (sel.tipo === 'pieza' && sel.parte != null) { borrarParte(); return; } // una parte del costado
   if (sel.tipo === 'pieza') { // Supr sobre la base, el techo, el fondo o un costado: el mueble va sin esa pieza
     const s = { ...sel }, m = modulo(s.m);
     if (!['piso', 'techo', 'fondo', 'izq', 'der'].includes(s.p)) return;
@@ -2456,6 +2876,7 @@ function borrarSel() {
     cambiar(() => (s.dir === 'v' ? unirDerecha(m, s.col) : unirAbajo(m, s.col, s.fila)));
     sel = { tipo: 'frente', m: m.id, col: s.col, fila: s.dir === 'v' ? 0 : s.fila }; render(); return;
   }
+  if (sel.tipo === 'suelo' || (sel.tipo === 'muro' && sel.z != null)) { const s = alcanceSel(); cambiar((d) => quitarAcabado(s, d)); aviso(`Material quitado de ${nombreAlcance(s)}. Ctrl+Z lo trae.`); return; }
   if (sel.tipo === 'muro') { // Supr sobre un muro: se elimina solo ese muro (del contorno se puede restaurar; el suelto se borra)
     const i = sel.i, n = murosContorno(modelo.espacio);
     if (i >= n) { cambiar((d) => { d.espacio.tramos.splice(i - n, 1); }); sel = null; render(); return; }
@@ -2475,6 +2896,7 @@ function borrarSel() {
 function setVista(v) {
   const salia34 = !!v34;
   v34 = null; // cualquier botón de vista (también 3D) sale de la vista 3/4: vuelven la cubierta y la cámara libre
+  aislado = null; // y de «Ver solo este mueble»
   vista = v;
   $$('[data-vista]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.vista === v)));
   lienzo.classList.toggle('frente', v === 'frente');
@@ -2545,7 +2967,7 @@ $('.ed-acciones').addEventListener('click', (e) => {
   const a = e.target.closest('[data-acc]')?.dataset.acc; if (!a) return;
   if (a === 'deshacer') deshacer();
   if (a === 'rehacer') rehacer();
-  if (a === 'encuadrar') { zoom = 1; encuadrar(true); dibujarPlano(); }
+  if (a === 'encuadrar') { zoom = 1; st.resetPan(); encuadrar(true); dibujarPlano(); }
   if (a === 'respaldos') abrirRespaldos();
   if (a === 'despiece') abrirDespiece();
   if (a === 'plano') abrirPlano();
@@ -2766,11 +3188,12 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'u') setHerr('medir');
   else if (k === 'escape' && medF) { medF = null; cursorF = null; dibujarPlano(); }
   else if (k === 'escape' && v34) { salir34(); props(); }
+  else if (k === 'escape' && aislado) salirAislado();
   else if (k === 'v' || k === 'escape') { setHerr('sel'); if (k === 'escape') { sel = null; render(); } }
   else if (k === 'm') setHerr('dibujar');
   else if (k === 'd') setHerr('div-v');
   else if (k === 'h') setHerr('div-h');
-  else if (k === 'f') { zoom = 1; encuadrar(true); dibujarPlano(); }
+  else if (k === 'f') { zoom = 1; st.resetPan(); encuadrar(true); dibujarPlano(); }
   else if (k === 'delete' || k === 'backspace') { e.preventDefault(); borrarSel(); }
   else if (k === 'r' && sel?.tipo === 'tirador') { const m = modulo(sel.m), t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.rot = ((+t.rot || 0) + 90) % 360; }); }
   else if (e.key.startsWith('Arrow') && sel?.tipo === 'vano') { // mover la ventana o puerta en su muro
@@ -2794,7 +3217,12 @@ window.addEventListener('keydown', (e) => {
   else if (e.key.startsWith('Arrow') && sel?.tipo === 'artefacto') { // mover sobre la cubierta: ←→ a lo largo, ↑↓ hacia la pared o el canto
     e.preventDefault();
     const paso = e.shiftKey ? 10 : 1, dx = { ArrowLeft: -paso, ArrowRight: paso }[e.key] || 0, dy = { ArrowUp: paso, ArrowDown: -paso }[e.key] || 0;
-    cambiarArtefacto((a, m, { W, Dc }) => { a.desde = Math.min(Math.max(0, (+a.desde || 0) + dx), W - +a.ancho); a.frente = Math.min(Math.max(0, (+a.frente || 0) + dy), Dc - +a.fondo); });
+    const s = { ...sel };
+    cambiar((d) => {
+      const m = d.modulos.find((x) => x.id === s.m), c = m && centroArtefacto(m, s.a); if (!c) return;
+      const [gx, gz] = girar(dx, -dy, +m.rotacion || 0), mid = moverArtefacto(d, s.m, s.a, c[0] + gx, c[1] + gz);
+      sel = { ...s, m: mid || s.m };
+    });
   }
   else if (['vano', 'artefacto', 'div'].includes(sel?.tipo) && (k === 'r' || e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown')) { /* no aplica */ }
   else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') girarConAviso(modulo(sel.m), 90);
@@ -2834,7 +3262,7 @@ $$('.ed-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
   $$('.ed-tabs [data-tab]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   $('#tab-props').hidden = b.dataset.tab !== 'props';
   $('#tab-mat').hidden = b.dataset.tab !== 'mat';
-  if (b.dataset.tab === 'mat') pintarMateriales();
+  if (b.dataset.tab === 'mat') { pintarMateriales(); pintarAcabTab(true); }
   $('#tab-coment').hidden = b.dataset.tab !== 'coment';
 }));
 
@@ -2851,6 +3279,7 @@ function regenerarPlantilla(gid, tipo, p) {
 }
 $('#plantillas').addEventListener('click', (e) => {
   if (e.target.closest('[data-esquinero]')) { agregarEsquinero(); return; }
+  if (e.target.closest('[data-esquinero-aereo]')) { agregarEsquinero(true); return; }
   const t = e.target.closest('[data-plantilla]')?.dataset.plantilla; if (!t) return;
   const nuevos = generar(t, parametrosIniciales(t, modelo.espacio));
   cambiar((d) => { d.modulos.push(...nuevos); if (nuevos.objetos?.length) d.objetos = [...(d.objetos || []), ...nuevos.objetos]; });
