@@ -2,7 +2,7 @@
 // Vista 3D para revisar y vista Frente (ortogonal, a escala) para dibujar, dividir y medir en cm.
 import { createStage } from '../css3d/engine.js';
 import { PATRONES, normalizar as normalizarAcab, fondoAcabado, colorValido, mosaico } from '../css3d/acabados.js';
-import { nivelesRepisa, repartirPuertas, GAP, MAX_HOJA, artefactosDe, zonasCubierta, moverArtefacto, centroArtefacto, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
+import { nivelesRepisa, repartirPuertas, GAP, MAX_HOJA, hojasDe, artefactosDe, zonasCubierta, moverArtefacto, centroArtefacto, cubiertaDe, CT, hojasMin, marcoZocalo, tablero, fondoTotal, vuelosDe, TONOS_LUZ, LADOS_LUZ } from './modelo.js';
 import { ARTEFACTOS, DE_CUBIERTA } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { despiece, medidaFrente } from './despiece.js';
@@ -142,6 +142,7 @@ function normalizar(m) {
     const sh = c.frentes.reduce((a, f) => a + +f.alto, 0) || 1;
     c.frentes.forEach((f) => { f.alto = r1(+f.alto * HU / sh); });
   });
+  igualarPuertas(m); // todas las hojas del mueble iguales, salvo que se haya puesto una medida a mano
   const cambios = limitarPuertas(m);
   if (cambios.length) aviso(`Una hoja de puerta no pasa de ${MAX_HOJA} cm (bisagras): ${cambios.join('; ')}.`);
   m.tiradores = (m.tiradores || []).filter((t) => m.columnas[t.col]?.frentes[t.fila] && m.columnas[t.col].frentes[t.fila].tipo !== 'abierto');
@@ -158,6 +159,35 @@ function normalizar(m) {
   }
 }
 
+// Puertas iguales automáticas (dueño, 2026-11-25): las columnas que solo tienen puertas se reparten para que todas las
+// hojas del mueble midan lo mismo (ej. 150 cm con 2 secciones de 2 hojas → 4 × 37,2); las columnas de cajones o mixtas
+// mantienen su ancho. Si se pone una medida a mano (cota de una puerta, ancho de columna o arrastrando una división), el
+// mueble queda en «medida manual» (m.puertas_manual) y respeta ese número hasta que se vuelva a igualar en su panel.
+function bordesColumna(m, i, k) { // lo que no es hoja dentro de una columna de k hojas: luces, divisiones y costados
+  const n = m.columnas.length, izq = i === 0, der = i === n - 1;
+  if (m.tipo === 'isla') { const T = tablero(m), G = grosorCostado(m); return (k - 1) * (T + 2 * GAP) + (izq ? G + GAP : T / 2 + GAP) + (der ? G + GAP : T / 2 + GAP); }
+  return (k - 1) * GAP + (izq ? 0 : GAP / 2) + (der ? 0 : GAP / 2);
+}
+function igualarPuertas(m) {
+  if (m.puertas_manual || m.tipo === 'esquinero' || m.artefacto || !(m.columnas?.length > 1)) return;
+  const info = m.columnas.map((c, i) => {
+    const fs = c.frentes || [];
+    if (!fs.length || !fs.every((f) => f.tipo === 'puerta' || f.tipo === 'puerta_doble')) return null; // cajones o mixta: queda como está
+    const ks = [...new Set(fs.map((f) => (f.tipo === 'puerta_doble' ? hojasDe(f, +c.ancho) : 1)))];
+    return ks.length === 1 ? { k: ks[0], e: bordesColumna(m, i, ks[0]) } : null;
+  });
+  const ps = info.filter(Boolean); if (ps.length < 2) return;
+  const libre = +m.ancho - m.columnas.reduce((s, c, i) => s + (info[i] ? 0 : +c.ancho), 0);
+  const h = (libre - ps.reduce((s, p) => s + p.e, 0)) / ps.reduce((s, p) => s + p.k, 0);
+  if (!(h > 5)) return;
+  m.columnas.forEach((c, i) => { if (info[i]) c.ancho = Math.round((info[i].k * h + info[i].e) * 1000) / 1000; });
+}
+function medidaManual(m) { // una medida puesta a mano: desde ahora el mueble respeta ese número
+  if (m.puertas_manual || m.tipo === 'esquinero') return;
+  m.puertas_manual = true;
+  aviso(`Medida a mano en «${m.nombre}»: sus puertas ya no se igualan solas. En el panel del mueble puedes volver a igualarlas.`);
+}
+
 // Repartir el mueble en n puertas de la misma medida final (cantidad y divisiones elegidas en el panel del mueble)
 function bloquePuertas(m) {
   if (m.artefacto) return '';
@@ -169,6 +199,7 @@ function bloquePuertas(m) {
       <label class="ed-campo ancho2">Divisiones<select id="rp-div"><option value="cada">Una entre cada puerta</option><option value="pares">Cada 2 puertas (abren de a pares)</option></select></label>
     </div>
     <div class="ed-botones"><button data-a="repartir-puertas" class="ed-primario">Repartir en puertas iguales</button></div>
+    <label class="ed-check"><input type="checkbox" data-k="puertas_auto"${m.puertas_manual ? '' : ' checked'}> Las puertas se igualan solas${m.puertas_manual ? ' <small>(hoy: medida a mano)</small>' : ''}</label>
     <p class="ed-ayuda">Todas quedan con la misma medida final: descuenta 3 mm de luz entre hojas (a ras en los costados) y el tapacanto en el corte. Después elige hacia dónde abre cada puerta seleccionándola.</p></div>`;
 }
 // Tiradores después de repartir: uno por puerta, del mismo modelo y color que el primero que tenía el mueble
@@ -1382,6 +1413,7 @@ const frenteAbajo = (cs, ci) => cs.filter((k) => k.col === ci).sort((a, b) => a.
 // Ancho de columna para que su puerta (o cada hoja) mida «puerta» cm: + 3 mm entre hojas y 1,5 mm hacia cada vecino
 function anchoColumnaPara(m, c, puerta) {
   const n = c.tipo === 'puerta_doble' ? c.hojas : 1, W = +m.ancho;
+  if (m.tipo === 'isla') return n * puerta + bordesColumna(m, c.col, n); // isla: empotradas, con división entre hojas
   return n * puerta + (n - 1) * GAP + (c.x0 > .05 ? GAP / 2 : 0) + (c.x1 < W - .05 ? GAP / 2 : 0);
 }
 
@@ -1628,6 +1660,7 @@ plano.addEventListener('pointermove', (e) => {
     const d = snap(p.x - gesto.p0.x, .5);
     const a = +cols[i].ancho + d, b = +cols[i + 1].ancho - d;
     if (a < 5 || b < 5) return;
+    if (!m.puertas_manual && m.tipo !== 'esquinero') { m.puertas_manual = true; aviso(`Medida a mano en «${m.nombre}»: sus puertas ya no se igualan solas. En el panel del mueble puedes volver a igualarlas.`); }
     m.columnas[i].ancho = a; m.columnas[i + 1].ancho = b;
   } else if (gesto.tipo === 'div-h') {
     const fr = gesto.base[gesto.col].frentes, j = gesto.fila;
@@ -2568,6 +2601,7 @@ function aplicarCampo(m, k, v, s = {}) {
       fr[s.fila].alto = v; fr[j].alto = +fr[j].alto - d;
     }
     if (k === 'c.ancho') { // la columna vecina absorbe la diferencia
+      medidaManual(m); // medida a mano: el mueble ya no iguala sus puertas solo
       const cols = m.columnas, j = s.col < cols.length - 1 ? s.col + 1 : s.col - 1;
       if (j < 0) return aviso('Esta columna ocupa todo el ancho: cambia el ancho del módulo.');
       const d = v - +col.ancho;
@@ -2619,6 +2653,8 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if (k.startsWith('mat|')) { // material de una pieza del mueble (techo, soporte…) desde el panel
     const p = k.slice(4); m.materiales = { ...(m.materiales || {}) };
     if (v) m.materiales[p] = v; else delete m.materiales[p];
+  } else if (k === 'puertas_auto') { // volver a igualar las puertas solas (o dejarlas a mano)
+    if (v) delete m.puertas_manual; else m.puertas_manual = true;
   } else if (k === 'tablero') {
     m.tablero = +v === 18 ? 18 : 15;
   } else if (k === 'costado_grosor') { // isla: grosor del costado doble, entre el tablero (costado simple) y 15 cm
@@ -2883,7 +2919,7 @@ $('#props').addEventListener('click', (e) => {
     if (otros && !confirm(`«${m.nombre}» tiene cajones, secciones abiertas o varias filas. Al repartir en ${n} puertas iguales se reemplazan todos sus frentes. ¿Seguir? (Ctrl+Z deshace)`)) return;
     cambiar(() => {
       const t0 = (m.tiradores || [])[0];
-      repartirPuertas(m, n, div);
+      repartirPuertas(m, n, div); delete m.puertas_manual; // vuelven a igualarse solas
       m.tiradores = t0 ? tiradoresPuertas(m, t0) : [];
     });
     const F = celdas(m).map((c) => medidaFrente(m, c)), w = F[0].hojas > 1 ? F[0].hoja : F[0].w;
