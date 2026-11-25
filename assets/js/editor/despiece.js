@@ -61,7 +61,7 @@ const mmAbajo = (v) => Math.floor(v * 10 + 1e-2) / 10; // los frentes se redonde
 export function medidaFrente(m, c) {
   if (esIsla(m) && c.tipo !== 'abierto') { // isla (dueño, 2026-11-25): empotrados entre costados y divisiones, 3 mm de luz
     const F = frentesIsla(m, c);
-    return { x0: F.x0, x1: F.x1, y0: F.y0, y1: F.y1, w: mmAbajo(F.x1 - F.x0), h: mmAbajo(F.y1 - F.y0), hojas: F.n, hoja: mmAbajo(F.w), paso: F.w + F.sep, sep: F.sep };
+    return { x0: F.x0, x1: F.x1, y0: F.y0, y1: F.y1, w: mmAbajo(F.x1 - F.x0), h: mmAbajo(F.y1 - F.y0), hojas: F.n, hoja: mmAbajo(F.w), paso: F.w + F.sep, sep: F.sep, juntas: F.juntas };
   }
   const W = +m.ancho, H = +m.alto, E = estructura(m), Z = E.Z;
   const conBase = E.base && !(Array.isArray(m.quitar) && m.quitar.includes('piso'));
@@ -113,6 +113,9 @@ export function despiece(modelo) {
     const quitar = Array.isArray(m.quitar) ? m.quitar : [], ext = Math.max(0, +m.costados_atras || 0);
     const conBase = E.base && !quitar.includes('piso'), conTecho = E.techo && !quitar.includes('techo');
     const mat = (k, def) => limpio(m.materiales?.[k]) || def;
+    // tapacanto propio del canto a la vista de una división (se suelta el material sobre el canto, clave «…|canto»)
+    const cantoDe = (k) => { const c = limpio(m.materiales?.[`${k}|canto`]); return c ? { canto_color: 1, canto: c } : {}; };
+    const conCanto = (n, k) => { const c = limpio(m.materiales?.[`${k}|canto`]); return c ? `${n} · tapacanto ${c}` : n; };
     // ancho × alto = medida final; cantos = cuántos cantos del largo «ancho» (arriba/abajo) y del largo «alto»
     // (izquierda/derecha) llevan tapacanto. La medida de corte descuenta 1 mm por canto enchapado.
     const add = (k, nombre, material, a, b, cantos = { ancho: 0, alto: 0 }, tipo = 'tablero', extra = {}) => {
@@ -213,7 +216,7 @@ export function despiece(modelo) {
     const rebaje = isla ? 'Rebaje arriba de 10 cm: 1,5 cm adelante (soporte delantero); va fija a la base, la trasera y el soporte' : E.clase === 'basal' ? 'Rebaje arriba de 10 cm: 1,5 cm adelante y 2 cm atrás'
       : E.clase === 'aereo' ? 'Rebajes de 10 cm: adelante arriba 1,5 cm; atrás arriba y abajo 2 cm' : '';
     const cs = celdas(m), nCol = (m.columnas || []).length;
-    for (let i = 0; i < nCol - 1; i++) add(`div|${i}`, `División vertical ${i + 1}`, mat(`div|${i}`, mat('cuerpo', cuerpoDef)), Dk, hs, { ancho: 0, alto: 1 }, 'tablero', { ...(rebaje ? { nota: rebaje } : {}), ...(isla ? { canto_color: 1 } : {}) });
+    for (let i = 0; i < nCol - 1; i++) add(`div|${i}`, conCanto(`División vertical ${i + 1}`, `div|${i}`), mat(`div|${i}`, mat('cuerpo', cuerpoDef)), Dk, hs, { ancho: 0, alto: 1 }, 'tablero', { ...(rebaje ? { nota: rebaje } : {}), ...(isla ? { canto_color: 1 } : {}), ...cantoDe(`div|${i}`) });
 
     // ---- frentes, divisiones horizontales, repisas y cajones
     const arriba = m.cubierta ? 7 : 1; // descuento superior de los frentes
@@ -239,7 +242,7 @@ export function despiece(modelo) {
         add(`${k}|rep|${i}`, `Repisa ${i + 1} (${fija ? 'fija, justa' : 'móvil, más corta'})`,
           mat(`${k}|rep|${i}`, mat(`${k}|rep`, mat('cuerpo', cuerpoDef))), fija ? wi : wi - .2, fija ? Dr : Dr - 1, { ancho: 1, alto: 0 }); });
       if (divsH.some((d) => d.col === c.col && d.fila === c.fila)) { // división fija bajo esta sección (justa, atornillada)
-        add(`${k}|div`, 'División horizontal (fija, justa)', mat(`${k}|div`, mat('cuerpo', cuerpoDef)), wi, Dk, { ancho: 1, alto: 0 }, 'tablero', isla ? { canto_color: 1 } : {});
+        add(`${k}|div`, conCanto('División horizontal (fija, justa)', `${k}|div`), mat(`${k}|div`, mat('cuerpo', cuerpoDef)), wi, Dk, { ancho: 1, alto: 0 }, 'tablero', { ...(isla ? { canto_color: 1 } : {}), ...cantoDe(`${k}|div`) });
       }
       const c4 = { ancho: 2, alto: 2 };
       if (c.tipo === 'puerta') {
@@ -251,7 +254,8 @@ export function despiece(modelo) {
         const { hojas: n, hoja: hw } = medidaFrente(m, c);
         for (let i = 0; i < n; i++) {
           add(k, `Puerta (hoja ${i + 1} de ${n})`, frente, hw, fh, c4);
-          if (isla && i > 0) add(`${k}|div`, 'División entre puertas (fija a la base, la trasera y el soporte)', mat(`${k}|div`, mat('cuerpo', cuerpoDef)), Dk, r1(fh + 2 * LUZ), { ancho: 0, alto: 1 }, 'tablero', { canto_color: 1 });
+          const sinDiv = new Set(((m.columnas?.[c.col]?.frentes?.[c.fila] || {}).sin_div || []).map(Number)); // las que se quitaron: 3 mm entre hojas
+          if (isla && i > 0 && !sinDiv.has(i)) add(`${k}|dh${i}`, conCanto('División entre puertas (fija a la base, la trasera y el soporte)', `${k}|dh${i}`), mat(`${k}|dh${i}`, mat(`${k}|div`, mat('cuerpo', cuerpoDef))), Dk, r1(fh + 2 * LUZ), { ancho: 0, alto: 1 }, 'tablero', { canto_color: 1, ...cantoDe(`${k}|dh${i}`) });
           if (i === 0) bisagras(c, c.x0); else if (i === n - 1) bisagras(c, c.x1);
           else { herrajes.bisagras += 2; herrajes.bisagras_semicurvas += 2; } // hoja del medio: abre hacia otra puerta
         }
