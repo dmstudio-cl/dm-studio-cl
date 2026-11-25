@@ -14,13 +14,13 @@ const LUZ = .3, CHOL = .3, SOPORTE = 10, PINO_E = 2, VUELO = 6, CT = 3.8;
 const CORREDERAS_ESQ = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (cm), los mismos de despiece.js
 
 // Las 5 soluciones de esquina (nombres del dueño). lado = largo sugerido de cada lado más allá del fondo del otro.
-// factor: los tipos 1, 3 y 4 usan factor 2,5 sobre los materiales (más trabajo); 2a y 2b, el normal.
+// Precio (dueño, 2026-11-25): todos los esquineros se cobran como un basal (factor normal) más sus herrajes.
 export const SOLUCIONES = {
-  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 32, factor: true, hojas: [30, 60], cuadrado: true },
+  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 32, hojas: [30, 60], cuadrado: true },
   '2a': { nombre: 'Puertas con repisa fija en L', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y una repisa fija en L (se pide rectangular; el calado se corta en el taller). Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '2b': { nombre: 'Puertas con repisas intercaladas', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y 2 repisas rectas, una por muro, a distinta altura. Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
-  '3': { nombre: 'Cajón space corner', ayuda: 'Cajones con frente en flecha que salen en diagonal y terminan en punta atrás. A los lados, compartimentos en trapecio rectángulo con puerta (bisagras semicurvas, de 35 a 60 cm) y repisa; sus lados en diagonal llevan, por el otro lado, las correderas.', lado: 82, factor: true, niveles: true, frenteCajon: true, hojas: [35, 60] },
-  '4': { nombre: 'Cajones pivotantes', ayuda: '2 filas de cajones, una por lado, que giran hacia afuera, cada fila en su eje vertical de barra de acero de 3/4".', lado: 32, factor: true, niveles: true },
+  '3': { nombre: 'Cajón space corner', ayuda: 'Cajones con frente en flecha que salen en diagonal y terminan en punta atrás. A los lados, compartimentos en trapecio rectángulo con puerta (bisagras semicurvas, de 35 a 60 cm) y repisa; sus lados en diagonal llevan, por el otro lado, las correderas.', lado: 82, niveles: true, frenteCajon: true, hojas: [35, 60] },
+  '4': { nombre: 'Cajones pivotantes', ayuda: '2 filas de cajones, una por lado, que giran hacia afuera, cada fila en su eje vertical de barra de acero de 3/4".', lado: 32, niveles: true },
 };
 // Soluciones que se ofrecen en el panel (las claves numéricas se ordenarían solas primero). El tipo 4, cajones
 // pivotantes, queda guardado para más adelante (dueño, 2026-11-25): su código sigue aquí, pero no se ofrece.
@@ -460,7 +460,7 @@ function dibujarInterior(G, m, g, o, top) {
 export function despieceEsquinero(m, ctx) {
   const g = geoEsquinero(m), { T, W, L, H, Z, fa, fb, xb, sol } = g, { add, pino, herrajes, mat, cuerpoDef, frente, BLANCA } = ctx;
   const r1 = (v) => Math.round(v * 10) / 10, Hc = H - Z, hs = Hc - T, cuerpo = mat('cuerpo', cuerpoDef);
-  const ficha = { m: m.id, solucion: sol, factor: !!SOLUCIONES[sol]?.factor, platos: 0, retenes: 0, barra_cm: 0, tiradores: 0, confirmar: !sol };
+  const ficha = { m: m.id, solucion: sol, platos: 0, retenes: 0, barra_cm: 0, tiradores: 0, confirmar: !sol };
   // base rectangular (W × L sin el cholguán); el calado en L y su tapacanto se hacen en el taller
   add('cuerpo|piso', 'Base en L (se pide rectangular; calado y tapacanto del calado en el taller)', mat('cuerpo|piso', cuerpo), W - .3, L - .3, undefined, 'tablero',
     { nota: `Calado: quitar ${r1(xb)} × ${r1(L - fa)} cm en el rincón del frente`, tapacanto_taller: r1(xb + L - fa) });
@@ -487,7 +487,7 @@ export function despieceEsquinero(m, ctx) {
   // frentes cerrados (medida final redondeada al mm hacia abajo; 4 cantos)
   const mm = (v) => Math.floor(v * 10 + 1e-2) / 10, c4 = { ancho: 2, alto: 2 };
   const frs = frentesEsquinero(m, g);
-  frs.forEach((fr, i) => add(`esq|${i}`, fr.nombre, mat(`esq|${i}`, mat('frentes', frente)), mm(fr.corte), mm(fr.y1 - fr.y0), fr.cantos || c4, 'tablero'));
+  frs.forEach((fr, i) => add(`esq|${i}`, fr.nombre, mat(`esq|${i}`, mat('frentes', frente)), mm(fr.corte), mm(fr.y1 - fr.y0), fr.cantos || c4, 'tablero', fr.cajon != null ? { cajon: `esq${fr.cajon}` } : {})); // frente de cajón: cuenta para su mínimo
   ficha.tiradores = frs.filter((fr) => fr.tir).length;
   const semicurvas = (n) => { herrajes.bisagras += n; herrajes.bisagras_semicurvas += n; };
   const ri = (W - T - .3 - .2), rj = (L - T - .3 - .2); // interior de cada lado, con 1 mm de juego por lado
@@ -533,6 +533,7 @@ export function despieceEsquinero(m, ctx) {
       const corr = CORREDERAS_ESQ.filter((l) => l <= Math.min(k.latA, k.latB)).pop() || CORREDERAS_ESQ[0];
       herrajes.correderas[corr] = (herrajes.correderas[corr] || 0) + 1;
       ficha.corredera = corr; ficha.caja = r1(Math.min(k.latA, k.latB));
+      ctx.cajones?.push({ m: m.id, k: `esq${i}`, corredera: corr }); // mano de obra mínima por cajón, como en un basal
     });
   }
   if (sol === '4') {
@@ -540,8 +541,10 @@ export function despieceEsquinero(m, ctx) {
     // cada cajón en tajada: un fondo de melamina que se pide rectangular (la forma y los bordes se hacen en el taller)
     const b = bandejaCarrusel(g), r = b.r, lar = r1(r * (1 + Math.SQRT1_2));
     for (let i = 0; i < g.niveles; i++) {
-      add('esq|cajon', `Cajón pivotante ${i + 1}, lado 1: fondo (rectángulo; tajada y bordes en el taller)`, BLANCA, lar, r1(r), undefined, 'tablero');
-      add('esq|cajon', `Cajón pivotante ${i + 1}, lado 2: fondo (rectángulo; tajada y bordes en el taller)`, BLANCA, lar, r1(r), undefined, 'tablero');
+      for (const lado of [1, 2]) { // cada cajón con su mano de obra mínima (sin corredera: gira en el eje)
+        add('esq|cajon', `Cajón pivotante ${i + 1}, lado ${lado}: fondo (rectángulo; tajada y bordes en el taller)`, BLANCA, lar, r1(r), undefined, 'tablero', { cajon: `esqp${i}-${lado}` });
+        ctx.cajones?.push({ m: m.id, k: `esqp${i}-${lado}`, corredera: null });
+      }
     }
   }
   return ficha;

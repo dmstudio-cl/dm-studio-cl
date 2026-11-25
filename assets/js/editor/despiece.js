@@ -122,7 +122,7 @@ export function despiece(modelo) {
     };
     const pino = (nombre, largo, k = 'pino') => { if (largo <= 0) return; pinos.push(largo); piezas.push({ m: m.id, k, mueble: m.nombre, nombre, material: 'pino-1x4', tipo: 'pino', ancho: r1(largo), alto: SOPORTE, area: 0, espesor: PINO.espesor * 10 }); };
     if (m.tipo === 'esquinero') { // módulo esquinero: sus propias piezas (esquinero.js)
-      esquineros.push(despieceEsquinero(m, { add, pino, herrajes, mat, cuerpoDef, frente: 'frente', BLANCA }));
+      esquineros.push(despieceEsquinero(m, { add, pino, herrajes, mat, cuerpoDef, frente: 'frente', BLANCA, cajones }));
       if (m.cubierta) { // cubierta en L como 2 rectángulos: el lado 1 completo y el resto del lado 2
         const T2 = tablero(m), fa = Math.min(+m.fondo_a || 58, +m.profundidad - T2 - 5), fb = Math.min(+m.fondo_b || 58, +m.ancho - T2 - 5);
         const artE = Array.isArray(m.artefactos) ? m.artefactos.filter(Boolean) : [], bajoE = artE.filter((x) => String(x.tipo).startsWith('lavaplatos') && x.montaje === 'bajo').length; // sacados (lavaplatos y encimeras sobre la L): van en la primera pieza
