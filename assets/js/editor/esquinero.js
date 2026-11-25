@@ -11,6 +11,7 @@
 // Este archivo no importa nada (modelo.js y despiece.js lo usan).
 
 const LUZ = .3, CHOL = .3, SOPORTE = 10, PINO_E = 2, VUELO = 6, CT = 3.8;
+const AIRE_GIRO = .5; // puerta giratoria: aire en la punta de cada hoja contra el costado (dueño, 2026-11-25)
 const CORREDERAS_ESQ = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (cm), los mismos de despiece.js
 
 // Las 5 soluciones de esquina (nombres del dueño). lado = largo sugerido de cada lado más allá del fondo del otro.
@@ -30,6 +31,21 @@ export const ORDEN_SOLUCIONES = ['1', '2a', '2b', '3'];
 export const ORDEN_AEREO = ['2a', '2b'];
 export const FONDO_AEREO = 35; // fondo del cuerpo por defecto, como los aéreos de las cocinas de referencia
 export const esEsquinero = (m) => m?.tipo === 'esquinero';
+// Tipos de esquina que calzan con las medidas actuales del mueble, sin cambiarlas (dueño, 2026-11-25: el cliente elige
+// entre estos en el portal). Calza si sus hojas quedan dentro de su rango (ej. 30 a 60 cm) y, en la puerta giratoria,
+// si el módulo es cuadrado. El aéreo solo ofrece 2a y 2b. El tipo actual siempre está.
+export function solucionesQueCalzan(m) {
+  const lista = m?.aereo ? ORDEN_AEREO : ORDEN_SOLUCIONES;
+  return lista.filter((sol) => {
+    if (sol === m.solucion) return true;
+    const mm = { ...m, solucion: sol }, g = geoEsquinero(mm), s = SOLUCIONES[sol];
+    if (g.sol !== sol) return false;
+    if (s.cuadrado && Math.abs(g.W - g.L) > .5) return false;
+    const h = hojasEditables(mm, g);
+    if (h?.rango) { const [lo, hi] = h.rango; for (const v of [h.a, h.b]) if (!(v > 0) || v < lo - .5 || v > hi + .5) return false; }
+    return true;
+  });
+}
 
 export function nuevoEsquinero(id, { x = 0, z = 0, rotacion = 0, esquina = 'der', aereo = false, fondo = aereo ? FONDO_AEREO : 58, alto = aereo ? 70 : 85, elevacion = 0 } = {}) {
   return { id, nombre: aereo ? 'Esquinero aéreo' : 'Esquinero', tipo: 'esquinero', esquina, solucion: '', ancho: fondo + 32, profundidad: fondo + 32, fondo_a: fondo, fondo_b: fondo,
@@ -76,11 +92,16 @@ export function frentesPlanta(m) {
 
 // Bandeja del carrusel (tipo 1): el círculo más grande donde quepa sin que el eje salga del mueble; el eje va lo más
 // cerca posible del rincón interior del frente, a 3 cm de cada cara (regla del dueño). Devuelve { cx, cz, r } (rincón a la der.).
-// Puerta giratoria (tipo 1, dueño 2026-11-25, con su dibujo de referencia): el módulo es un cuadrado de lado
-// S = fondo más largo + 1,5 + hoja (hoja de 30 a 60 cm) y la bandeja va centrada en él, con Ø = S − 2 cm (1 cm de holgura).
+// Puerta giratoria (tipo 1, dueño 2026-11-25): el módulo es un cuadrado de lado S = fondo más largo + 1,5 + hoja + aire.
+// El EJE va en el vértice de la L, donde se juntan las 2 hojas por dentro (como los carruseles de fábrica): así cada hoja
+// es un radio y al girar sus puntas se alejan de los costados. Antes iba al centro del cuadrado y las puertas cruzaban
+// los costados (2,1 cm en un 90 × 90). Bandeja de ¾ de círculo centrada en el eje: Ø = 2 × (lo más corto entre el largo
+// libre de cada hoja y el fondo más corto − la trasera de cholguán, menos 1 cm de holgura); el diámetro máximo lo
+// define el lado con menor fondo (dueño). Ej.: 90 × 90 fondo 58 → Ø 59; 96 × 96 fondo 52,2 → Ø 82,6.
 export function bandejaGiratoria(g) {
-  const S = Math.min(g.W, g.L);
-  return { cx: g.W - S / 2, cz: S / 2, r: Math.max(5, Math.floor((S - 2) / 2 * 10) / 10) };
+  const cx = g.xb, cz = g.fa, fMin = Math.min(g.fa, g.fb);
+  const libre = Math.min(cx - g.T, g.L - g.T - cz, fMin - CHOL);
+  return { cx, cz, r: Math.max(5, Math.floor((libre - 1) * 10) / 10) };
 }
 export function bandejaCarrusel(g) {
   const cx = g.xb + 3, cz = g.fa - 3;
@@ -125,8 +146,9 @@ export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
     // (dueño, 2026-11-25) las 2 hojas se juntan en el rincón sin línea de aire: se cortan a 45° (largo hasta la punta
     // larga del inglete, el canto del inglete sin tapacanto); en el modelo van de tope (la hoja 2 tapa el rincón)
     const c3 = { ancho: 2, alto: 1 };
-    hoja('A', [T + LUZ, xb - T], 'puerta', 'Puerta en L, hoja del lado 1 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's0' }, { corte: xb - T - LUZ, cantos: c3, tope: 's1' }, yb, yt);
-    hoja('B', [fa, L - T - LUZ], 'puerta', 'Puerta en L, hoja del lado 2 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's1' }, { corte: L - T - LUZ - fa, cantos: c3, tope: 's0' }, yb, yt);
+    // en la punta, 5 mm de aire contra el costado (dueño, 2026-11-25): al girar, la puerta pasa a unos 4,7 mm de él
+    hoja('A', [T + AIRE_GIRO, xb - T], 'puerta', 'Puerta en L, hoja del lado 1 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's0' }, { corte: xb - T - AIRE_GIRO, cantos: c3, tope: 's1' }, yb, yt);
+    hoja('B', [fa, L - T - AIRE_GIRO], 'puerta', 'Puerta en L, hoja del lado 2 (inglete a 45° en el rincón; va unida a las bandejas)', { en: 's1' }, { corte: L - T - AIRE_GIRO - fa, cantos: c3, tope: 's0' }, yb, yt);
   }
   if (sol === '2a' || sol === '2b') { hoja('A', A, 'puerta', 'Puerta del lado 1', { en: 's1' }); hoja('B', B, 'puerta', 'Puerta del lado 2', { en: 's0' }); }
   if (sol === '4') pisos((y0, ya, i) => { // cada fila gira en su eje del rincón: el tirador va en el extremo de afuera
@@ -156,7 +178,10 @@ export function hojasEditables(m, g = geoEsquinero(m)) {
   const fr = frentesEsquinero(m, g).filter((f) => f.clase === 'puerta'), A = fr.find((f) => f.lado === 'A'), Bf = fr.find((f) => f.lado === 'B');
   const extra = g.sol === '3' ? g.ld + LUZ / 2 : g.T + luzRincon(g); // lo que va entre el fondo del otro lado y la hoja
   const iA = m.vecino_a ? LUZ : 0, iB = m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado)
-  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + g.T + LUZ; /* hoja (hasta la punta del inglete) + lateral + 3 mm de aire */ return { rango: s.hojas, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
+  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + g.T + AIRE_GIRO; /* hoja (hasta la punta del inglete) + lateral + 5 mm de aire */
+    // la hoja no puede ser más larga que el fondo más corto − 1 cm: al girar, su punta tocaría la trasera
+    const rango = [s.hojas[0], Math.min(s.hojas[1], Math.floor(Math.min(g.fa, g.fb) - 1))];
+    return { rango, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
   return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v + g.fb + extra + iA, profundidadPara: (v) => v + g.fa + extra + iB };
 }
 
