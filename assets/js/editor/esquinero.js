@@ -265,7 +265,7 @@ export function dibujarEsquinero(G, m, o) {
     B(0, W, Z, H, 0, CHOL, MC, `${id}|cuerpo|fondo`); B(W - CHOL, W, Z, H, CHOL, L, MC, `${id}|cuerpo|fondo`); // fondos
     for (const d of divisionesEsquinero(m, g)) { // divisiones diagonales (space corner): un tablero girado 45°
       const gd = G.group({ x: d.cx, y: (Z + T + H) / 2, z: d.cz, ry: d.ry });
-      gd.box({ w: d.largo, h: H - Z - T, d: T, x: 0, y: 0, z: 0, tex: propio('cuerpo') || MC, ref: `${id}|esq|div` });
+      gd.box({ w: d.largo, h: H - Z - T, d: T, x: 0, y: 0, z: 0, tex: propio('esq|div', 'cuerpo') || MC, ref: `${id}|esq|div` });
     }
     if (fab) { // soportes de 10 cm: delanteros de melamina y traseros de pino, unidos a 45° (se dibujan sin encimarse)
       const ys = g.aereo ? H - T : H; // en el aéreo, bajo el techo
@@ -370,7 +370,7 @@ export function nivelesL(g, n = repisasL(g.m || {})) {
   return Array.from({ length: n }, (_, i) => y0 + (y1 - y0) * (i + 1) / (n + 1));
 }
 function dibujarInterior(G, m, g, o, top) {
-  const { T, W, L, H, Z, fa, xb, izq, sol } = g, id = m.id, { M, propio } = o, MC = propio('cuerpo') || M.cuerpo;
+  const { T, W, L, H, Z, fa, xb, izq, sol } = g, id = m.id, { M, propio } = o, MC = propio('esq|repisa', 'cuerpo') || M.cuerpo; // interior: repisas y bandejas (su material propio, si se le soltó uno)
   const abiertos = o.interior.abiertos || [], sx = izq ? -1 : 1; // sx: las x locales se reflejan con el rincón a la izquierda
   const tf = (p) => `translate3d(${p.x}em, ${-p.y}em, ${p.z}em) rotateY(${p.ry || 0}deg) rotateZ(0deg)`;
   const anim = (key, base, abierto, dur) => { // grupo que se mueve entre cerrado y abierto
@@ -534,8 +534,8 @@ export function despieceEsquinero(m, ctx) {
   if (sol === '3') {
     const k = cajonSpaceCorner(g), n = g.niveles, div = mat('cuerpo', cuerpoDef);
     // divisiones diagonales del pasillo del cajón (ahí van las correderas); se cotizan como rectángulo
-    add('esq|div', 'División diagonal del cajón, lado 1 (corte a 45° en los extremos, en el taller)', div, r1(k.divA), hs, { ancho: 0, alto: 1 });
-    add('esq|div', 'División diagonal del cajón, lado 2 (corte a 45° en los extremos, en el taller)', div, r1(k.divB), hs, { ancho: 0, alto: 1 });
+    add('esq|div', 'División diagonal del cajón, lado 1 (corte a 45° en los extremos, en el taller)', mat('esq|div', div), r1(k.divA), hs, { ancho: 0, alto: 1 });
+    add('esq|div', 'División diagonal del cajón, lado 2 (corte a 45° en los extremos, en el taller)', mat('esq|div', div), r1(k.divB), hs, { ancho: 0, alto: 1 });
     // repisas en trapecio de los compartimentos laterales (dueño, 2026-11-25): las 2 se piden juntas en una placa
     // rectangular, intercaladas (una girada), con 1 cm entre ambas para la sierra; el corte en diagonal y el tapacanto
     // del frente se hacen en el taller

@@ -213,7 +213,7 @@ export function despiece(modelo) {
     const rebaje = isla ? 'Rebaje arriba de 10 cm: 1,5 cm adelante (soporte delantero); va fija a la base, la trasera y el soporte' : E.clase === 'basal' ? 'Rebaje arriba de 10 cm: 1,5 cm adelante y 2 cm atrás'
       : E.clase === 'aereo' ? 'Rebajes de 10 cm: adelante arriba 1,5 cm; atrás arriba y abajo 2 cm' : '';
     const cs = celdas(m), nCol = (m.columnas || []).length;
-    for (let i = 0; i < nCol - 1; i++) add(`div|${i}`, `División vertical ${i + 1}`, mat('cuerpo', cuerpoDef), Dk, hs, { ancho: 0, alto: 1 }, 'tablero', { ...(rebaje ? { nota: rebaje } : {}), ...(isla ? { canto_color: 1 } : {}) });
+    for (let i = 0; i < nCol - 1; i++) add(`div|${i}`, `División vertical ${i + 1}`, mat(`div|${i}`, mat('cuerpo', cuerpoDef)), Dk, hs, { ancho: 0, alto: 1 }, 'tablero', { ...(rebaje ? { nota: rebaje } : {}), ...(isla ? { canto_color: 1 } : {}) });
 
     // ---- frentes, divisiones horizontales, repisas y cajones
     const arriba = m.cubierta ? 7 : 1; // descuento superior de los frentes

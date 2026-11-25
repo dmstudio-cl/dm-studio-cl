@@ -293,16 +293,23 @@ function esfera(mid) {
 }
 // Clave de la pieza de un ref ("id|f|0|1", "id|cuerpo|piso"…) o de la selección actual
 const claveDeRef = (ref) => {
-  const [mid, ...r] = ref.split('|'); const k = r.join('|').replace(/\|p\d+$/, ''); // una parte del costado: su material es el del costado
+  const [mid, ...r] = ref.split('|'); let k = r.join('|').replace(/\|p\d+$/, ''); // una parte del costado: su material es el del costado
+  // (dueño, 2026-11-25) cualquier pieza de melamina toma el material que se le suelta encima y va a la hoja de corte de ese
+  // material: el ref del 3D se traduce a la clave que leen el dibujo y el despiece
+  if (k === 'soporte|frente') k = 'soporte';
+  else if (/^soporte\|(atras|anclaje)$/.test(k)) return null; // pino tapa: no es melamina
+  else if (/^cuerpo\|dv\d+$/.test(k)) k = `div|${k.match(/\d+$/)[0]}`; // división vertical entre columnas
+  else if (/^f\|\d+\|\d+\|h\d+$/.test(k)) k = k.replace(/\|h\d+$/, ''); // una hoja: el frente de su sección
+  else if (k === 'esq|int') k = 'esq|repisa'; // repisas y bandejas del esquinero
   if (mid === 'vano') return { vano: { i: +r[0], v: r[1] } }; // puerta o ventana del muro
-  if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k) || /^cuerpo\|dv\d+$/.test(k)) return null;
+  if (!modulo(mid) || modulo(mid).artefacto || /^(t|a)\|/.test(k) || /^esq\|giro/.test(k)) return null;
   return { m: mid, k };
 };
 function claveDeSel() {
   if (sel?.tipo === 'vano') return { vano: { i: sel.i, v: sel.v } };
   if (!sel?.m || !modulo(sel.m) || modulo(sel.m).artefacto) return null;
   const k = { frente: `f|${sel.col}|${sel.fila}`, cuerpo: 'cuerpo', pieza: `cuerpo|${sel.p}`, repisa: `f|${sel.col}|${sel.fila}|rep|${sel.i}`,
-    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte', div: sel.dir === 'h' ? `f|${sel.col}|${sel.fila}|div` : undefined }[sel.tipo];
+    zocalo: 'zocalo', cubierta: 'cubierta', modulo: 'frentes', soporte: 'soporte', div: sel.dir === 'h' ? `f|${sel.col}|${sel.fila}|div` : `div|${sel.col}` }[sel.tipo];
   return k ? { m: sel.m, k } : null;
 }
 const NOMBRE_PIEZA = { izq: 'Costado izquierdo', der: 'Costado derecho', piso: 'Base', techo: 'Techo', fondo: 'Fondo', soporte: 'Soporte delantero' };
@@ -336,6 +343,8 @@ function nombreClave(k) {
   if (k === 'cuerpo') return 'todo el cuerpo';
   if (k === 'zocalo') return 'el zócalo'; if (k === 'cubierta') return 'la cubierta';
   if (k === 'soporte') return 'el soporte delantero';
+  if (/^div\|\d+$/.test(k)) return `la división vertical ${+k.slice(4) + 1}`;
+  if (k === 'esq|repisa') return 'las repisas del esquinero'; if (k === 'esq|div') return 'las divisiones del esquinero';
   const p = k.split('|');
   if (p[0] === 'cuerpo') return (NOMBRE_PIEZA[p[1]] || p[1]).toLowerCase();
   if (p[0] === 'f') return p[3] === 'rep' ? `la repisa ${+p[4] + 1} (c${+p[1] + 1}·f${+p[2] + 1})` : p[3] === 'div' ? 'las divisiones de la sección' : `el frente c${+p[1] + 1}·f${+p[2] + 1}`;

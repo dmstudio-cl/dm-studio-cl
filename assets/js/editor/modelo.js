@@ -776,7 +776,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       if (!quitada('piso')) B({ w: W - 2 * TC, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, canto(tab('piso')), `${id}|cuerpo|piso`); // base
       if (isla) { // divisiones entre columnas: sus cantos se ven entre las puertas empotradas
         const xs = [...new Set(celdas(m).filter((c) => c.x1 < W - .05).map((c) => +c.x1.toFixed(2)))];
-        xs.forEach((x, i) => B({ w: T, h: H - piso, d: D - T, x, y: piso + (H - piso) / 2, z: T + (D - T) / 2 }, canto(tab('cuerpo')), `${id}|cuerpo|dv${i}`));
+        xs.forEach((x, i) => B({ w: T, h: H - piso, d: D - T, x, y: piso + (H - piso) / 2, z: T + (D - T) / 2 }, canto(propio(`div|${i}`, 'cuerpo') || M.cuerpo), `${id}|cuerpo|dv${i}`));
       }
       // Techo de melamina: por defecto los basales no llevan (quedan abiertos arriba) y aéreos y torres sí;
       // cada mueble puede forzarlo con m.techo = 'si' | 'no' (ej. el nicho del microondas o una torre con placa arriba)
@@ -831,14 +831,14 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
             // regla del dueño (2026-11-25): repisas y divisiones horizontales van siempre DENTRO de los costados (y de las
             // divisiones verticales); los costados son piezas completas y no se ve el canto de ninguna repisa por fuera
             const xa = c.x0 + (c.x0 < .05 ? TC : T / 2), xb = c.x1 - (c.x1 > W - .05 ? TC : T / 2);
-            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col - 1}`);  // división vertical izq. (la isla las dibuja enteras)
-            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col}`); // división vertical der.
+            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, propio(`div|${c.col - 1}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col - 1}`);  // división vertical izq. (la isla las dibuja enteras)
+            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, propio(`div|${c.col}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col}`); // división vertical der.
             repisas(c, k, ref, xa, xb); // las divisiones de arriba y abajo van en divisionesH()
           }
         } else if (abre) { // mueble enfocado: divisiones y repisas a la vista al abrir, puertas que giran y cajones que salen
           if (ver('cuerpo')) {
-            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col - 1}`);
-            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, MD, `${id}|cuerpo|dv${c.col}`);
+            if (c.x0 > .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x0, y: c.y, z: D / 2 }, propio(`div|${c.col - 1}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col - 1}`);
+            if (c.x1 < W - .05 && !isla) B({ w: T, h: c.h, d: D, x: c.x1, y: c.y, z: D / 2 }, propio(`div|${c.col}`, 'cuerpo') || M.cuerpo, `${id}|cuerpo|dv${c.col}`);
             const xa = c.x0 + (c.x0 < .05 ? TC : T / 2), xb = c.x1 - (c.x1 > W - .05 ? TC : T / 2); // dentro de los costados
             divHojas();
             if (c.tipo !== 'cajon') repisas(c, k, ref, xa, xb);
