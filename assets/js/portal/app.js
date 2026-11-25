@@ -2,6 +2,7 @@
 import { clp } from '../cart.js';
 import { createScene } from './escena-css.js'; // CSS 3D: sin WebGL ni Three.js
 import { iconoBorde } from '../editor/modelo.js';
+import { SOLUCIONES } from '../editor/esquinero.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -46,6 +47,7 @@ export async function startApp(api) {
     materiales: { ...(proyecto.seleccion?.materiales || {}) }, // color propio por pieza: { "idMódulo|pieza": idMelamina }
     // muebles que el cliente quiere cotizar (vacío = todos); si ya aprobó, los aprobados
     modulos: [...(proyecto.aprobacion?.modulos || proyecto.seleccion?.modulos || [])],
+    esquineros: { ...(proyecto.seleccion?.esquineros || {}) }, // tipo de esquina elegido en cada esquinero
   };
   // modulos: los muebles elegidos para cotizar (vacío = todos); los demás no se dibujan
   const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales, modulos: sel.modulos });
@@ -207,6 +209,7 @@ export async function startApp(api) {
       ['#panticipo', '#panticipo3'].forEach((s) => { $(s).textContent = clp(lastQuote.anticipo); });
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
+      mostrarFoco(); // precio del mueble enfocado al día (ej. al cambiar el tipo de esquina)
       pintarDespacho(lastQuote);
     } catch (e) {
       ['#ptotal', '#ptotal2', '#ptotal3', '#panticipo3'].forEach((s) => { $(s).textContent = '—'; });
@@ -487,6 +490,17 @@ export async function startApp(api) {
     }, 260);
   });
   cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
+  // Esquinero enfocado (dueño, 2026-11-25): el cliente elige el tipo de esquina entre los que calzan con sus medidas;
+  // el precio se recalcula al elegir. Tras aprobar, el cliente ya no lo cambia (el estudio sí, para revisar).
+  function tiposEsquina(id) {
+    const m = (proyecto.modulos || []).find((x) => x.id === id), ops = proyecto.esquineros_opciones?.[id] || [];
+    if (m?.tipo !== 'esquinero' || ops.length < 2) return '';
+    const actual = ops.includes(sel.esquineros?.[id]) ? sel.esquineros[id] : m.solucion, fijo = aprobado() && !isOwner;
+    const ayuda = (SOLUCIONES[actual]?.ayuda || '').split('. ')[0];
+    return `<p class="small" style="margin:8px 0 4px"><b>Tipo de esquina</b></p>
+      <div class="pfoco-btns">${ops.map((s) => `<button type="button" data-esq-tipo="${esc(s)}" aria-pressed="${s === actual}"${fijo ? ' disabled' : ''}>${esc(SOLUCIONES[s]?.nombre || s)}</button>`).join('')}</div>
+      ${ayuda ? `<p class="small muted" style="margin:4px 0 8px">${esc(ayuda)}.</p>` : ''}`;
+  }
   // Panel del mueble enfocado: nombre, precio, abrir y cerrar, y volver a la vista general
   function mostrarFoco() {
     const box = $('#pfoco'); if (!box) return;
@@ -495,6 +509,7 @@ export async function startApp(api) {
     const q = lastQuote?.modulos?.find((m) => m.id === id), abiertos = scene.abiertos(), partes = scene.partesEsquinero();
     box.innerHTML = `<div class="pfoco-cab"><b>${esc(scene.nombreFoco() || 'Mueble')}</b>${q ? `<span class="mono">${q.por_confirmar ? 'desde ' : ''}${clp(q.precio)}</span>` : ''}</div>
       <p class="small muted" style="margin:0">Toca una puerta o un cajón para abrirlo o cerrarlo. Para cambiar el color de una pieza, tócala o arrastra un color encima.</p>
+      ${tiposEsquina(id)}
       <div class="pfoco-btns">${partes.length
         ? partes.map((p) => `<button type="button" data-foco="${esc(p.key)}" aria-pressed="${abiertos.includes(p.key)}">${esc(p.nombre)}</button>`).join('')
         : '<button type="button" data-foco-todo="1">Abrir todo</button><button type="button" data-foco-todo="0">Cerrar todo</button>'}</div>
@@ -503,6 +518,12 @@ export async function startApp(api) {
   $('#pfoco')?.addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.focoVolver != null) { scene.desenfocar(); mostrarFoco(); return; }
+    if (b.dataset.esqTipo) { // otro tipo de esquina: se redibuja el esquinero y se recalcula el precio
+      const id = scene.foco; if (!id) return;
+      sel.esquineros = { ...(sel.esquineros || {}), [id]: b.dataset.esqTipo };
+      scene.update(sel); if (b.dataset.esqTipo === '1') scene.enfocar(id); // la puerta giratoria gira sola al enfocarla
+      mostrarFoco(); schedule(); return;
+    }
     if (b.dataset.focoTodo != null) { scene.todos(b.dataset.focoTodo === '1'); mostrarFoco(); return; }
     if (b.dataset.foco) { const k = b.dataset.foco; if (k === 'vueltaA' || k === 'vueltaB') scene.alternar(null, k.slice(-1)); else scene.alternar(k); mostrarFoco(); }
   });

@@ -38,6 +38,11 @@ export function createScene(el) {
     const frente = m ? (m.imagen && m.tipo !== 'unicolor' ? `url('${m.imagen}') center / 60em 60em, ${m.hex}` : m.hex) : '#cfc6b8';
     return { ...matsColores(proyecto?.colores, frente), cubierta: s.cubierta?.color || '#cfc9bc', borde: s.borde?.perfil || 'recto', material: fondoMaterial };
   }
+  // Tipo de esquina elegido por el cliente, si es uno de los que ofrece el proyecto (dueño, 2026-11-25)
+  function esquinaElegida(m, i, s) {
+    const id = m.id || `m${i}`, sol = s.esquineros?.[id];
+    return m.tipo === 'esquinero' && sol && (proyecto.esquineros_opciones?.[id] || []).includes(sol) ? sol : null;
+  }
   function modelo(s) {
     // muebles que el cliente desmarcó en «Muebles a cotizar»: desaparecen (las cocinas de piso no se cotizan y quedan)
     const elegidos = Array.isArray(s.modulos) && s.modulos.length ? new Set(s.modulos) : null;
@@ -52,6 +57,7 @@ export function createScene(el) {
         materiales: { ...leerJSON(m.materiales), ...Object.fromEntries(Object.entries(s.materiales || {}).filter(([k]) => k.startsWith(`${m.id || `m${i}`}|`)).map(([k, v]) => [k.slice(k.indexOf('|') + 1), v])) },
         x: +m.x || 0, z: +m.z || 0, elevacion: +m.elevacion || 0, rotacion: +m.rotacion || 0,
         tiradores: tiradoresCliente(m, s.tirador),
+        ...(esquinaElegida(m, i, s) ? { solucion: esquinaElegida(m, i, s) } : {}), // tipo de esquina que eligió el cliente
       })),
     };
   }

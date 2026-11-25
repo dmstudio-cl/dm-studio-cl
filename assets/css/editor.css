@@ -413,3 +413,5 @@ html.ed-bloqueado body.ed > :not(.ed-acceso) { display: none !important; }
 
 .ed-gotas { display: inline-flex; align-items: center; gap: 5px; }
 .ed-gotas .ed-ico { flex: none; }
+/* Mueble seleccionado en 3D: los demás semitransparentes (siguen tocables) */
+.c3-tenue-ed { opacity: .22; }
