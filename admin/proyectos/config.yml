@@ -304,6 +304,7 @@ collections:
           - { label: Factor de precio, name: factor, widget: number, value_type: float, default: 2.3 }
           - { label: Anticipo, name: anticipo, widget: number, value_type: float, default: 0.5, hint: "0.5 = 50%" }
           - { label: Mano de obra mínima por cajón (CLP), name: cajon_mano_obra_minima, widget: number, value_type: int, required: false, default: 15000, hint: "Si la fórmula deja menos ganancia en un cajón, se cobra este mínimo (sin luz ni factor). Vacío = 15.000" }
+          - { label: Factor de los esquineros especiales, name: esquinero_factor, widget: number, value_type: float, required: false, default: 2.5, hint: "Puerta giratoria, cajón space corner y cajones pivotantes llevan más trabajo: este factor reemplaza al normal sobre sus materiales" }
           - { label: Condiciones generales, name: condiciones, widget: text, required: false, default: "Precio en CLP. Anticipo del 50% para iniciar la fabricación; saldo contra entrega e instalación." }
           - label: Precio por plancha de melamina
             name: planchas
@@ -337,6 +338,10 @@ collections:
               - { label: Bisagra recta 90° (CLP c/u), name: bisagra_recta, widget: number, value_type: int, required: false, hint: "Puertas que abren hacia un costado libre" }
               - { label: Bisagra semicurva (CLP c/u), name: bisagra_semicurva, widget: number, value_type: int, required: false, hint: "Puertas que abren hacia otra puerta (división compartida)" }
               - { label: Pino tapa canteada 1x4 de 3,2 m (CLP por tira), name: pino_tira, widget: number, value_type: int, required: false, default: 1600, hint: "Zócalo y soportes traseros" }
+              - { label: Bisagra de 165° cierre suave (CLP c/u), name: bisagra_165, widget: number, value_type: int, required: false, default: 3500, hint: "Esquineros 2a y 2b: 2 por hoja de 30 cm, 3 si la hoja es más ancha" }
+              - { label: Plato giratorio 15 cm (CLP c/u), name: plato_giratorio, widget: number, value_type: int, required: false, default: 7590, hint: "Esquinero puerta giratoria: 2 por módulo (abajo y arriba). Imperial, producto 2206" }
+              - { label: Retenes magnéticos (CLP por caja de 10), name: retenes_caja, widget: number, value_type: int, required: false, default: 4290, hint: "Esquinero puerta giratoria: 2 por módulo; se cobra la caja completa (una caja sirve para varios módulos del proyecto)" }
+              - { label: Barra de acero 3/4" de 6 m (CLP por barra), name: barra_eje, widget: number, value_type: int, required: false, default: 15781, hint: "Ejes de los cajones pivotantes: 2 por módulo; se cobra la barra entera (el resto sirve para otro módulo del proyecto)" }
               - { label: Tapacanto de color (CLP por metro), name: tapacanto_ml, widget: number, value_type: int, required: false, hint: "El de los frentes y piezas de color (ej. PVC 22×1 mm)" }
               - { label: Tapacanto blanco (CLP por metro), name: tapacanto_blanco_ml, widget: number, value_type: int, required: false, hint: "El de las piezas en melamina blanca (ej. PVC blanco 22×0,45 mm). Vacío = el de color." }
               - { label: Merma de tableros (%), name: merma, widget: number, value_type: float, default: 0.1, required: false, hint: "0.1 = 10% extra por cortes" }
@@ -348,7 +353,7 @@ collections:
                 hint: "Pega el link de la ficha en Imperial y/o Homecenter. Contenido = unidades del paquete (bisagras), pares (correderas) o metros del rollo (tapacanto)."
                 fields:
                   - { label: Ítem, name: item, widget: select, options: [bisagra, bisagra_recta, bisagra_semicurva, corredera, tapacanto, tapacanto_blanco, pino] }
-                  - { label: Largo (solo correderas, cm), name: largo, widget: select, required: false, options: ["25", "30", "35", "40", "45", "50", "55"] }
+                  - { label: Largo (solo correderas, cm), name: largo, widget: select, required: false, options: ["25", "30", "35", "40", "45", "50", "55", "60"] }
                   - { label: Contenido del paquete, name: contenido, widget: number, value_type: float, default: 1 }
                   - { label: Link Imperial, name: url_imperial, widget: string, required: false }
                   - { label: Link Homecenter, name: url_sodimac, widget: string, required: false }
@@ -357,7 +362,7 @@ collections:
                 widget: list
                 required: false
                 fields:
-                  - { label: Largo (cm), name: largo, widget: select, options: ["25", "30", "35", "40", "45", "50", "55"] }
+                  - { label: Largo (cm), name: largo, widget: select, options: ["25", "30", "35", "40", "45", "50", "55", "60"] }
                   - { label: Precio por par (CLP), name: precio, widget: number, value_type: int }
           - label: Tiradores
             name: tiradores

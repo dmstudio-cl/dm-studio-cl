@@ -17,10 +17,11 @@
 // - Tapacanto de 1 mm: puertas y frentes los 4 cantos; base y techo 3 (frente y laterales); costados,
 //   divisiones y soporte delantero solo el frontal. La medida de corte descuenta 1 mm por canto enchapado.
 import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias, hojasDe, CHOLGUAN, unionesL, zocaloL, soportesL } from './modelo.js';
+import { despieceEsquinero } from './esquinero.js';
 
 export const BLANCA = 'blanco-softwood'; // Masisa Blanco
 const CUERPO = { blanco: BLANCA, gris: 'gris', negro: 'negro-natural-matt' };
-export const CORREDERAS = [25, 30, 35, 40, 45, 50, 55]; // largos comerciales (cm)
+export const CORREDERAS = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (cm); la de 60 se sumó al stock el 2026-11-24
 export const TAPACANTO = .1;  // cm que suma cada canto enchapado
 export const LUZ = .3;        // cm entre hojas y frentes
 export const SOPORTE = 10;    // alto de los soportes horizontales (cm)
@@ -93,7 +94,7 @@ function tirasPino(largos) {
 }
 
 export function despiece(modelo) {
-  const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [], cajones = [];
+  const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [], cajones = [], esquineros = [];
   const herrajes = { bisagras: 0, bisagras_rectas: 0, bisagras_semicurvas: 0, correderas: {} };
   const porModulo = {}; // herrajes de cada mueble (el Worker cotiza cualquier combinación de muebles)
   let canto = 0, cantoBlanco = 0; // cm de tapacanto (total y de las piezas en melamina blanca)
@@ -115,10 +116,22 @@ export function despiece(modelo) {
       piezas.push({ m: m.id, k, mueble: m.nombre, nombre, material, tipo, ancho: r1(a), alto: r1(b), area: Math.round(a * b) / 1e4,
         espesor: tipo === 'cholguan' ? 3 : T * 10, cantos: { ancho: ca, alto: cb },
         corte: { ancho: r1(a - cb * TAPACANTO), alto: r1(b - ca * TAPACANTO) }, veta: vetaDe(a, b), ...extra });
-      canto += a * ca + b * cb;
-      if (material === BLANCA) cantoBlanco += a * ca + b * cb; // tapacanto blanco (más barato); el resto es de color
+      const tt = +extra.tapacanto_taller || 0; // cantos que se enchapan en el taller (ej. el calado de la base del esquinero)
+      canto += a * ca + b * cb + tt;
+      if (material === BLANCA) cantoBlanco += a * ca + b * cb + tt; // tapacanto blanco (más barato); el resto es de color
     };
     const pino = (nombre, largo, k = 'pino') => { if (largo <= 0) return; pinos.push(largo); piezas.push({ m: m.id, k, mueble: m.nombre, nombre, material: 'pino-1x4', tipo: 'pino', ancho: r1(largo), alto: SOPORTE, area: 0, espesor: PINO.espesor * 10 }); };
+    if (m.tipo === 'esquinero') { // módulo esquinero: sus propias piezas (esquinero.js)
+      esquineros.push(despieceEsquinero(m, { add, pino, herrajes, mat, cuerpoDef, frente: 'frente', BLANCA }));
+      if (m.cubierta) { // cubierta en L como 2 rectángulos: el lado 1 completo y el resto del lado 2
+        const T2 = tablero(m), fa = Math.min(+m.fondo_a || 58, +m.profundidad - T2 - 5), fb = Math.min(+m.fondo_b || 58, +m.ancho - T2 - 5);
+        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.ancho), ancho: r1(fa + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
+        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.profundidad - fa - T2 - 6), ancho: r1(fb + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
+      }
+      const corE = {}; for (const [l, n] of Object.entries(herrajes.correderas)) { const d = n - (h0.c[l] || 0); if (d) corE[l] = d; }
+      porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: corE };
+      continue;
+    }
 
     // ---- cuerpo
     // Alto de costados y divisiones: van sobre la base y bajo el techo (si los hay)
@@ -205,7 +218,7 @@ export function despiece(modelo) {
         let frenteY0 = fy0, frenteY1 = fy1;
         if (f.montaje === 'dentro') { // frente dentro de las separaciones: 3 mm de luz contra el marco y entre cajones (1,5 mm cada uno)
           frenteY0 = c.y0 <= Z + .05 ? y0i + LUZ : c.y0 + LUZ / 2; frenteY1 = c.y1 >= H - .05 ? y1i - LUZ : c.y1 - LUZ / 2;
-          add(k, 'Frente de cajón (dentro)', frente, mm(wi - 2 * LUZ), mm(frenteY1 - frenteY0), c4, 'tablero', { cajon: k });
+          add(k, 'Frente de cajón (dentro)', frente, mmAbajo(wi - 2 * LUZ), mmAbajo(frenteY1 - frenteY0), c4, 'tablero', { cajon: k });
         } else add(k, 'Frente de cajón', frente, fw, fh, c4, 'tablero', { cajon: k }); // sobre los cantos: igual que una puerta
         // caja: 12,5 mm por lado para las correderas y 2 cm menos que el fondo del cuerpo. Alto: sus costados quedan
         // 2 cm bajo el soporte de 10 cm (o el techo) en el cajón de arriba, y 2 cm bajo el canto superior del frente en los demás.
@@ -251,7 +264,7 @@ export function despiece(modelo) {
     porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: cor };
   }
   herrajes.pino = { tiras: tirasPino(pinos), metros: Math.round(pinos.reduce((a, b) => a + b, 0)) / 100 };
-  return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, cajones, tapacanto_m: Math.round(canto) / 100,
+  return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, cajones, esquineros, tapacanto_m: Math.round(canto) / 100,
     tapacanto_blanco_m: Math.round(cantoBlanco) / 100, tapacanto_color_m: Math.round(canto - cantoBlanco) / 100, tapacanto_mm: TAPACANTO * 10 };
 }
 

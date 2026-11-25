@@ -21,6 +21,7 @@
 
 import { dibujarObjeto, OBJETOS } from './objetos.js';
 import { ARTEFACTOS, cubiertaCoccion, acabado, cubaDe, escurridorDe, partesLavaplatos, ajustarArtefacto } from './artefactos.js';
+import { dibujarEsquinero, geoEsquinero } from './esquinero.js';
 
 export const T = 1.5;     // espesor de tablero por defecto: melamina de 15 mm
 export const tablero = (m) => (+m?.tablero || 15) / 10; // espesor del módulo en cm (15 o 18 mm)
@@ -131,6 +132,7 @@ export function nuevoModulo({ x = 0, pz = 0, rotacion = 0, elevacion = 0, ancho 
 // Celdas (frentes) de un módulo en coordenadas locales: x desde el costado izquierdo, y desde el piso.
 // Cada celda: { col, fila, x, y, w, h } con x,y = centro. Misma lógica que three/mueble.js.
 export function celdas(m) {
+  if (m?.tipo === 'esquinero') return []; // el esquinero tiene sus propios frentes (esquinero.js)
   const W = +m.ancho, H = +m.alto, Z = m.tipo === 'aereo' ? 0 : (+m.zocalo || 0);
   const cols = m.columnas?.length ? m.columnas : [{ ancho: W, frentes: [{ tipo: 'puerta', alto: H - Z }] }];
   const sumW = cols.reduce((a, c) => a + (+c.ancho || 0), 0) || W;
@@ -220,7 +222,7 @@ export function marcoZocalo(m, T = tablero(m)) {
 // Devuelve [{ A, B, s, ladoB, caja }]: s = costado de A en la esquina ('izq' | 'der'); ladoB = extremo de B que toca a A;
 // caja = rectángulo del cuerpo de B en coordenadas locales de A.
 export function unionesL(modelo) {
-  const ms = (modelo.modulos || []).filter((m) => m && !m.artefacto), out = [];
+  const ms = (modelo.modulos || []).filter((m) => m && !m.artefacto && m.tipo !== 'esquinero'), out = [];
   const aLocal = (A, [x, z]) => girar(x - +A.x, z - +A.z, -(+A.rotacion || 0));
   const mundo = (m, lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
   for (const A of ms) for (const B of ms) {
@@ -317,6 +319,8 @@ export function tiradoresCliente(m, sel) {
   const forma = sel?.forma || 'barra';
   if (forma === 'sin') return [];
   const color = sel?.color || COLORES_TIRADOR.negro;
+  // esquinero: un solo dato con el modelo y el color; sus frentes dicen dónde va cada tirador (esquinero.js)
+  if (m?.tipo === 'esquinero') return sel ? [{ id: 'esq', esq: true, modelo: modeloCatalogo({ forma, largo: sel.largo, grosor: sel.grosor }), color }] : (m.tiradores || []).filter((t) => t?.esq);
   const cs = celdas(m);
   const celda = (t) => cs.find((k) => k.col === t.col && k.fila === t.fila);
   // el modelo a escala con las medidas reales del tirador elegido (barra: entre centros y grosor; perilla: diámetro)
@@ -375,7 +379,7 @@ export function espacioPortal(esp) {
 // ----- geometría en planta (x a lo largo del muro principal, z hacia la habitación) -----
 // Rotación en planta igual que Three.js (rotation.y): con 90° el frente (+z) mira hacia +x.
 export const girar = (x, z, deg) => { const a = deg * Math.PI / 180; return [x * Math.cos(a) + z * Math.sin(a), -x * Math.sin(a) + z * Math.cos(a)]; };
-export const fondoTotal = (m) => +m.profundidad + (m.artefacto ? 0 : tablero(m)); // cuerpo + frentes
+export const fondoTotal = (m) => +m.profundidad + (m.artefacto || m.tipo === 'esquinero' ? 0 : tablero(m)); // cuerpo + frentes (el esquinero ya los incluye)
 // Cubierta de un módulo en coordenadas locales: ancho W y fondo Dc (desde la pared hasta el canto)
 // Vuelos de la cubierta (cm que sobresale del cuerpo por cada lado). Frente: 2 cm por defecto.
 export const vuelosDe = (m) => ({ frente: m.vuelo_frente != null && m.vuelo_frente !== '' ? Math.max(0, +m.vuelo_frente) : OVER,
@@ -549,6 +553,8 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const G = st.group({ x: +m.x, y: +m.elevacion, z: +m.z, ry: +m.rotacion || 0 });
     const B = (o, mat, ref) => G.box({ ...o, tex: mat, ref });
     if (m.artefacto) { dibujarCocinaPiso(G, m, M.cocina); return; } // cocina de piso: no lleva cuerpo de melamina
+    const propioE = (...claves) => { for (const k of claves) { const mid = m.materiales?.[k]; const bg = mid && mats.material?.(mid); if (bg) return { bg }; } return null; };
+    if (m.tipo === 'esquinero') { dibujarEsquinero(G, m, { M, ver, fab: fabricacion, propio: propioE, PINO, tiradorDef, colorTirador: (c) => COLORES_TIRADOR[c] || c }); return; }
     const esBasal = m.tipo !== 'aereo' && m.tipo !== 'torre';
     const fab = fabricacion && !m.artefacto;
     const recorteSup = fab ? (m.cubierta ? 7 : 1) : 0; // cuánto bajan los frentes del borde superior
@@ -656,6 +662,16 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M);
     }
   });
+  // Esquinero sin solución elegida: pin rojo «?» sobre el rincón (como los pines de comentarios)
+  for (const m of modelo.modulos) {
+    if (m?.tipo !== 'esquinero' || geoEsquinero(m).sol) continue;
+    const g = geoEsquinero(m), [dx, dz] = girar(g.X(g.xb - g.T), g.fa + g.T, +m.rotacion || 0);
+    const d = document.createElement('div');
+    d.className = 'c3-pin esq-pin';
+    d.style.transform = `translate3d(${+m.x + dx}em, ${-(+m.elevacion + g.H + (m.cubierta ? CT : 0) + 1)}em, ${+m.z + dz}em)`;
+    d.innerHTML = '<span title="Falta elegir la solución de esta esquina" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:grid;place-items:center;width:26px;height:26px;border-radius:50% 50% 50% 0;rotate:-45deg;background:#b4322e;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);font:700 14px/1 sans-serif;color:#fff"><b style="rotate:45deg">?</b></span>';
+    st.rig.append(d);
+  }
   // Marca de selección: las caras de la pieza seleccionada se resaltan
   // electrodomésticos sueltos (refrigerador, microondas…)
   for (const o of modelo.objetos || []) if (o && OBJETOS[o.tipo]) dibujarObjeto(st, o, `obj|${o.id}`, M.cocina);

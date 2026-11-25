@@ -225,7 +225,8 @@ export async function startApp(api) {
     box.innerHTML = `<p class="pmuebles-tit small"><span class="muted">Muebles a cotizar (${elegidos} de ${mods.length})</span>${elegidos < mods.length && !(aprobado() && !isOwner) ? '<button type="button" data-todos>Elegir todos</button>' : ''}</p>
       ${mods.map((m) => `<label class="pmueble${m.incluido ? '' : ' fuera'}">
         <input type="checkbox" data-mod="${esc(m.id)}"${m.incluido ? ' checked' : ''}${aprobado() && !isOwner ? ' disabled' : ''}>
-        <span class="pm-nombre">${esc(m.nombre)}</span><span class="pm-precio">${clp(m.precio)}</span>
+        <span class="pm-nombre">${esc(m.nombre)}</span><span class="pm-precio">${m.por_confirmar ? 'desde ' : ''}${clp(m.precio)}</span>
+        ${m.por_confirmar ? '<small>Precio por confirmar: falta definir la solución de esta esquina.</small>' : ''}
         ${isOwner && m.materiales != null ? `<small>Materiales ${clp(m.materiales)} · mano de obra ${clp(m.mano_obra)}</small>` : ''}</label>`).join('')}
       ${q.extras ? `<div class="pmueble extra"><span></span><span class="pm-nombre">Gastos generales del proyecto</span><span class="pm-precio">${clp(q.extras)}</span><small>Transporte, instalación e insumos: se cobran completos.</small></div>` : ''}
       <p class="pmuebles-nota">${q.parcial ? 'Los muebles tachados no se incluyen y se ocultan del modelo (su precio es el que tienen dentro del proyecto completo). Al cotizar solo algunos, las planchas se compran enteras para ellos, por eso cada uno puede costar un poco más.' : 'Desmarca los muebles que no quieras: desaparecen del modelo y el total se recalcula. Puedes aprobar solo los que elijas.'}</p>`;
