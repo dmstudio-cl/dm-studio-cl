@@ -289,6 +289,7 @@ collections:
           - { label: Cantidad, name: cantidad, widget: number, value_type: float, default: 1 }
           - { label: Precio unitario (CLP), name: unitario, widget: number, value_type: int }
           - { label: Precio según la melamina elegida, name: por_melamina, widget: boolean, default: false, required: false, hint: "Si está activo, se usa el precio de plancha de la melamina que elija el cliente (Configuración de precios)." }
+      - { label: Terceros de cubierta de este proyecto (opcional), name: terceros_cubierta, widget: number, value_type: float, required: false, hint: "0.1 = 10 % sobre el costo de la cubierta que instala un tercero. Vacío = el general de Precios." }
       - { label: Condiciones (opcional), name: condiciones, widget: text, required: false, hint: "Si está vacío se usan las condiciones generales." }
       - { label: Notas internas, name: notas, widget: text, required: false }
 
@@ -303,7 +304,19 @@ collections:
           - { label: Luz (% sobre materiales), name: luz, widget: number, value_type: float, default: 0.2, hint: "0.2 = 20%" }
           - { label: Factor de precio, name: factor, widget: number, value_type: float, default: 2.3 }
           - { label: Anticipo, name: anticipo, widget: number, value_type: float, default: 0.5, hint: "0.5 = 50%" }
-          - { label: Mano de obra mínima por cajón (CLP), name: cajon_mano_obra_minima, widget: number, value_type: int, required: false, default: 15000, hint: "Si la fórmula deja menos ganancia en un cajón, se cobra este mínimo (sin luz ni factor). Vacío = 15.000" }
+          - { label: Mano de obra mínima por cajón (CLP), name: cajon_mano_obra_minima, widget: number, value_type: int, required: false, default: 18000, hint: "Si la fórmula deja menos ganancia en un cajón, se cobra este mínimo (sin luz ni factor). Vacío = 15.000" }
+          - label: Factor por tipo de mueble
+            name: factores
+            widget: object
+            required: false
+            hint: "Según lo difícil que es armar cada tipo (dueño, 2026-11-25). Vacío = el factor general de arriba. El anticipo sigue siendo el 50 %."
+            fields:
+              - { label: Basal, name: basal, widget: number, value_type: float, required: false, default: 2.6 }
+              - { label: Aéreo, name: aereo, widget: number, value_type: float, required: false, default: 2.5 }
+              - { label: Torre, name: torre, widget: number, value_type: float, required: false, default: 2.3 }
+              - { label: Isla, name: isla, widget: number, value_type: float, required: false, default: 2.9 }
+              - { label: Esquinero, name: esquinero, widget: number, value_type: float, required: false, default: 3.0 }
+          - { label: Terceros de cubierta (instalación y despacho de la piedra), name: terceros_cubierta, widget: number, value_type: float, required: false, default: 0.1, hint: "0.1 = 10 % sobre el costo de las cubiertas que hace un tercero (no las de taller). Se cobra aparte, sin margen y no cuenta como tu mano de obra. Cada proyecto puede tener el suyo." }
           - { label: Condiciones generales, name: condiciones, widget: text, required: false, default: "Precio en CLP. Anticipo del 50% para iniciar la fabricación; saldo contra entrega e instalación." }
           - label: Precio por plancha de melamina
             name: planchas
