@@ -4,7 +4,7 @@
 import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro, vanosDe, VANOS, artefactosDe, girar } from './modelo.js';
 import { ARTEFACTOS } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
-import { cubiertaDe, tablero } from './modelo.js';
+import { cubiertaDe, tablero, celdas, fondoTotal, GAP } from './modelo.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -108,6 +108,8 @@ export function crearPlanta(ctx) {
       const [cx, cz] = centro(m);
       el('text', { x: M.X(cx), y: M.Y(cz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
     }
+    // apertura de las puertas (arco como en los planos): se toca para elegir la puerta y cambiar hacia dónde abre
+    for (const m of modelo.modulos) aperturas(m, M, sel);
     // cubierta seleccionada: su contorno con los vuelos; cada borde se arrastra para extruirla (ej. barra de desayuno)
     if (sel?.tipo === 'cubierta') {
       const m = modelo.modulos.find((x) => x.id === sel.m);
@@ -180,6 +182,40 @@ export function crearPlanta(ctx) {
       const a = gesto.a, b = gesto.b;
       el('rect', { x: M.X(Math.min(a.x, b.x)), y: M.Y(Math.min(a.z, b.z)), width: Math.abs(b.x - a.x) * M.s, height: Math.abs(b.z - a.z) * M.s, class: 'borrador' }, plano);
       el('text', { x: M.X((a.x + b.x) / 2), y: M.Y(Math.min(a.z, b.z)) - 8, 'text-anchor': 'middle' }, el('g', { class: 'cota' }, plano)).textContent = `${cm(Math.abs(b.x - a.x))} × ${cm(Math.abs(b.z - a.z))} cm`;
+    }
+  }
+
+  // Arcos de apertura de las puertas de un mueble, en su frente. Por columna se dibuja la puerta elegida
+  // (o la más alta de esa columna); una sección de varias hojas abre hacia afuera desde el centro.
+  function aperturas(m, M, sel) {
+    if (m.artefacto) return;
+    const D = fondoTotal(m), r = +m.rotacion || 0;
+    const P = (lx, lz) => { const [dx, dz] = girar(lx, lz, r); return [M.X(+m.x + dx), M.Y(+m.z + dz)]; };
+    const cs = celdas(m).filter((c) => c.tipo === 'puerta' || c.tipo === 'puerta_doble');
+    const porCol = new Map();
+    for (const c of cs) {
+      const elegida = sel?.tipo === 'frente' && sel.m === m.id && sel.col === c.col && sel.fila === c.fila;
+      const prev = porCol.get(c.col);
+      if (!prev || elegida || (!prev.elegida && c.h > prev.c.h)) porCol.set(c.col, { c, elegida });
+    }
+    for (const { c, elegida } of porCol.values()) {
+      const f = m.columnas?.[c.col]?.frentes?.[c.fila] || {};
+      const g = el('g', { class: `apertura-planta${elegida ? ' sel' : ''}`, 'data-tipo': 'puerta-planta', 'data-m': m.id, 'data-col': c.col, 'data-fila': c.fila }, plano);
+      const hoja = (x0, x1, lado) => {
+        const w = x1 - x0;
+        if (lado === 'arriba' || lado === 'abajo') { // abatible: la hoja sale derecha hacia adelante
+          const a = P(x0, D), b = P(x1, D), a2 = P(x0, D + w * .35), b2 = P(x1, D + w * .35);
+          el('polygon', { points: [a, b, b2, a2].map((p) => p.join(',')).join(' '), class: 'abatible' }, g); return;
+        }
+        const xh = lado === 'derecha' ? x1 : x0, s = lado === 'derecha' ? -1 : 1;
+        const bis = P(xh, D), punta = P(xh, D + w), cierre = P(xh + s * w, D);
+        el('line', { x1: bis[0], y1: bis[1], x2: punta[0], y2: punta[1], class: 'hoja' }, g);
+        el('path', { d: `M ${cierre[0]} ${cierre[1]} A ${w * M.s} ${w * M.s} 0 0 ${s > 0 ? 1 : 0} ${punta[0]} ${punta[1]}`, class: 'arco' }, g);
+        // zona para tocar: el cuarto de círculo completo
+        el('path', { d: `M ${bis[0]} ${bis[1]} L ${cierre[0]} ${cierre[1]} A ${w * M.s} ${w * M.s} 0 0 ${s > 0 ? 1 : 0} ${punta[0]} ${punta[1]} Z`, class: 'toque' }, g);
+      };
+      if (c.tipo === 'puerta') hoja(c.x0 + GAP / 2, c.x1 - GAP / 2, f.bisagra || 'izquierda');
+      else { const n = c.hojas, lw = (c.w - (n - 1) * GAP) / n; for (let i = 0; i < n; i++) hoja(c.x0 + i * (lw + GAP), c.x0 + i * (lw + GAP) + lw, i <= (n - 1) / 2 ? 'izquierda' : 'derecha'); }
     }
   }
 
@@ -288,6 +324,9 @@ export function crearPlanta(ctx) {
     if (!t) { gesto = { tipo: 'marco', a: p, b: null, suma: e.shiftKey }; return; }
     const d = t.dataset;
     // Mayús + clic sobre un mueble: lo agrega o lo quita de la selección múltiple
+    if (d.tipo === 'puerta-planta') { // tocar el arco de una puerta: se elige esa puerta (su panel dice hacia dónde abre)
+      ctx.setSel({ tipo: 'frente', m: d.m, col: +d.col, fila: +d.fila }); ctx.render(); return;
+    }
     if (d.tipo === 'huella' && e.shiftKey) { ctx.alternar(d.m); return; }
     if (d.tipo === 'huella') {
       const m = modelo.modulos.find((x) => x.id === d.m);

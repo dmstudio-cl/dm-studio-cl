@@ -16,7 +16,7 @@
 //   división compartida con otra puerta. Cajones: un par de correderas del largo más cercano (sin pasarse).
 // - Tapacanto de 1 mm: puertas y frentes los 4 cantos; base y techo 3 (frente y laterales); costados,
 //   divisiones y soporte delantero solo el frontal. La medida de corte descuenta 1 mm por canto enchapado.
-import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias, hojasDe, CHOLGUAN } from './modelo.js';
+import { celdas, tablero, nivelesRepisa, marcoZocalo, cubiertaDe, girar, distancias, hojasDe, CHOLGUAN, unionesL, zocaloL, soportesL } from './modelo.js';
 
 export const BLANCA = 'blanco-softwood'; // Masisa Blanco
 const CUERPO = { blanco: BLANCA, gris: 'gris', negro: 'negro-natural-matt' };
@@ -93,11 +93,12 @@ function tirasPino(largos) {
 }
 
 export function despiece(modelo) {
-  const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [];
+  const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [], cajones = [];
   const herrajes = { bisagras: 0, bisagras_rectas: 0, bisagras_semicurvas: 0, correderas: {} };
   const porModulo = {}; // herrajes de cada mueble (el Worker cotiza cualquier combinación de muebles)
   let canto = 0, cantoBlanco = 0; // cm de tapacanto (total y de las piezas en melamina blanca)
   const cuerpoDef = CUERPO[col.cuerpo] || BLANCA;
+  const uniones = unionesL(modelo); // muebles en L: una trasera por muro y un zócalo en L
   for (const m of modelo.modulos || []) {
     if (!m || m.artefacto) continue; // artefactos de piso: referencia, no se fabrican
     const h0 = { b: herrajes.bisagras, r: herrajes.bisagras_rectas, s: herrajes.bisagras_semicurvas, c: { ...herrajes.correderas } };
@@ -133,7 +134,8 @@ export function despiece(modelo) {
     if (conTecho) add('cuerpo|techo', 'Techo', mat('cuerpo|techo', mat('cuerpo', cuerpoDef)), W, Dk, { ancho: 1, alto: 2 });
     if (!quitar.includes('fondo')) { // trasera de cholguán por detrás del cuerpo: tapa todos los cantos
       const f = m.materiales?.['cuerpo|fondo'] || m.materiales?.cuerpo;
-      add('cuerpo|fondo', 'Trasera (cholguán)', `cholguan:${f ? limpio(f) : 'blanco'}`, W, Hc, undefined, 'cholguan');
+      const uB = uniones.find((u) => u.B === m); // en L: sigue y tapa el costado del mueble de la esquina (un solo corte)
+      add('cuerpo|fondo', uB ? `Trasera en L (cholguán, tapa el costado de «${uB.A.nombre}»)` : 'Trasera (cholguán)', `cholguan:${f ? limpio(f) : 'blanco'}`, W + (uB ? +uB.A.profundidad : 0), Hc, undefined, 'cholguan');
     }
     // Soportes horizontales de 10 cm entre las caras interiores de los costados
     const li = W - 2 * T;
@@ -141,8 +143,11 @@ export function despiece(modelo) {
     const matSoporte = mat('soporte', mat('cuerpo', cuerpoDef)); // color propio del soporte (ej. coigüe), si se eligió
     const conSoporte = !quitar.includes('soporte'); // se puede quitar el soporte delantero (ej. nicho del microondas)
     if (E.clase === 'basal') {
-      if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
-      pino('Soporte superior trasero (pino)', li, 'soporte|atras');
+      // en L: el delantero y el trasero se unen a 45° en la esquina (largo hasta la punta larga del inglete)
+      const uL = uniones.find((u) => u.A === m || u.B === m), sL = uL ? soportesL(uL, PINO.espesor)[uL.A === m ? 'A' : 'B'] : null;
+      const enL = sL ? ', en L: corte a 45° en la esquina' : '';
+      if (conSoporte) add('soporte|frente', `Soporte superior delantero${enL}`, matSoporte, sL ? sL.frente.largo : li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
+      pino(`Soporte superior trasero (pino${enL})`, r1(sL ? sL.atras.largo : li), 'soporte|atras');
     }
     if (E.clase === 'aereo') {
       if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
@@ -200,19 +205,26 @@ export function despiece(modelo) {
         let frenteY0 = fy0, frenteY1 = fy1;
         if (f.montaje === 'dentro') { // frente dentro de las separaciones: 3 mm de luz contra el marco y entre cajones (1,5 mm cada uno)
           frenteY0 = c.y0 <= Z + .05 ? y0i + LUZ : c.y0 + LUZ / 2; frenteY1 = c.y1 >= H - .05 ? y1i - LUZ : c.y1 - LUZ / 2;
-          add(k, 'Frente de cajón (dentro)', frente, mm(wi - 2 * LUZ), mm(frenteY1 - frenteY0), c4);
-        } else add(k, 'Frente de cajón', frente, fw, fh, c4); // sobre los cantos: igual que una puerta
+          add(k, 'Frente de cajón (dentro)', frente, mm(wi - 2 * LUZ), mm(frenteY1 - frenteY0), c4, 'tablero', { cajon: k });
+        } else add(k, 'Frente de cajón', frente, fw, fh, c4, 'tablero', { cajon: k }); // sobre los cantos: igual que una puerta
         // caja: 12,5 mm por lado para las correderas y 2 cm menos que el fondo del cuerpo. Alto: sus costados quedan
         // 2 cm bajo el soporte de 10 cm (o el techo) en el cajón de arriba, y 2 cm bajo el canto superior del frente en los demás.
         const tope = (c.y1 >= H - .05 ? y1i : frenteY1) - 2, piso = Math.max(frenteY0, y0i);
-        const ac = r1(Math.max(6, tope - piso)), ic = r1(wi - 2 * 1.25), lc = r1(Dk - 2 - (f.montaje === 'dentro' ? T : 0));
+        const ac = r1(Math.max(6, tope - piso)), ic = r1(wi - 2 * 1.25), lc = r1(Dk - 2 - (f.montaje === 'dentro' ? T : 0)); // largo de la caja (laterales)
         const corr = CORREDERAS.filter((l) => l <= lc).pop() || CORREDERAS[0]; // la más cercana sin pasarse de la caja
         herrajes.correderas[corr] = (herrajes.correderas[corr] || 0) + 1; // un par por cajón
-        add(`${k}|caja`, 'Caja de cajón: lateral', BLANCA, lc, ac, { ancho: 1, alto: 0 });
-        add(`${k}|caja`, 'Caja de cajón: lateral', BLANCA, lc, ac, { ancho: 1, alto: 0 });
-        add(`${k}|caja`, 'Caja de cajón: frente interior', BLANCA, ic - 2 * T, ac, { ancho: 1, alto: 0 });
-        add(`${k}|caja`, 'Caja de cajón: trasera', BLANCA, ic - 2 * T, ac, { ancho: 1, alto: 0 });
-        add(`${k}|caja`, 'Fondo de cajón (cholguán)', 'cholguan:blanco', ic, lc, undefined, 'cholguan');
+        // Caja (dueño, 2026-11-23): sin frente interior. Los laterales van directo al frente con tarugos.
+        // Fondo como bandeja: los laterales llevan una ranura de 3 × 5 mm por dentro, a 5 mm del borde inferior; el
+        // fondo entra por atrás hasta topar con el frente, pasa bajo la trasera (8 mm más baja que los laterales) y se
+        // atornilla hacia arriba a ella. Fondo = ancho interior + 2 × 5 mm por el largo de los laterales. Si la trasera
+        // queda bajo 10 cm, Imperial la corta al mínimo y se repasa en el taller.
+        const cj = { cajon: k }; // marca las piezas del cajón: el Worker aplica la mano de obra mínima por cajón
+        const ranura = ' (ranura 3 × 5 mm a 5 mm del borde inferior; va al frente con tarugos)';
+        add(`${k}|caja`, `Caja de cajón: lateral${ranura}`, BLANCA, lc, ac, { ancho: 1, alto: 0 }, 'tablero', cj);
+        add(`${k}|caja`, `Caja de cajón: lateral${ranura}`, BLANCA, lc, ac, { ancho: 1, alto: 0 }, 'tablero', cj);
+        add(`${k}|caja`, 'Caja de cajón: trasera (8 mm más baja: el fondo pasa por debajo)', BLANCA, ic - 2 * T, r1(ac - .8), { ancho: 1, alto: 0 }, 'tablero', cj);
+        add(`${k}|caja`, 'Fondo de cajón (cholguán, entra en la ranura)', 'cholguan:blanco', r1(ic - 2 * T + 1), lc, undefined, 'cholguan', cj);
+        cajones.push({ m: m.id, k, corredera: corr });
       }
     }
     // ---- cubierta: largo × ancho (con vuelos), sacados de encimeras y lavaplatos, y si lleva zócalo (respaldo)
@@ -225,7 +237,10 @@ export function despiece(modelo) {
         respaldo: !!m.cubierta_respaldo, vuelo_max: r1(Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der)) });
     }
     // ---- zócalo: marco de pino bajo la base (frente y atrás de largo completo; costados entre ambos)
-    if (Z > 0 && conBase) {
+    const uA = uniones.find((u) => u.A === m);
+    if (Z > 0 && conBase && uA) { // mueble en L: un solo zócalo en L (lo lleva el de la esquina; el otro no lleva)
+      for (const t of zocaloL(uA, PINO.espesor)) pino(`Zócalo en L, ${t.nombre} (pino)`, r1(t.largo), 'zocalo');
+    } else if (Z > 0 && conBase && !uniones.some((u) => u.B === m)) {
       const z = marcoZocalo(m, T);
       pino('Zócalo frente (pino)', r1(z.x1 - z.x0), 'zocalo'); pino('Zócalo atrás (pino)', r1(z.x1 - z.x0), 'zocalo');
       pino('Zócalo costado (pino)', r1(z.z1 - z.z0 - 2 * PINO.espesor), 'zocalo'); pino('Zócalo costado (pino)', r1(z.z1 - z.z0 - 2 * PINO.espesor), 'zocalo');
@@ -236,7 +251,7 @@ export function despiece(modelo) {
     porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: cor };
   }
   herrajes.pino = { tiras: tirasPino(pinos), metros: Math.round(pinos.reduce((a, b) => a + b, 0)) / 100 };
-  return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, tapacanto_m: Math.round(canto) / 100,
+  return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, cajones, tapacanto_m: Math.round(canto) / 100,
     tapacanto_blanco_m: Math.round(cantoBlanco) / 100, tapacanto_color_m: Math.round(canto - cantoBlanco) / 100, tapacanto_mm: TAPACANTO * 10 };
 }
 

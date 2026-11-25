@@ -376,3 +376,11 @@ html.ed-bloqueado body.ed > :not(.ed-acceso) { display: none !important; }
 .c3-fuera { opacity: .28; }
 .ed-tag-fuera { background: rgba(180, 50, 46, .25); }
 .ed-cliente-aviso button.sec { background: transparent; color: #fff; border: 1px solid rgba(255, 255, 255, .5); font-weight: 400; }
+/* Planta: apertura de las puertas (se toca el arco para elegir la puerta) */
+.ed-plano .apertura-planta .hoja { stroke: rgba(236, 231, 221, .55); stroke-width: 1.2; pointer-events: none; }
+.ed-plano .apertura-planta .arco { fill: none; stroke: rgba(236, 231, 221, .35); stroke-dasharray: 3 3; pointer-events: none; }
+.ed-plano .apertura-planta .abatible { fill: transparent; cursor: pointer; stroke: rgba(236, 231, 221, .4); stroke-dasharray: 3 3; }
+.ed-plano .apertura-planta .toque { fill: transparent; cursor: pointer; }
+.ed-plano .apertura-planta:hover .toque { fill: rgba(236, 231, 221, .08); }
+.ed-plano .apertura-planta.sel .hoja, .ed-plano .apertura-planta.sel .arco, .ed-plano .apertura-planta.sel .abatible { stroke: var(--red-accent); stroke-dasharray: none; }
+.ed-plano .apertura-planta.sel .toque { fill: rgba(180, 50, 46, .12); }
