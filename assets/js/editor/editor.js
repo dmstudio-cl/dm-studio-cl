@@ -467,6 +467,21 @@ function girarGrupo(m, grados) {
   });
 }
 
+// Girar desde el panel o con R. En Frente el mueble se dibuja siempre de frente, así que el giro no se nota ahí
+// (el dueño creyó que no giraba, 2026-11-23): se avisa hacia dónde quedó, y si se estaba viendo un muro y el mueble
+// ya no está en él, la vista pasa a «Mueble seleccionado» para que no desaparezca.
+function girarConAviso(m, grados) {
+  if (!m) return;
+  cambiar(() => girarGrupo(m, grados));
+  const rot = ((((+m.rotacion || 0) % 360) + 360) % 360), [fx, fz] = girar(0, 1, rot); // hacia dónde mira el frente
+  const w = murosDe(modelo.espacio).filter((x) => !x.oculto && x.n).find((x) => x.n[0] * fx + x.n[1] * fz < -.9); // el muro de enfrente
+  const espalda = w ? ` · su frente mira hacia el ${w.etiqueta || `muro ${w.i + 1}`}` : '';
+  if (vista === 'frente') {
+    if (muroFrente != null && !modulosFrente().some((x) => x.id === m.id)) { muroFrente = null; opcionesMuroFrente(); render(); encuadrar(true); }
+    aviso(`«${m.nombre}» girado a ${rot}°${espalda}. En Frente el mueble se ve siempre de frente: el giro se ve en Planta y en 3D.`);
+  } else aviso(`«${m.nombre}» girado a ${rot}°${espalda}.`);
+}
+
 // ===================== dibujo =====================
 function selRef() {
   if (!sel) return null;
@@ -897,7 +912,7 @@ function dibujarPlano() {
     }
   }
   const ms = sel?.m && !['multi', 'vano', 'muro'].includes(sel.tipo) ? modulosFrente().find((m) => m.id === sel.m) : null;
-  if (ms) cotasLaterales(ms, M);
+  if (ms) { cotasLaterales(ms, M); cotasAltura(ms, M); }
 }
 
 // ----- distancias a los lados en Frente: al objeto más cercano (mueble, ventana o puerta, extremo del muro)
@@ -920,6 +935,44 @@ function vecinosFrente(m) {
     else if (o.a >= x1 - .05) { if (!der || o.a < der.x) der = { x: o.a, nombre: o.nombre }; }
   }
   return { x0, x1, izq, der };
+}
+// ----- distancias arriba y abajo en Frente: piso, techo y lo que comparte el ancho del mueble (muebles con su
+// cubierta, ventanas y puertas). Así un aéreo se ubica sobre la cubierta o bajo el techo con su cota.
+function obstaculosAltura(m) {
+  const x0 = xF(m), x1 = x0 + +m.ancho, out = [], W = muroActivo();
+  const cruza = (a, b) => b > x0 + .1 && a < x1 - .1;
+  for (const o of modulosFrente()) {
+    if (o.id === m.id || (m.grupo && o.grupo === m.grupo) || !cruza(xF(o), xF(o) + +o.ancho)) continue;
+    const y0 = +o.elevacion || 0;
+    out.push({ a: y0, b: y0 + +o.alto + (o.cubierta && !o.artefacto ? CT : 0), nombre: o.nombre });
+  }
+  if (W) for (const v of vanosDe(W)) if (cruza(v.desde, v.desde + v.ancho)) out.push({ a: v.antepecho, b: v.antepecho + v.alto, nombre: VANOS[v.tipo].nombre });
+  const techo = (W && +W.alto) || +modelo.espacio?.alto || 240;
+  out.push({ a: -1e6, b: 0, nombre: 'piso' }, { a: techo, b: 1e6, nombre: 'techo' });
+  return out;
+}
+function vecinosAltura(m) {
+  const y0 = +m.elevacion || 0, y1 = y0 + +m.alto + (m.cubierta && !m.artefacto ? CT : 0);
+  let abajo = null, arriba = null;
+  for (const o of obstaculosAltura(m)) {
+    if (o.b <= y0 + .05) { if (!abajo || o.b > abajo.y) abajo = { y: o.b, nombre: o.nombre }; }
+    else if (o.a >= y1 - .05) { if (!arriba || o.a < arriba.y) arriba = { y: o.a, nombre: o.nombre }; }
+  }
+  return { y0, y1, abajo, arriba };
+}
+function cotasAltura(m, M) {
+  const V = vecinosAltura(m), g = el('g', { class: 'cota lateral' }, plano);
+  const x = M.X(xF(m) + +m.ancho * .22);
+  const tramo = (a, b, k, nombre) => {
+    const d = b - a; if (d < .05) return; // apoyado: no hay cota
+    el('line', { x1: x, y1: M.Y(a), x2: x, y2: M.Y(b) }, g);
+    el('circle', { cx: x, cy: M.Y(a), r: 2.5 }, g); el('circle', { cx: x, cy: M.Y(b), r: 2.5 }, g);
+    const t = el('text', { x: x + 7, y: M.Y((a + b) / 2) + 4, class: 'editable', 'data-cota': k, 'data-m': m.id }, g);
+    t.textContent = cm(d);
+    el('text', { x: x + 7, y: M.Y((a + b) / 2) + 19, class: 'hasta' }, g).textContent = `a ${nombre}`;
+  };
+  if (V.abajo && V.abajo.nombre !== 'piso') tramo(V.abajo.y, V.y0, 'dist-abajo', V.abajo.nombre); // al piso ya está la cota de elevación
+  if (V.arriba) tramo(V.y1, V.arriba.y, 'dist-arriba', V.arriba.nombre);
 }
 function cotasLaterales(m, M) {
   const V = vecinosFrente(m), g = el('g', { class: 'cota lateral' }, plano);
@@ -1055,7 +1108,7 @@ plano.addEventListener('pointerdown', (e) => {
 
   if (m.artefacto && d.tipo === 'celda') {
     sel = { tipo: 'modulo', m: m.id };
-    if (herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), movido: false, antes: JSON.stringify(modelo) };
+    if (herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), e0: +m.elevacion || 0, movido: false, antes: JSON.stringify(modelo) };
     render(); return;
   }
   if (d.tipo === 'celda' && (herr === 'div-v' || herr === 'div-h')) {
@@ -1077,7 +1130,7 @@ plano.addEventListener('pointerdown', (e) => {
   }
   if (d.tipo === 'celda') sel = { tipo: 'frente', m: m.id, col: +d.col, fila: +d.fila };
   else if (d.tipo === 'zocalo') sel = { tipo: 'zocalo', m: m.id };
-  if ((d.tipo === 'celda' || d.tipo === 'zocalo') && herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), movido: false, antes: JSON.stringify(modelo) };
+  if ((d.tipo === 'celda' || d.tipo === 'zocalo') && herr === 'sel') gesto = { tipo: 'mover-f', m: m.id, p0: p, x0: xF(m), e0: +m.elevacion || 0, movido: false, antes: JSON.stringify(modelo) };
   render();
 });
 
@@ -1119,8 +1172,24 @@ plano.addEventListener('pointermove', (e) => {
   }
   if (gesto.tipo === 'mover-f') { // mover el mueble a lo largo del frente (o del muro)
     const m = modulo(gesto.m); if (!m) return;
-    if (!gesto.movido && Math.abs(p.x - gesto.p0.x) * M.s < 4) return; // aún es un clic
+    if (!gesto.movido) { // aún es un clic; al pasar 4 px se decide el eje: hacia los lados o en altura
+      const ax = Math.abs(p.x - gesto.p0.x) * M.s, ay = Math.abs(p.y - gesto.p0.y) * M.s;
+      if (Math.max(ax, ay) < 4) return;
+      gesto.eje = ay > ax ? 'v' : 'h';
+    }
     gesto.movido = true;
+    if (gesto.eje === 'v') { // en altura (ej. un aéreo): imán al piso, la cubierta o el mueble de abajo, el de arriba y el techo
+      const h = +m.alto;
+      let y = Math.max(0, snap(gesto.e0 + p.y - gesto.p0.y, .5));
+      if (!e.altKey) {
+        let mejor = 3;
+        for (const o of obstaculosAltura(m)) for (const c of [o.b, o.a - h]) if (c >= 0 && Math.abs(y - c) < mejor) { mejor = Math.abs(y - c); y = c; }
+      }
+      const d = r1(y) - (+m.elevacion || 0);
+      for (const o of grupoDe(m)) o.elevacion = r1(Math.max(0, (+o.elevacion || 0) + d)); // mueble agrupado: va completo
+      estadoEl.textContent = `Altura desde el piso: ${cm(m.elevacion)} cm (Alt: sin imán)`;
+      render({ panel: false }); return;
+    }
     const w = +m.ancho;
     let s = snap(gesto.x0 + p.x - gesto.p0.x, .5);
     if (!e.altKey) { // imán: se pega a los bordes vecinos a menos de 3 cm (Alt lo desactiva)
@@ -1228,12 +1297,13 @@ function editarCota(t) {
   const m = modulo(t.dataset.m); if (!m) return;
   const k = t.dataset.cota, col = +t.dataset.col, fila = +t.dataset.fila;
   const cs = celdas(m), c = cs.find((x) => x.col === col && x.fila === fila);
-  const V = vecinosFrente(m);
+  const V = vecinosFrente(m), VA = vecinosAltura(m);
   const mz = marcoZocalo(m);
   const valor = { ancho: m.ancho, alto: m.alto, zocalo: m.zocalo, elevacion: m.elevacion, col: m.columnas[col]?.ancho,
     'col-puerta': c ? medidaFrente(m, c).hoja : 0,
     zocalo_retiro: mz.frente, zocalo_atras: mz.atras, zocalo_izq: mz.izq, zocalo_der: mz.der,
-    'dist-izq': V.izq ? V.x0 - V.izq.x : 0, 'dist-der': V.der ? V.der.x - V.x1 : 0 }[k];
+    'dist-izq': V.izq ? V.x0 - V.izq.x : 0, 'dist-der': V.der ? V.der.x - V.x1 : 0,
+    'dist-abajo': VA.abajo ? VA.y0 - VA.abajo.y : 0, 'dist-arriba': VA.arriba ? VA.arriba.y - VA.y1 : 0 }[k];
   const inp = document.createElement('input');
   inp.className = 'ed-cota-input';
   inp.value = k === 'cel' ? `${cm(c.w)} × ${cm(c.h)}` : cm(valor);
@@ -1253,6 +1323,10 @@ function editarCota(t) {
     cambiar(() => {
       if (k === 'dist-izq' && V.izq) moverFrente(m, V.izq.x + nums[0] - V.x0);
       else if (k === 'dist-der' && V.der) moverFrente(m, V.der.x - nums[0] - V.x1);
+      else if ((k === 'dist-abajo' && VA.abajo) || (k === 'dist-arriba' && VA.arriba)) {
+        const d = k === 'dist-abajo' ? VA.abajo.y + nums[0] - VA.y0 : VA.arriba.y - nums[0] - VA.y1;
+        for (const o of grupoDe(m)) o.elevacion = r1(Math.max(0, (+o.elevacion || 0) + d));
+      }
       else if (k === 'cel') {
         // "40 × 37" → ancho de columna y alto del frente; un solo número → alto del frente
         if (nums.length > 1 && Math.abs(nums[0] - c.w) > .05) aplicarCampo(m, 'c.ancho', nums[0], { col });
@@ -1721,6 +1795,7 @@ function props() {
         ${f.tipo === 'cajon' ? opciones('f.montaje', 'Frente del cajón', f.montaje || 'sobre', { sobre: 'Sobre los cantos (como una puerta)', dentro: 'Dentro de las separaciones' }, 'ancho2') : ''}
         ${num('f.alto', 'Alto del frente', f.alto)}${num('c.ancho', 'Ancho de columna', col.ancho)}
       </div>
+      ${tieneBis ? `<p class="ed-ayuda">Bisagra = el lado donde van las bisagras: la puerta abre hacia el otro lado (${(f.bisagra || 'izquierda') === 'izquierda' ? 'esta abre hacia la derecha' : (f.bisagra === 'derecha' ? 'esta abre hacia la izquierda' : 'esta abre hacia ' + (f.bisagra === 'arriba' ? 'arriba' : 'abajo'))}). En Planta se ve el arco de apertura y se puede tocar.</p>` : ''}
       ${f.tipo !== 'cajon' ? (() => {
         const n = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila)?.repisas || 0;
         return `<div class="ed-repisas"><span>Repisas</span><button data-a="rep-" title="Quitar una repisa">−</button><b>${n}</b><button data-a="rep+" title="Agregar una repisa">+</button>
@@ -1782,6 +1857,12 @@ function props() {
   if (['frente', 'zocalo', 'cubierta', 'cuerpo', 'modulo', 'soporte'].includes(sel.tipo)) h += bloqueMaterial();
   if (['frente', 'cuerpo', 'modulo', 'repisa', 'cubierta'].includes(sel.tipo) && !m.artefacto) h += bloqueLuces(m);
   // Techo y soporte también al tocar una sección, una pieza o el soporte (ej. el nicho del microondas)
+  // Girar el mueble desde cualquiera de sus partes (en 3D, al tocar el mueble se elige una parte y antes no había cómo girarlo)
+  if (['frente', 'pieza', 'soporte', 'repisa', 'zocalo', 'cubierta'].includes(sel.tipo) && m && !m.artefacto) {
+    h += `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Girar el mueble · ${esc(m.nombre)}</p>
+      <div class="ed-botones"><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button></div>
+      <p class="ed-ayuda">Gira el mueble completo (también con la tecla R).</p></div>`;
+  }
   if (['frente', 'pieza', 'soporte', 'repisa'].includes(sel.tipo) && m && !m.artefacto) h += bloqueTechoSoportes(m);
   // Piezas quitadas del cuerpo (se pueden restaurar)
   if ((sel.tipo === 'modulo' || sel.tipo === 'cuerpo') && m.quitar?.length) {
@@ -2004,11 +2085,7 @@ $('#props').addEventListener('click', (e) => {
     if (confirm('¿Borrar todos los muros del espacio?')) { cambiar((d) => { d.espacio = { ...(d.espacio || {}), puntos: [], muros: [], cerrado: false }; }); sel = null; render(); }
     return;
   }
-  if (b.dataset.a === 'girar-' || b.dataset.a === 'girar+') {
-    const mm = modulo(sel.m);
-    cambiar(() => girarGrupo(mm, b.dataset.a === 'girar-' ? 90 : -90));
-    return;
-  }
+  if (b.dataset.a === 'girar-' || b.dataset.a === 'girar+') { girarConAviso(modulo(sel.m), b.dataset.a === 'girar-' ? 90 : -90); return; }
   const m = modulo(sel.m), a = b.dataset.a;
   if (a === 'duplicar') {
     const c = JSON.parse(JSON.stringify(m)); c.id = uid(); c.x = +m.x + +m.ancho; c.nombre = m.nombre + ' (copia)';
@@ -2442,7 +2519,7 @@ window.addEventListener('keydown', (e) => {
     cambiarArtefacto((a, m, { W, Dc }) => { a.desde = Math.min(Math.max(0, (+a.desde || 0) + dx), W - +a.ancho); a.frente = Math.min(Math.max(0, (+a.frente || 0) + dy), Dc - +a.fondo); });
   }
   else if (['vano', 'artefacto', 'div'].includes(sel?.tipo) && (k === 'r' || e.key.startsWith('Arrow') || e.key === 'PageUp' || e.key === 'PageDown')) { /* no aplica */ }
-  else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') { const m = modulo(sel.m); cambiar(() => girarGrupo(m, 90)); }
+  else if (k === 'r' && sel && sel.tipo !== 'muro' && sel.tipo !== 'multi') girarConAviso(modulo(sel.m), 90);
   else if ((e.key === 'PageUp' || e.key === 'PageDown') && sel?.tipo === 'multi') { // subir / bajar varios
     e.preventDefault();
     const paso = (e.shiftKey ? 10 : 1) * (e.key === 'PageUp' ? 1 : -1), ids = sel.ids;

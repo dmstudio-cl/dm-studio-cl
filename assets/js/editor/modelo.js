@@ -212,6 +212,79 @@ export function marcoZocalo(m, T = tablero(m)) {
   return { x0, x1, z0, z1, izq: x0, der: W - x1, atras: z0, frente: D - z1 };
 }
 
+// ----- muebles en L (decisión del dueño, 2026-11-22) -----
+// Dos módulos a la misma altura y en escuadra, donde la espalda de uno (B) sigue la línea del costado del otro (A,
+// el que ocupa la esquina) y B parte en el frente de A. Así se fabrican: bases separadas, pero
+//  · una sola trasera de cholguán por ese muro: la de B se alarga y tapa el costado de A (ej. 150 + 60 = 210 cm);
+//  · un solo zócalo en L (6 tablas) con los mismos retiros de un zócalo normal; lo lleva A.
+// Devuelve [{ A, B, s, ladoB, caja }]: s = costado de A en la esquina ('izq' | 'der'); ladoB = extremo de B que toca a A;
+// caja = rectángulo del cuerpo de B en coordenadas locales de A.
+export function unionesL(modelo) {
+  const ms = (modelo.modulos || []).filter((m) => m && !m.artefacto), out = [];
+  const aLocal = (A, [x, z]) => girar(x - +A.x, z - +A.z, -(+A.rotacion || 0));
+  const mundo = (m, lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
+  for (const A of ms) for (const B of ms) {
+    if (A === B || Math.abs((+A.elevacion || 0) - (+B.elevacion || 0)) > 1 || (A.tipo === 'aereo') !== (B.tipo === 'aereo')) continue;
+    const dr = ((((+B.rotacion || 0) - (+A.rotacion || 0)) % 360) + 360) % 360;
+    if (Math.abs(dr - 90) > 1 && Math.abs(dr - 270) > 1) continue;
+    const WA = +A.ancho, DA = +A.profundidad, WB = +B.ancho, DB = +B.profundidad;
+    const pts = [[0, 0], [WB, 0], [WB, DB], [0, DB]].map(([x, z]) => aLocal(A, mundo(B, x, z)));
+    const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]);
+    const caja = { bx0: Math.min(...xs), bx1: Math.max(...xs), bz0: Math.min(...zs), bz1: Math.max(...zs) };
+    if (Math.abs(caja.bz0 - DA) > 3) continue; // B parte en el frente de A
+    const espalda = aLocal(A, mundo(B, WB / 2, 0)); // medio de la espalda de B
+    const s = Math.abs(espalda[0] - WA) < 2 && Math.abs(caja.bx1 - WA) < 2 ? 'der' : Math.abs(espalda[0]) < 2 && Math.abs(caja.bx0) < 2 ? 'izq' : null;
+    if (!s) continue;
+    const z0 = aLocal(A, mundo(B, 0, 0))[1], z1 = aLocal(A, mundo(B, WB, 0))[1];
+    out.push({ A, B, s, ladoB: Math.abs(z0 - DA) < Math.abs(z1 - DA) ? 'izq' : 'der', caja });
+  }
+  return out;
+}
+// Zócalo en L en coordenadas locales de A: 6 tablas de espesor e (las que van a lo largo, completas; las otras, entre
+// ellas). Retiros: los de A (atrás, frente y su extremo libre) y los de B (atrás = muro, frente y su extremo libre).
+export function zocaloL(u, e) {
+  const { A, B, s, ladoB, caja } = u, WA = +A.ancho, DA = +A.profundidad;
+  const rA = marcoZocalo(A), rB = marcoZocalo(B);
+  const fx = (x) => (s === 'der' ? x : WA - x); // se calcula con la esquina a la derecha y se refleja si va a la izquierda
+  const bx0 = s === 'der' ? caja.bx0 : WA - caja.bx1, bx1 = s === 'der' ? caja.bx1 : WA - caja.bx0;
+  const xa = s === 'der' ? rA.izq : rA.der, za = rA.atras, zf = DA - rA.frente;
+  const xw = bx1 - rB.atras, xb = bx0 + rB.frente, zend = caja.bz1 - (ladoB === 'izq' ? rB.der : rB.izq);
+  const tablas = [ // x0, x1, z0, z1 (con la esquina a la derecha)
+    { nombre: 'atrás', x0: xa, x1: xw, z0: za, z1: za + e, largo: xw - xa },
+    { nombre: 'frente', x0: xa, x1: xb + e, z0: zf - e, z1: zf, largo: xb + e - xa },
+    { nombre: 'extremo del mueble en L', x0: xb, x1: xw, z0: zend - e, z1: zend, largo: xw - xb },
+    { nombre: 'extremo de la esquina', x0: xa, x1: xa + e, z0: za + e, z1: zf - e, largo: zf - za - 2 * e },
+    { nombre: 'muro', x0: xw - e, x1: xw, z0: za + e, z1: zend - e, largo: zend - za - 2 * e },
+    { nombre: 'frente del mueble en L', x0: xb, x1: xb + e, z0: zf, z1: zend - e, largo: zend - zf - e },
+  ];
+  return tablas.filter((t) => t.largo > 0).map((t) => ({ ...t, x0: Math.min(fx(t.x0), fx(t.x1)), x1: Math.max(fx(t.x0), fx(t.x1)) }));
+}
+
+// Soportes superiores de los basales en L (regla del dueño, 2026-11-22): el delantero (melamina) y el trasero (pino)
+// de cada mueble se unen a 45° en la esquina. Largo = desde la cara interior del costado libre hasta la punta larga
+// del corte a 45° (Imperial corta el rectángulo; el inglete se hace en el taller). Devuelve, en x local de cada mueble,
+// el tramo a dibujar (sin encimarse en la esquina) y el largo de corte: { A: { frente, atras }, B: { frente, atras } },
+// cada uno { x0, x1, largo }.
+export function soportesL(u, e = 2) {
+  const { A, B, s, ladoB, caja } = u, WA = +A.ancho, DA = +A.profundidad;
+  const tA = tablero(A), tB = tablero(B);
+  const bx0 = s === 'der' ? caja.bx0 : WA - caja.bx1; // frente de B, con la esquina a la derecha
+  const fx = (a, b) => (s === 'der' ? { x0: a, x1: b } : { x0: WA - b, x1: WA - a });
+  const bz = (z) => (ladoB === 'izq' ? z - caja.bz0 : caja.bz1 - z); // z local de A → x local de B
+  const tramoB = (z0, z1) => { const a = bz(z0), b = bz(z1); return { x0: Math.min(a, b), x1: Math.max(a, b) }; };
+  const zFin = caja.bz1 - tB; // cara interior del costado libre de B
+  return {
+    A: {
+      frente: { ...fx(tA, bx0 + tB), largo: bx0 + tB - tA },          // hasta la cara de atrás del soporte de B
+      atras: { ...fx(tA, WA - e), largo: WA - tA },                    // hasta el rincón del muro (borde del mueble)
+    },
+    B: {
+      frente: { ...tramoB(DA, zFin), largo: zFin - (DA - tA) },       // entra hasta la cara de atrás del soporte de A
+      atras: { ...tramoB(0, zFin), largo: zFin },                       // sigue por el muro hasta el rincón
+    },
+  };
+}
+
 // Alturas (y local) de las repisas de una celda: repartidas parejo en su alto.
 export const nivelesRepisa = (c) => Array.from({ length: c.repisas || 0 }, (_, i) => c.y0 + c.h * (i + 1) / (c.repisas + 1));
 
@@ -466,6 +539,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     material: mats.material, // resolver de materiales por pieza (lo usan también las ventanas y puertas)
   };
   if (ver('muros')) dibujarEspacio(st, modelo.espacio, M, { canto: ver('cantoMuro') });
+  const uniones = unionesL(modelo); // muebles en L: zócalo y trasera compartidos
 
   modelo.modulos.forEach((m) => {
     const W = +m.ancho, H = +m.alto, D = +m.profundidad;
@@ -485,7 +559,11 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       return null;
     };
     const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
-    if (ver('zocalo') && Z > 0) { // marco de 4 tablas bajo el cuerpo (no se ve vacío por los costados)
+    const uA = uniones.find((u) => u.A === m), uB = uniones.find((u) => u.B === m);
+    if (ver('zocalo') && Z > 0 && uA) { // mueble en L: un solo zócalo en L (6 tablas) bajo los dos
+      const MZ = propio('zocalo') || (fab ? PINO : M.zocalo);
+      for (const t of zocaloL(uA, T)) B({ w: t.x1 - t.x0, h: Z, d: t.z1 - t.z0, x: (t.x0 + t.x1) / 2, y: Z / 2, z: (t.z0 + t.z1) / 2 }, MZ, `${id}|zocalo`);
+    } else if (ver('zocalo') && Z > 0 && !uB) { // marco de 4 tablas bajo el cuerpo (no se ve vacío por los costados)
       const zr = marcoZocalo(m, T), MZ = propio('zocalo') || (fab ? PINO : M.zocalo), rz = `${id}|zocalo`;
       const ancho = zr.x1 - zr.x0, fondo = zr.z1 - zr.z0;
       B({ w: ancho, h: Z, d: T, x: (zr.x0 + zr.x1) / 2, y: Z / 2, z: zr.z1 - T / 2 }, MZ, rz);              // frente
@@ -510,11 +588,19 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       const conTechoDib = m.techo === 'si' ? true : m.techo === 'no' ? false : !(fab && esBasal);
       if (!quitada('techo') && conTechoDib) B({ w: W - 2 * T, h: T, d: D, x: W / 2, y: H - T / 2, z: D / 2 }, tab('techo'), `${id}|cuerpo|techo`); // techo
       if (!quitada('fondo')) B({ w: W - 2 * T, h: H - piso - T, d: .6, x: W / 2, y: piso + (H - piso - T) / 2, z: .3 }, tab('fondo'), `${id}|cuerpo|fondo`); // fondo
+      if (uB && !quitada('fondo')) { // mueble en L: la trasera es una sola pieza que sigue y tapa el costado del mueble de la esquina
+        const ex = +uB.A.profundidad, x0 = uB.ladoB === 'izq' ? -ex : 0, x1 = uB.ladoB === 'izq' ? W : W + ex;
+        B({ w: x1 - x0, h: H - Z, d: .3, x: (x0 + x1) / 2, y: Z + (H - Z) / 2, z: -.15 }, tab('fondo'), `${id}|cuerpo|fondo`);
+      }
       // Soportes horizontales de 10 cm (fabricación): delantero de melamina, trasero(s) de pino tapa
       if (fab && (esBasal || m.tipo === 'aereo')) {
+        // en L (basales): cada soporte llega hasta la unión a 45° de la esquina
+        const uS = esBasal && (uA || uB), sL = uS ? soportesL(uS)[uA ? 'A' : 'B'] : null;
+        const tramo = (k) => (sL ? sL[k] : { x0: T, x1: W - T });
+        const tf = tramo('frente'), ta = tramo('atras');
+        if (!quitada('soporte')) B({ w: tf.x1 - tf.x0, h: SOPORTE, d: T, x: (tf.x0 + tf.x1) / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || M.cuerpo, `${id}|soporte|frente`); // color propio por mueble
+        B({ w: ta.x1 - ta.x0, h: SOPORTE, d: T, x: (ta.x0 + ta.x1) / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`);
         const li = W - 2 * T;
-        if (!quitada('soporte')) B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || M.cuerpo, `${id}|soporte|frente`); // color propio por mueble
-        B({ w: li, h: SOPORTE, d: T, x: W / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`);
         if (m.tipo === 'aereo') B({ w: li, h: SOPORTE, d: T, x: W / 2, y: Z + T + SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|anclaje`);
       }
     }
