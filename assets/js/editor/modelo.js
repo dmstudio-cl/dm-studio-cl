@@ -419,7 +419,8 @@ export const fondoTotal = (m) => +m.profundidad + (m.artefacto || m.tipo === 'es
 // · Puertas y cajones EMPOTRADOS: al ras del borde de los costados, entre costados y divisiones, con 3 mm de luz.
 // · Una división en cada unión de puertas (entre columnas, entre las hojas de una sección y entre filas de puertas),
 //   fija a la base, a la trasera y al soporte delantero; sus cantos quedan a la vista.
-// · Trasera de melamina de 15 mm metida entre los costados (no lleva cholguán ni soporte trasero de pino).
+// · Trasera de melamina de 15 mm metida entre los costados (no lleva cholguán). El soporte trasero de pino va por dentro,
+//   tapado por la trasera (dueño, 2026-11-25).
 // · Todo lo que se ve, del color del frente (cara exterior de los costados, tapa, trasera y el tapacanto de los cantos).
 // · Bisagras: se cotizan todas semicurvas (el dueño las define en persona después de aprobar).
 // · Cubierta: 6 cm de vuelo en los 4 lados.
@@ -807,7 +808,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         const tramo = (k) => (sL ? sL[k] : { x0: TC, x1: W - TC });
         const tf = tramo('frente'), ta = tramo('atras');
         if (!quitada('soporte')) B({ w: tf.x1 - tf.x0, h: SOPORTE, d: T, x: (tf.x0 + tf.x1) / 2, y: H - SOPORTE / 2, z: D - T / 2 }, propio('soporte') || (isla ? M.frente : M.cuerpo), `${id}|soporte|frente`); // color propio por mueble (en la isla se ve: color del frente)
-        if (!isla) B({ w: ta.x1 - ta.x0, h: SOPORTE, d: T, x: (ta.x0 + ta.x1) / 2, y: H - SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|atras`); // la isla se amarra a su trasera de melamina
+        B({ w: ta.x1 - ta.x0, h: SOPORTE, d: T, x: (ta.x0 + ta.x1) / 2, y: H - SOPORTE / 2, z: isla ? T + T / 2 : T / 2 }, PINO, `${id}|soporte|atras`); // en la isla, por dentro: lo tapa la trasera de melamina
         const li = W - 2 * T;
         if (m.tipo === 'aereo') B({ w: li, h: SOPORTE, d: T, x: W / 2, y: Z + T + SOPORTE / 2, z: T / 2 }, PINO, `${id}|soporte|anclaje`);
       }
@@ -910,12 +911,9 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       });
     }
     if (ver('cubierta') && m.cubierta) {
-      // el canto (frente y costados) lleva el perfil del borde elegido; la cara de arriba, el material
-      const canto = CANTOS[mats.borde] || '';
-      const MCub = propio('cubierta') || M.cubierta;
-      const texCub = (cara) => (canto && ['front', 'left', 'right'].includes(cara) ? { bg: `${canto}, ${MCub.bg}` } : MCub);
-      const cb = cubiertaDe(m), conCanto = (cara) => ['front', 'left', 'right', ...(cb.v.atras > 0 ? ['back'] : [])].includes(cara);
-      const texC = (cara) => (canto && conCanto(cara) ? { bg: `${canto}, ${MCub.bg}` } : MCub);
+      // (dueño, 2026-11-25) el canto va del mismo material que la cubierta, como en el esquinero: sin la franja gris del
+      // perfil de borde (el borde que elige el cliente se sigue guardando y se ve en su lista, con su ícono)
+      const MCub = propio('cubierta') || M.cubierta, texC = MCub, cb = cubiertaDe(m);
       B({ w: cb.x1 - cb.x0 + .4, h: CT, d: cb.z1 - cb.z0, x: (cb.x0 + cb.x1) / 2, y: H + CT / 2, z: (cb.z0 + cb.z1) / 2 }, texC, `${id}|cubierta`);
       for (const a of artefactosDe(m)) dibujarArtefacto(G, a, H + CT, `${id}|a|${a.id}`, M);
     }

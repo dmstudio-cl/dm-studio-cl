@@ -205,7 +205,7 @@ export function despiece(modelo) {
       const uL = uniones.find((u) => u.A === m || u.B === m), sL = uL ? soportesL(uL, PINO.espesor)[uL.A === m ? 'A' : 'B'] : null;
       const enL = sL ? ', en L: corte a 45° en la esquina' : '';
       if (conSoporte) add('soporte|frente', `Soporte superior delantero${enL}`, matSoporte, sL ? sL.frente.largo : li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
-      if (!isla) pino(`Soporte superior trasero (pino${enL})`, r1(sL ? sL.atras.largo : li), 'soporte|atras'); // la isla se amarra a su trasera de melamina
+      pino(`Soporte superior trasero (pino${enL}${isla ? ', por dentro: lo tapa la trasera de melamina' : ''})`, r1(sL ? sL.atras.largo : li), 'soporte|atras');
     }
     if (E.clase === 'aereo') {
       if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
@@ -213,7 +213,7 @@ export function despiece(modelo) {
       pino('Soporte inferior trasero, anclaje al muro (pino)', li, 'soporte|anclaje');
     }
     // ---- divisiones verticales entre columnas: misma medida que los costados, con rebaje para los soportes
-    const rebaje = isla ? 'Rebaje arriba de 10 cm: 1,5 cm adelante (soporte delantero); va fija a la base, la trasera y el soporte' : E.clase === 'basal' ? 'Rebaje arriba de 10 cm: 1,5 cm adelante y 2 cm atrás'
+    const rebaje = isla ? 'Rebaje arriba de 10 cm: 1,5 cm adelante y 2 cm atrás (soportes); va fija a la base, la trasera y los soportes' : E.clase === 'basal' ? 'Rebaje arriba de 10 cm: 1,5 cm adelante y 2 cm atrás'
       : E.clase === 'aereo' ? 'Rebajes de 10 cm: adelante arriba 1,5 cm; atrás arriba y abajo 2 cm' : '';
     const cs = celdas(m), nCol = (m.columnas || []).length;
     for (let i = 0; i < nCol - 1; i++) add(`div|${i}`, conCanto(`División vertical ${i + 1}`, `div|${i}`), mat(`div|${i}`, mat('cuerpo', cuerpoDef)), Dk, hs, { ancho: 0, alto: 1 }, 'tablero', { ...(rebaje ? { nota: rebaje } : {}), ...(isla ? { canto_color: 1 } : {}), ...cantoDe(`div|${i}`) });
