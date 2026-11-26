@@ -8,7 +8,7 @@ import { OBJETOS } from './objetos.js';
 import { despiece, medidaFrente } from './despiece.js';
 import { PALETA, colorDe, matsColores } from './colores.js';
 import { huella, centro, girar, metaMuro, murosContorno, partesCostado, bordesCostado, rectParte, repisaFija, divisionesH, zonasMuro, metaMuroLeer, grosorCostado } from './modelo.js';
-import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo, tiradoresCliente } from './modelo.js';
+import { dibujar, celdas, limites, nuevoModulo, uid, TIRADORES, TIPOS_FRENTE, muros as murosDe, rotarEnCentro, ejeMuro, vanosDe, VANOS, tiradorDef, modeloCatalogo, tiradoresCliente, puertaAlta } from './modelo.js';
 import { crearPlanta } from './planta.js';
 import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
@@ -148,6 +148,14 @@ function normalizar(m) {
   m.tiradores = (m.tiradores || []).filter((t) => m.columnas[t.col]?.frentes[t.fila] && m.columnas[t.col].frentes[t.fila].tipo !== 'abierto');
   // Cada tirador se mantiene dentro de su frente (si el frente se achica, el tirador lo acompaña)
   const cs = celdas(m);
+  // Puerta alta (sobre 140 cm del piso): el tirador que estaba en su lugar de siempre (arriba) pasa abajo, como en los
+  // aéreos; uno movido a mano se respeta (dueño, 2026-11-25)
+  for (const t of m.tiradores) {
+    const c = cs.find((k) => k.col === t.col && k.fila === t.fila), def = tiradorDef(t.modelo), f = m.columnas[t.col]?.frentes?.[t.fila];
+    if (!c || !def || !f || (f.tipo !== 'puerta' && f.tipo !== 'puerta_doble') || !puertaAlta(m, c)) continue;
+    const arriba = snap(c.h / 2 - (/barra/.test(t.modelo) ? def.largo / 2 : 0) - 6, .5);
+    if (arriba > 0 && Math.abs((+t.dy || 0) - arriba) < .6) t.dy = -arriba;
+  }
   for (const t of m.tiradores) {
     const c = cs.find((k) => k.col === t.col && k.fila === t.fila), def = tiradorDef(t.modelo);
     if (!c || !def) continue;
@@ -1855,7 +1863,7 @@ function ubicarTirador(m, ci, fi, modeloT, punto = null) {
   else if (f.tipo === 'puerta' || f.tipo === 'puerta_doble') {
     const lado = f.bisagra === 'derecha' ? -1 : 1;
     t.dx = snap(lado * (c.w / 2 - 4), .5);
-    t.dy = snap((m.tipo === 'aereo' ? -1 : 1) * (c.h / 2 - (largo ? def.largo / 2 : 0) - 6), .5);
+    t.dy = snap((puertaAlta(m, c) ? -1 : 1) * (c.h / 2 - (largo ? def.largo / 2 : 0) - 6), .5); // aéreos y puertas sobre 140 cm: abajo
   }
   if (largo && f.tipo !== 'cajon') t.rot = 90;
   if (Math.abs(t.dx) < 1) t.dx = 0; if (Math.abs(t.dy) < 1) t.dy = 0;

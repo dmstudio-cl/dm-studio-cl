@@ -332,6 +332,10 @@ export function iconoBorde(perfil) {
 // El cliente elige un tirador del catálogo de precios: { forma: barra|boton|perfil|sin, color, largo (cm) }.
 // Si el estudio ubicó tiradores a mano en el editor, se respetan sus posiciones y se cambia el modelo;
 // si no, se ubican automáticamente con las mismas reglas que tenía three/mueble.js.
+// Puerta alta (dueño, 2026-11-25): si su canto de abajo queda a más de 140 cm del piso, el tirador va en la parte de
+// abajo de la puerta, como en los aéreos (ej. las puertas de una torre sobre el nicho del refrigerador).
+export const ALTURA_TIRADOR_ABAJO = 140;
+export const puertaAlta = (m, c) => m?.tipo === 'aereo' || (+m?.elevacion || 0) + +c.y0 > ALTURA_TIRADOR_ABAJO;
 export function tiradoresCliente(m, sel) {
   const forma = sel?.forma || 'barra';
   if (forma === 'sin') return [];
@@ -365,9 +369,9 @@ export function tiradoresCliente(m, sel) {
       out.push({ id, ...base, ...modeloDe(forma, c, 0), dx: 0, dy: abajo ? -off : off, rot: 0 });
       continue;
     }
-    const aereo = m.tipo === 'aereo';
+    const abajo = puertaAlta(m, c); // aéreos y puertas sobre 140 cm: el tirador abajo
     const altoT = forma === 'boton' ? 0 : forma === 'perfil' ? 0 : largoBarra;
-    const dy = forma === 'perfil' ? 0 : Math.max(0, c.h / 2 - altoT / 2 - (forma === 'boton' ? 6 : 4)) * (aereo ? -1 : 1);
+    const dy = forma === 'perfil' ? 0 : Math.max(0, c.h / 2 - altoT / 2 - (forma === 'boton' ? 6 : 4)) * (abajo ? -1 : 1);
     const margen = forma === 'perfil' ? .6 : forma === 'boton' ? 4 : 3.5;
     if (tipo === 'puerta_doble') { // cada hoja con su tirador, hacia el centro de la sección
       const n = c.hojas, lw = (c.w - (n - 1) * GAP) / n;
