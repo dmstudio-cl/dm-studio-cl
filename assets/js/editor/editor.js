@@ -2494,7 +2494,7 @@ function panelEsquinero(m) {
       ${num('fondo_a', 'Fondo del lado 1', g.fa)}${num('fondo_b', 'Fondo del lado 2', g.fb)}
       ${num('alto', 'Alto', m.alto)}${g.aereo ? num('elevacion', 'Altura desde el piso', m.elevacion) : num('zocalo', 'Zócalo', m.zocalo)}
       ${opciones('esquina', 'Rincón del muro', m.esquina === 'izq' ? 'izq' : 'der', { der: 'A la derecha', izq: 'A la izquierda' }, 'ancho2')}
-      ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.cuadrado) return num('esq_hoja_a', 'Hoja de la puerta en L', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
+      ${(() => { const he = hojasEditables(m, g); if (!he) return ''; if (he.iguales) return num('esq_hoja_a', 'Hojas de la puerta en L (iguales)', cm(Math.max(he.a, he.b)).replace(',', '.')); const t = g.sol === '3' ? 'Puerta lateral' : 'Hoja'; return num('esq_hoja_a', `${t} del lado 1`, cm(he.a).replace(',', '.')) + num('esq_hoja_b', `${t} del lado 2`, cm(he.b).replace(',', '.')); })()}
       ${g.sol === '1' ? num('soporte_alto', 'Alto de la barra delantera', g.sop) : ''}
       ${g.sol === '2a' ? `<div class="ed-repisas ancho2"><span>Repisas en L</span><button data-a="esq-rep-" title="Quitar una repisa">−</button><b>${repisasL(m)}</b><button data-a="esq-rep+" title="Agregar una repisa">+</button></div>` : ''}
       ${S?.niveles ? opciones('niveles', 'Cajones por lado', String(g.niveles), { 2: '2 cajones', 3: '3 cajones' }, 'ancho2') : ''}
@@ -2512,7 +2512,7 @@ function panelEsquinero(m) {
     <div class="ed-botones"><button data-a="esq-sugerido">Medidas sugeridas (${sug.ancho} × ${sug.profundidad})</button><button data-a="girar-" title="Girar 90° a la izquierda (R)">⟲ 90°</button><button data-a="girar+" title="Girar 90° a la derecha">⟳ 90°</button><button data-a="borrar-modulo" class="peligro">Eliminar</button></div>
     ${S && !['1', '3'].includes(g.sol) || g.sol === '1' ? `<p class="ed-ayuda">Línea de aire en el rincón entre las dos hojas: ${cm(luzRincon(g) * 10)} mm (mínimo 3 mm; crece si el ancho de la hoja no la deja girar).</p>` : ''}
     ${g.sol === '1' ? '<p class="ed-ayuda">La puerta pasa bajo la barra delantera (7 cm por defecto) y sobre la base, con 3 mm de aire arriba, abajo y a los lados: si cambias la barra, la puerta se ajusta sola.</p>' : ''}
-    ${g.sol === '1' ? (() => { const b = bandejaGiratoria(g); return `<p class="ed-ayuda">Bandejas: Ø ${cm(2 * b.r)} cm, centradas (se piden cuadradas de ${cm(2 * b.r)} × ${cm(2 * b.r)}).${Math.abs(+m.ancho - +m.profundidad) > .5 ? ' Ojo: la puerta giratoria va en un módulo cuadrado; cambia la hoja para igualar los lados.' : ''}</p>`; })() : ''}
+    ${g.sol === '1' ? (() => { const b = bandejaGiratoria(g); return `<p class="ed-ayuda">Bandejas: Ø ${cm(2 * b.r)} cm, centradas (se piden cuadradas de ${cm(2 * b.r)} × ${cm(2 * b.r)}).${(() => { const he = hojasEditables(m, g); return he && Math.abs(he.a - he.b) > .5 ? ` Ojo: las 2 hojas deben ser iguales (hoy ${cm(he.a)} y ${cm(he.b)}); escribe la hoja para igualarlas.` : ''; })()}</p>`; })() : ''}
     ${g.sol === '3' ? (() => { const k = cajonSpaceCorner(g), c = CORREDERAS_LARGOS.filter((l) => l <= Math.min(k.latA, k.latB)).pop(); return `<p class="ed-ayuda">Cajón en diagonal: caja de ${cm(Math.min(k.latA, k.latB))} cm de largo, pasillo de ${cm(k.pasillo)} cm. Corredera: ${c ? `${c} cm` : 'ninguna cabe'}${c && Math.min(k.latA, k.latB) - c > 10 ? ' (la caja es bastante más larga: si quieres, busca una corredera más larga en Imperial)' : ''}.</p>`; })() : ''}
     ${(() => { const he = hojasEditables(m, g); if (!he) return ''; const fuera = [he.a, he.b].some((w) => w < he.rango[0] - .15 || w > he.rango[1] + .15); return `<p class="ed-ayuda${fuera ? ' ed-error' : ''}">${g.sol === '3' ? 'Puertas laterales' : 'Hojas'}: de ${he.rango[0]} a ${he.rango[1]} cm cada una${fuera ? ' · alguna está fuera de ese rango' : ''}. Al cambiar una, el lado se alarga o se acorta y el rincón queda en su lugar.</p>`; })()}
     <p class="ed-ayuda">Lado 1 = el que va junto al muro de atrás; lado 2 = el que sale hacia adelante junto al muro del costado. El fondo de cada lado es el del cuerpo, como la profundidad de un basal. Al cambiar un largo, el rincón queda en su lugar.</p>
@@ -2633,7 +2633,7 @@ function aplicarCampo(m, k, v, s = {}) {
   } else if ((k === 'esq_hoja_a' || k === 'esq_hoja_b') && m.tipo === 'esquinero') { // ancho de una hoja: cambia el largo de ese lado
     const he = hojasEditables(m); if (!he) return;
     if (v < he.rango[0] || v > he.rango[1]) return aviso(`Cada ${geoEsquinero(m).sol === '3' ? 'puerta lateral' : 'hoja'} va de ${he.rango[0]} a ${he.rango[1]} cm.`);
-    if (he.cuadrado) { anchoEsquinero(m, r1(he.anchoPara(v))); m.profundidad = r1(he.profundidadPara(v)); } // puerta giratoria: cuadrado
+    if (he.iguales) { anchoEsquinero(m, r1(he.anchoPara(v))); m.profundidad = r1(he.profundidadPara(v)); } // puerta giratoria: las 2 hojas iguales
     else if (k === 'esq_hoja_a') anchoEsquinero(m, r1(he.anchoPara(v))); else m.profundidad = r1(he.profundidadPara(v));
     repegar(modelo, m);
   } else if (k === 'ancho' && m.tipo === 'esquinero') {

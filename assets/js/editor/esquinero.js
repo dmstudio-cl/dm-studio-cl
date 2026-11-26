@@ -17,7 +17,7 @@ const CORREDERAS_ESQ = [25, 30, 35, 40, 45, 50, 55, 60]; // largos comerciales (
 // Las 5 soluciones de esquina (nombres del dueño). lado = largo sugerido de cada lado más allá del fondo del otro.
 // Precio (dueño, 2026-11-25): todos los esquineros se cobran como un basal (factor normal) más sus herrajes.
 export const SOLUCIONES = {
-  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Módulo cuadrado: eliges la hoja (30 a 60 cm) y la bandeja queda centrada, con Ø = lado − 2 cm.', lado: 32, hojas: [30, 60], cuadrado: true },
+  '1': { nombre: 'Puerta giratoria', ayuda: 'Puerta en L unida a 2 bandejas de ¾ de círculo que giran sobre 2 platos (abajo y arriba). Cierre con retenes magnéticos, sin bisagras. Las 2 hojas son iguales (por defecto, la más grande que deja el fondo más corto) y la bandeja llega a 1 cm de los costados.', lado: 32, hojas: [30, 60], hojasIguales: true },
   '2a': { nombre: 'Puertas con repisa fija en L', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y una repisa fija en L (se pide rectangular; el calado se corta en el taller). Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '2b': { nombre: 'Puertas con repisas intercaladas', ayuda: '2 puertas independientes con bisagras de 165° cierre suave (2 si la hoja mide 30 cm, 3 si es más ancha) y 2 repisas rectas, una por muro, a distinta altura. Cada hoja puede medir de 30 a 60 cm.', lado: 32, hojas: [30, 60] },
   '3': { nombre: 'Cajón space corner', ayuda: 'Cajones con frente en flecha que salen en diagonal y terminan en punta atrás. A los lados, compartimentos en trapecio rectángulo con puerta (bisagras semicurvas, de 35 a 60 cm) y repisa; sus lados en diagonal llevan, por el otro lado, las correderas.', lado: 82, niveles: true, frenteCajon: true, hojas: [35, 60] },
@@ -42,8 +42,8 @@ export function solucionesQueCalzan(m) {
     if (sol === m.solucion) return true;
     const mm = { ...m, solucion: sol }, g = geoEsquinero(mm), s = SOLUCIONES[sol];
     if (g.sol !== sol) return false;
-    if (s.cuadrado && Math.abs(g.W - g.L) > .5) return false;
     const h = hojasEditables(mm, g);
+    if (s.hojasIguales && (!h || Math.abs(h.a - h.b) > .5)) return false; // puerta giratoria: las 2 hojas iguales
     if (h?.rango) { const [lo, hi] = h.rango; for (const v of [h.a, h.b]) if (!(v > 0) || v < lo - .5 || v > hi + .5) return false; }
     return true;
   });
@@ -56,7 +56,10 @@ export function nuevoEsquinero(id, { x = 0, z = 0, rotacion = 0, esquina = 'der'
 // Medidas sugeridas para una solución (el dueño las ajusta en el panel)
 export function medidasSugeridas(m, sol = m.solucion) {
   const f0 = m.aereo ? FONDO_AEREO : 58, s = SOLUCIONES[sol], lado = s ? s.lado : 32, fa = +m.fondo_a || f0, fb = +m.fondo_b || f0;
-  if (s?.cuadrado) { const S = Math.round(Math.max(fa, fb) + lado); return { ancho: S, profundidad: S }; } // puerta giratoria: cuadrado con el fondo más largo
+  if (s?.hojasIguales) { // puerta giratoria (dueño, 2026-11-26): 2 hojas iguales, las más grandes que deja el fondo más corto (− 1 cm)
+    const T = (+m.tablero || 15) / 10, h = Math.max(s.hojas[0], Math.min(s.hojas[1], Math.floor(Math.min(fa, fb) - 1))), r = (v) => Math.round(v * 10) / 10;
+    return { ancho: r(fb + T + AIRE_GIRO + h), profundidad: r(fa + T + AIRE_GIRO + h) };
+  }
   return { ancho: Math.round(fb + lado), profundidad: Math.round(fa + lado) };
 }
 
@@ -190,10 +193,10 @@ export function hojasEditables(m, g = geoEsquinero(m)) {
   const extra = g.sol === '3' ? g.ld + LUZ / 2 : g.T + luzRincon(g); // lo que va entre el fondo del otro lado y la hoja
   const iA = g.ana ? g.ana + LUZ : m.vecino_a ? LUZ : 0, iB = g.anb ? g.anb + LUZ : m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado) o del anexo
   const nA = Math.max(1, fr.filter((f) => f.lado === 'A').length), nB = Math.max(1, fr.filter((f) => f.lado === 'B').length); // hojas de la puerta lateral
-  if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + g.T + AIRE_GIRO; /* hoja (hasta la punta del inglete) + lateral + 5 mm de aire */
+  if (s.hojasIguales) { // puerta giratoria: cada lado = fondo del otro lado + lateral + 5 mm de aire + la hoja (iguales)
     // la hoja no puede ser más larga que el fondo más corto − 1 cm: al girar, su punta tocaría la trasera
     const rango = [s.hojas[0], Math.min(s.hojas[1], Math.floor(Math.min(g.fa, g.fb) - 1))];
-    return { rango, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
+    return { rango, iguales: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v + g.fb + g.T + AIRE_GIRO, profundidadPara: (v) => v + g.fa + g.T + AIRE_GIRO }; }
   return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v * nA + g.fb + extra + iA, profundidadPara: (v) => v * nB + g.fa + extra + iB };
 }
 
