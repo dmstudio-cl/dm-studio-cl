@@ -408,6 +408,11 @@ html.ed-bloqueado body.ed > :not(.ed-acceso) { display: none !important; }
 .ed-acab-ajustes { margin-top: 8px; }
 .ed-acab-ajustes summary { cursor: pointer; font-size: .78rem; color: var(--bone); }
 .ed-plano .zona-muro { stroke: rgba(236, 231, 221, .45); stroke-width: 1; cursor: pointer; }
+/* muro con acabado en la vista Frente: los muebles con relleno oscuro para que se vean sobre el material (2026-11-26) */
+.ed-plano.con-acabado .celda, .ed-plano.con-acabado .zona-zocalo { fill: #141416; stroke: rgba(236, 231, 221, .45); }
+.ed-plano.con-acabado .celda:hover, .ed-plano.con-acabado .zona-zocalo:hover { fill: #1e1e21; }
+.ed-plano.con-acabado .celda.sel, .ed-plano.con-acabado .zona-zocalo.sel { fill: #2b1614; stroke: var(--red-accent); }
+.ed-plano.con-acabado .objeto { fill: #1b1f22; }
 .ed-plano .zona-muro.sel { stroke: #b4322e; stroke-width: 2.5; }
 .ed-plano .zona-muro-txt { fill: rgba(236, 231, 221, .75); font-family: var(--mono); font-size: 11px; pointer-events: none; paint-order: stroke; stroke: rgba(0, 0, 0, .55); stroke-width: 3px; }
 
