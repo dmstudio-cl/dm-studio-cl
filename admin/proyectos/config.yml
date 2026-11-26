@@ -117,7 +117,7 @@ collections:
           - { label: Artefacto de piso (lo usa el editor), name: artefacto, widget: string, required: false }
           - { label: Costados visibles, name: costados, widget: select, options: [frente, cuerpo], required: false }
           - { label: Materiales por pieza (los asigna el editor), name: materiales, widget: string, required: false }
-          - { label: Piezas quitadas del cuerpo, name: quitar, widget: select, multiple: true, options: [piso, techo, fondo, izq, der], required: false }
+          - { label: Piezas quitadas del cuerpo, name: quitar, widget: select, multiple: true, options: [piso, techo, fondo, izq, der, soporte], required: false }
           - { label: Mueble agrupado (lo usa el editor), name: grupo, widget: string, required: false }
           - { label: Nombre del mueble agrupado, name: grupo_nombre, widget: string, required: false }
           - label: Encimeras y lavaplatos (los ubica el editor)
@@ -159,10 +159,10 @@ collections:
             summary: "{{fields.modelo}} · columna {{fields.col}} fila {{fields.fila}}"
             fields:
               - { label: ID, name: id, widget: string, required: false }
-              - { label: Modelo, name: modelo, widget: select, options: [barra-96, barra-128, barra-192, barra-320, boton, canto, perfil, concha] }
-              - { label: Color, name: color, widget: select, default: negro, options: [negro, acero, dorado, blanco] }
-              - { label: Columna (desde 0), name: col, widget: number, value_type: int }
-              - { label: Fila (desde 0), name: fila, widget: number, value_type: int }
+              - { label: Modelo, name: modelo, widget: string, hint: "Lo pone el editor (ej. barra-128, barra-160-12, boton-30)." }
+              - { label: Color, name: color, widget: string, required: false }
+              - { label: Columna (desde 0), name: col, widget: number, value_type: int, required: false, hint: "Vacío en el tirador del esquinero (lo ubica el editor)." }
+              - { label: Fila (desde 0), name: fila, widget: number, value_type: int, required: false }
               - { label: Desde el centro → (cm), name: dx, widget: number, value_type: float, default: 0 }
               - { label: Desde el centro ↑ (cm), name: dy, widget: number, value_type: float, default: 0 }
               - { label: Giro (°), name: rot, widget: number, value_type: float, default: 0 }
