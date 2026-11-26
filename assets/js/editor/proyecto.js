@@ -1,4 +1,5 @@
 import { despiece } from './despiece.js';
+import { unionesL } from './modelo.js';
 import { optimizarDespiece } from './optimizador.js';
 import { tiposPosibles, tieneVecinos, cambiarTipoConVecinos, aplicarEsquinerosCliente } from './vecinos.js';
 // Proyectos de clientes en el editor: abrir desde el repo privado, ver y responder comentarios,
@@ -113,6 +114,7 @@ export function aModelo(raw, uid) {
   return {
     nombre: raw.titulo || 'Proyecto',
     frente: raw.opciones?.melamina_inicial || '',
+    union_cubierta: raw.union_cubierta === '45' ? '45' : '90', // unión del rincón de la cubierta (esquinero)
     espacio: raw.espacio ? JSON.parse(JSON.stringify(raw.espacio)) : null,
     colores: raw.colores ? { ...raw.colores } : {},
     objetos: Array.isArray(raw.objetos) ? raw.objetos.map((o) => ({ ...o })) : [],
@@ -128,12 +130,13 @@ export function aModelo(raw, uid) {
 // melamina (si la eligió él) y sus colores por pieza; tirador, cubierta, borde y muebles a cotizar se muestran encima
 // (capa «Elección del cliente»). Lo último que se cambia manda: lo que publicas queda como base y el cliente puede volver a
 // cambiarlo. Si el cliente cambia algo con el editor abierto, aparece un aviso para aplicarlo.
-export const firmaMat = (s) => JSON.stringify({ m: s?.melamina_propia ? s.melamina || '' : '', x: s?.materiales || {}, e: s?.esquineros || {} });
+export const firmaMat = (s) => JSON.stringify({ m: s?.melamina_propia ? s.melamina || '' : '', x: s?.materiales || {}, e: s?.esquineros || {}, u: s?.union_cubierta || '' });
 export { aplicarEsquinerosCliente };
 // Pasa al modelo la melamina y los colores por pieza del cliente. Devuelve qué cambió: { melamina, piezas }.
 export function aplicarCliente(mod, s) {
-  const out = { melamina: '', piezas: 0 };
+  const out = { melamina: '', piezas: 0, union: '' };
   if (!s) return out;
+  if ((s.union_cubierta === '45' || s.union_cubierta === '90') && s.union_cubierta !== (mod.union_cubierta || '90')) { mod.union_cubierta = s.union_cubierta; out.union = s.union_cubierta; }
   if (s.melamina_propia && s.melamina && s.melamina !== mod.frente) { mod.frente = s.melamina; out.melamina = s.melamina; }
   for (const [k, v] of Object.entries(s.materiales || {})) {
     const i = k.indexOf('|'), m = (mod.modulos || []).find((x) => x.id === k.slice(0, i));
@@ -146,7 +149,7 @@ export function aplicarCliente(mod, s) {
   return out;
 }
 const nombreMel = (id) => (window.MELAMINAS || []).find((x) => x.id === id)?.nombre || id;
-export const textoCambios = (c) => [c.melamina && `melamina ${nombreMel(c.melamina)}`, c.piezas && `${c.piezas} color${c.piezas > 1 ? 'es' : ''} por pieza`].filter(Boolean).join(' y ');
+export const textoCambios = (c) => [c.melamina && `melamina ${nombreMel(c.melamina)}`, c.piezas && `${c.piezas} color${c.piezas > 1 ? 'es' : ''} por pieza`, c.union && `unión del rincón en ${c.union}°`].filter(Boolean).join(' y ');
 let bordesSitio = null;
 // Lo que eligió el cliente (Worker, como estudio) y los catálogos para dibujarlo
 async function leerCliente(id) {
@@ -392,11 +395,14 @@ export function iniciarProyectos(ed) {
     const out = $('#v-resultado');
     try {
       // 1) Se lee la última versión del repo (por si se editó en Decap) y se reemplaza solo lo del editor.
-      const { raw, sha } = await leerProyecto(info.id);
       const modelo = ed.modelo();
+      const enL = unionesL(modelo); // directriz del dueño (2026-11-26): para una esquina está el módulo esquinero
+      if (enL.length) throw new Error(`«${enL[0].A.nombre}» y «${enL[0].B.nombre}» quedaron unidos en L. Para una esquina usa un módulo esquinero (Cocinas de referencia → «Módulo esquinero») y vuelve a publicar.`);
+      const { raw, sha } = await leerProyecto(info.id);
       const v = (+raw.version || 1) + (silencio ? 0 : 1); // sin aviso: misma versión
       raw.modulos = modelo.modulos.map((m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m)));
       raw.colores = modelo.colores || {};
+      raw.union_cubierta = modelo.union_cubierta === '45' ? '45' : '90'; // unión del rincón de la cubierta del esquinero
       raw.objetos = modelo.objetos || [];
       raw.despiece = despiece(modelo); // cantidades de materiales y herrajes: el Worker las cotiza
       // planchas enteras por melamina (optimizador); «frente» queda sin resolver (la elige el cliente) y con veta fija
@@ -418,7 +424,7 @@ export function iniciarProyectos(ed) {
           const ids = grupoIds(c, ce), todos = new Set([...ids, ...base]), dv = despiece(c), deEsta = (o) => todos.has(o.m);
           (variantes[m.id] ||= {})[sol] = { ids, quitados: base.filter((id) => !ids.includes(id)), modulos: c.modulos.filter((x) => ids.includes(x.id)).map(enRaw),
             piezas: dv.piezas.filter(deEsta), por_modulo: Object.fromEntries(ids.map((id) => [id, dv.por_modulo?.[id] || {}])),
-            esquinero: (dv.esquineros || []).find((o) => o.m === m.id) || null, cajones: (dv.cajones || []).filter(deEsta), cubiertas: (dv.cubiertas || []).filter(deEsta) };
+            esquinero: (dv.esquineros || []).find((o) => o.m === m.id) || null, cajones: (dv.cajones || []).filter(deEsta), cubiertas: (dv.cubiertas || []).filter((o) => (o.partes || [o]).some((x) => todos.has(x.m))) };
         }
       }
       if (Object.keys(variantes).length) { raw.despiece.variantes_esquinero = variantes; raw.despiece.esquinas = esquinas; }

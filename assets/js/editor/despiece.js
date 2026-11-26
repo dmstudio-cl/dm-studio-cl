@@ -97,8 +97,42 @@ function tirasPino(largos) {
   return tiras.length;
 }
 
+// Cubiertas por tira (dueño, 2026-11-26): los tramos de cubierta seguidos en un mismo muro (mismo giro, misma línea de
+// atrás, misma altura y que se tocan) son una sola tira continua, cortada a 90° en sus 2 extremos, con 1 cm de
+// sobremedida en cada extremo (+2 cm) para el descuadre de los muros. En el esquinero, la única unión es la del rincón
+// (90° o 45°): desde ahí, cada brazo sigue en una sola tira hasta donde terminan los muebles de ese muro. Las uniones
+// por largo las cobra el Worker según el largo máximo del material. Cada tira guarda sus partes (por mueble) para
+// repartir su costo y para cotizar solo los muebles que elige el cliente.
+export const SOBREMEDIDA_CUBIERTA = 2;
+function tirasCubierta(segs) {
+  const norm = (g) => ((Math.round(g) % 360) + 360) % 360, grupos = {};
+  for (const s of segs) {
+    const rot = norm(s.rot), [u0, v0] = girar(s.a[0], s.a[1], -rot), [u1] = girar(s.b[0], s.b[1], -rot);
+    const k = `${rot}|${Math.round(v0)}|${Math.round(s.alto)}`;
+    (grupos[k] ||= []).push({ ...s, s0: Math.min(u0, u1), s1: Math.max(u0, u1) });
+  }
+  const out = [];
+  for (const lista of Object.values(grupos)) {
+    lista.sort((p, q) => p.s0 - q.s0);
+    let t = null;
+    const cerrar = () => { if (!t) return;
+      const largo = t.s1 - t.s0, nombres = [...new Set(t.partes.map((p) => p.mueble))];
+      out.push({ m: t.partes[0].m, mueble: nombres.join(' + '), largo: r1(largo + SOBREMEDIDA_CUBIERTA), ancho: r1(Math.max(...t.partes.map((p) => p.ancho))),
+        sobrepuestos: t.partes.reduce((s, p) => s + p.sobrepuestos, 0), bajo: t.partes.reduce((s, p) => s + p.bajo, 0), encimeras: t.partes.reduce((s, p) => s + p.encimeras, 0),
+        respaldo: t.partes.some((p) => p.respaldo), vuelo_max: Math.max(...t.partes.map((p) => p.vuelo_max)), sobremedida_aplicada: true,
+        partes: t.partes.map((p) => ({ m: p.m, largo: r1(p.s1 - p.s0), ancho: p.ancho, sobrepuestos: p.sobrepuestos, bajo: p.bajo, encimeras: p.encimeras, respaldo: p.respaldo, ...(p.union_esquina ? { union_esquina: p.union_esquina } : {}) })),
+        ...(t.partes.some((p) => p.union_esquina) ? { union_esquina: t.partes.find((p) => p.union_esquina).union_esquina } : {}) });
+      t = null; };
+    for (const s of lista) {
+      if (t && s.s0 <= t.s1 + 1) { t.s1 = Math.max(t.s1, s.s1); t.partes.push(s); continue; } // se toca con la anterior: sigue la misma tira
+      cerrar(); t = { s0: s.s0, s1: s.s1, partes: [s] };
+    }
+    cerrar();
+  }
+  return out;
+}
 export function despiece(modelo) {
-  const col = modelo.colores || {}, piezas = [], cubiertas = [], pinos = [], cajones = [], esquineros = [];
+  const col = modelo.colores || {}, piezas = [], segCub = [], pinos = [], cajones = [], esquineros = [];
   const herrajes = { bisagras: 0, bisagras_rectas: 0, bisagras_semicurvas: 0, correderas: {} };
   const porModulo = {}; // herrajes de cada mueble (el Worker cotiza cualquier combinación de muebles)
   let canto = 0, cantoBlanco = 0; // cm de tapacanto (total y de las piezas en melamina blanca)
@@ -136,8 +170,12 @@ export function despiece(modelo) {
       if (m.cubierta) { // cubierta en L como 2 rectángulos: el lado 1 completo y el resto del lado 2
         const T2 = tablero(m), fa = Math.min(+m.fondo_a || 58, +m.profundidad - T2 - 5), fb = Math.min(+m.fondo_b || 58, +m.ancho - T2 - 5);
         const artE = Array.isArray(m.artefactos) ? m.artefactos.filter(Boolean) : [], bajoE = artE.filter((x) => String(x.tipo).startsWith('lavaplatos') && x.montaje === 'bajo').length; // sacados (lavaplatos y encimeras sobre la L): van en la primera pieza
-        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.ancho), ancho: r1(fa + T2 + 6), sobrepuestos: artE.length - bajoE, bajo: bajoE, encimeras: artE.filter((x) => !String(x.tipo).startsWith('lavaplatos')).length, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
-        cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(+m.profundidad - fa - T2 - 6), ancho: r1(fb + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6 });
+        // los 2 brazos de la L como tramos de cubierta, cada uno en su muro (se juntan con los basales vecinos en una
+        // sola tira por muro; dueño, 2026-11-26). El brazo 1 lleva la unión del rincón (90° o 45°).
+        const r = +m.rotacion || 0, izq = m.esquina === 'izq', W = +m.ancho, Lb = +m.profundidad, f = fa + T2 + 6, xw = izq ? 0 : W;
+        const P = (lx, lz) => { const [dx, dz] = girar(lx, lz, r); return [+m.x + dx, +m.z + dz]; }, alto = (+m.elevacion || 0) + +m.alto;
+        segCub.push({ m: m.id, mueble: m.nombre, rot: r, a: P(0, 0), b: P(W, 0), alto, ancho: r1(fa + T2 + 6), sobrepuestos: artE.length - bajoE, bajo: bajoE, encimeras: artE.filter((x) => !String(x.tipo).startsWith('lavaplatos')).length, respaldo: !!m.cubierta_respaldo, vuelo_max: 6, union_esquina: m.id });
+        segCub.push({ m: m.id, mueble: m.nombre, rot: r + (izq ? 90 : 270), a: P(xw, f), b: P(xw, Lb), alto, ancho: r1(fb + T2 + 6), sobrepuestos: 0, bajo: 0, encimeras: 0, respaldo: !!m.cubierta_respaldo, vuelo_max: 6, esquina: m.id });
       }
       const corE = {}; for (const [l, n] of Object.entries(herrajes.correderas)) { const d = n - (h0.c[l] || 0); if (d) corE[l] = d; }
       porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: corE };
@@ -304,7 +342,8 @@ export function despiece(modelo) {
       const bajo = arts.filter((a) => String(a.tipo).startsWith('lavaplatos') && a.montaje === 'bajo').length;
       const encimeras = arts.filter((a) => !String(a.tipo).startsWith('lavaplatos')).length;
       // vuelo_max: el mayor vuelo (cm) para las reglas físicas de cada material (sobre su máximo pide refuerzo o no sirve)
-      cubiertas.push({ m: m.id, mueble: m.nombre, largo: r1(cb.x1 - cb.x0), ancho: r1(cb.z1 - cb.z0), sobrepuestos: arts.length - bajo, bajo, encimeras,
+      const r = +m.rotacion || 0, P = (lx, lz) => { const [dx, dz] = girar(lx, lz, r); return [+m.x + dx, +m.z + dz]; };
+      segCub.push({ m: m.id, mueble: m.nombre, rot: r, a: P(cb.x0, cb.z0), b: P(cb.x1, cb.z0), alto: (+m.elevacion || 0) + +m.alto, ancho: r1(cb.z1 - cb.z0), sobrepuestos: arts.length - bajo, bajo, encimeras,
         respaldo: !!m.cubierta_respaldo, vuelo_max: r1(Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der)) });
     }
     // ---- zócalo: marco de pino bajo la base (frente y atrás de largo completo; costados entre ambos)
@@ -322,6 +361,7 @@ export function despiece(modelo) {
     porModulo[m.id] = { bisagras: herrajes.bisagras - h0.b, bisagras_rectas: herrajes.bisagras_rectas - h0.r, bisagras_semicurvas: herrajes.bisagras_semicurvas - h0.s, correderas: cor };
   }
   herrajes.pino = { tiras: tirasPino(pinos), metros: Math.round(pinos.reduce((a, b) => a + b, 0)) / 100 };
+  const cubiertas = tirasCubierta(segCub);
   return { version: 3, piezas, herrajes, por_modulo: porModulo, cubiertas, cajones, esquineros, tapacanto_m: Math.round(canto) / 100,
     tapacanto_blanco_m: Math.round(cantoBlanco) / 100, tapacanto_color_m: Math.round(canto - cantoBlanco) / 100, tapacanto_mm: TAPACANTO * 10 };
 }

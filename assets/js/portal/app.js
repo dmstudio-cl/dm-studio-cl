@@ -48,6 +48,7 @@ export async function startApp(api) {
     // muebles que el cliente quiere cotizar (vacío = todos); si ya aprobó, los aprobados
     modulos: [...(proyecto.aprobacion?.modulos || proyecto.seleccion?.modulos || [])],
     esquineros: { ...(proyecto.seleccion?.esquineros || {}) }, // tipo de esquina elegido en cada esquinero
+    ...(proyecto.seleccion?.union_cubierta ? { union_cubierta: proyecto.seleccion.union_cubierta } : {}), // unión del rincón de la cubierta
   };
   // modulos: los muebles elegidos para cotizar (vacío = todos); los demás no se dibujan
   const resolved = () => ({ melamina: byId(melaminas, sel.melamina), tirador: byId(tiradores, sel.tirador), cubierta: byId(cubiertas, sel.cubierta), borde: byId(bordes, sel.borde), materiales: sel.materiales, modulos: sel.modulos });
@@ -200,6 +201,24 @@ export async function startApp(api) {
 
   // Medidas de los muebles como se ven (con el tipo de esquina elegido, los basales reacomodados)
   function pintarMedidas() { $('#pdims').innerHTML = (scene.modulos().length ? scene.modulos() : proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join(''); }
+  // Unión de la cubierta en el rincón del esquinero (dueño, 2026-11-26): el cliente elige 90° (recta estándar) o 45°
+  // (ingletada, continuidad de la veta) en la pestaña Cubierta; vale para todo el proyecto. Si el material elegido no la
+  // permite, queda en 90°. El precio se recalcula al elegir (el Worker la cobra en la tira del rincón).
+  function pintarUnion() {
+    const box = $('#punion'); if (!box) return;
+    const hay = (proyecto.modulos || []).some((m) => m.tipo === 'esquinero' && m.cubierta);
+    box.hidden = !hay; if (!hay) return;
+    const c = byId(cubiertas, sel.cubierta), permite = !c || c.union_45 !== false, fijo = aprobado() && !isOwner;
+    const actual = permite && (sel.union_cubierta || proyecto.union_cubierta) === '45' ? '45' : '90';
+    box.innerHTML = `<h2 class="eyebrow pbordes-tit">Unión en el rincón</h2>
+      <div class="optlist">${[['90', 'Unión en 90°', 'Recta estándar', fijo], ['45', 'Unión en 45°', 'Corte diagonal, continuidad', fijo || !permite]].map(([v, t, d, off]) => `<button type="button" class="opt" data-union="${v}" aria-pressed="${actual === v}"${off ? ' disabled aria-disabled="true"' : ''}><i class="mono">${v}°</i><span><b>${t}</b><br><small class="muted">${d}</small></span></button>`).join('')}</div>
+      <p class="small muted">${permite ? 'La de 45° une las dos alas de la cubierta en diagonal: se ve continua, pero cuesta más (mecanizado y material).' : 'Este material solo admite la unión en 90°.'}</p>`;
+  }
+  $('#punion')?.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-union]'); if (!b || b.disabled) return;
+    if (aprobado() && !isOwner) { status('La propuesta ya fue aprobada. Para cambios, escríbenos en la conversación.'); return; }
+    sel.union_cubierta = b.dataset.union === '45' ? '45' : '90'; pintarUnion(); schedule();
+  });
   // ----- precio y guardado (con espera para no saturar)
   let qt = 0, lastQuote = null;
   async function quote() {
@@ -213,6 +232,7 @@ export async function startApp(api) {
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
       mostrarFoco(); // precio del mueble enfocado al día (ej. al cambiar el tipo de esquina)
+      pintarUnion();
       pintarMedidas();
       pintarDespacho(lastQuote);
     } catch (e) {
