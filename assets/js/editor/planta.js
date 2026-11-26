@@ -5,7 +5,7 @@ import { muros, huella, centro, distancias, rotarEnCentro, nuevoModulo, ejeMuro,
 import { ARTEFACTOS } from './artefactos.js';
 import { OBJETOS } from './objetos.js';
 import { cubiertaDe, tablero, celdas, fondoTotal, GAP } from './modelo.js';
-import { huellaEsquinero, frentesPlanta, geoEsquinero, divisionesEsquinero } from './esquinero.js';
+import { huellaEsquinero, frentesPlanta, geoEsquinero, divisionesEsquinero, bandejaGiratoria, holgurasBandeja } from './esquinero.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -115,6 +115,19 @@ export function crearPlanta(ctx) {
         const g = geoEsquinero(m), [qx, qz] = aM(g.X((g.xb + g.W) / 2), g.fa / 2);
         el('text', { x: M.X(qx), y: M.Y(qz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
         if (!g.sol) el('text', { x: M.X(qx), y: M.Y(qz) + 26, 'text-anchor': 'middle', class: 'esq-pregunta' }, plano).textContent = '?';
+        if (g.sol === '1') { // bandeja de ¾ de círculo de la puerta giratoria (dueño, 2026-11-26): se toca para cambiar su diámetro
+          const b = bandejaGiratoria(g), P = (x, z) => { const [wx, wz] = aM(g.X(x), z); return `${M.X(wx)},${M.Y(wz)}`; }, pts = [P(b.cx, b.cz)];
+          for (let i = 0; i <= 36; i++) { const t = Math.PI + (i / 36) * 1.5 * Math.PI; pts.push(P(b.cx + b.r * Math.cos(t), b.cz + b.r * Math.sin(t))); } // sin el cuarto que da a la sala
+          el('polygon', { points: pts.join(' '), class: `esq-bandeja${esSel ? ' sel' : ''}`, 'data-tipo': 'huella', 'data-m': m.id, style: 'fill:rgba(236,231,221,.10);stroke:#ece7dd;stroke-width:1.2' }, plano);
+          const [tx, tz] = aM(g.X(b.cx + b.r * .45), b.cz - b.r * .45);
+          el('text', { x: M.X(tx), y: M.Y(tz), 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = `Ø ${cm(2 * b.r)}`;
+          if (esSel) { // cotas del borde de la bandeja a los costados y a las traseras
+            const cg = el('g', { class: 'cota' }, plano), hz = holgurasBandeja(g, b);
+            const lin = (p, q, t) => { const [x1, z1] = aM(g.X(p[0]), p[1]), [x2, z2] = aM(g.X(q[0]), q[1]); el('line', { x1: M.X(x1), y1: M.Y(z1), x2: M.X(x2), y2: M.Y(z2) }, cg); el('text', { x: M.X((x1 + x2) / 2), y: M.Y((z1 + z2) / 2) - 5, 'text-anchor': 'middle' }, cg).textContent = t; };
+            lin([b.cx - b.r, b.cz], [g.T, b.cz], cm(hz.latA)); lin([b.cx, b.cz + b.r], [b.cx, g.L - g.T], cm(hz.latB));
+            lin([b.cx, b.cz - b.r], [b.cx, .3], cm(hz.trasA)); lin([b.cx + b.r, b.cz], [g.W - .3, b.cz], cm(hz.trasB));
+          }
+        }
         continue;
       }
       el('polygon', { points: h.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' '), class: `huella${esSel ? ' sel' : ''}`, 'data-tipo': 'huella', 'data-m': m.id }, plano);

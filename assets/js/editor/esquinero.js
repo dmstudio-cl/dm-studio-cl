@@ -111,6 +111,10 @@ export function bandejaGiratoria(g) {
   const libre = Math.min(cx - g.T, g.L - g.T - cz, fMin - CHOL);
   return { cx, cz, r: Math.max(5, Math.floor((libre - 1) * 10) / 10) };
 }
+// Distancias del borde de la bandeja giratoria a las caras interiores (cm): laterales (costados) y traseras (cholguán)
+export function holgurasBandeja(g, b = bandejaGiratoria(g)) {
+  return { latA: b.cx - b.r - g.T, latB: g.L - g.T - b.cz - b.r, trasA: b.cz - b.r - CHOL, trasB: g.W - CHOL - b.cx - b.r };
+}
 export function bandejaCarrusel(g) {
   const cx = g.xb + 3, cz = g.fa - 3;
   const r = Math.min(cz - CHOL, g.W - CHOL - cx, cx - g.T, g.L - g.T - cz) - 1;
