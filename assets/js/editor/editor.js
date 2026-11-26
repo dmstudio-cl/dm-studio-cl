@@ -1221,6 +1221,9 @@ function dibujarPlano() {
   el('line', { x1: 0, y1: M.Y(0), x2: M.Wp, y2: M.Y(0), class: 'piso' }, plano);
   referencias.pintar(plano, M, 'frente'); // foto o plano del cliente, a escala
   const W = muroActivo();
+  // muro con acabado (azulejo, pintura): los muebles y electrodomésticos se rellenan con el oscuro del editor para que se
+  // vean encima (dueño, 2026-11-26); sin acabado siguen transparentes, así se ve la foto de referencia debajo
+  plano.classList.toggle('con-acabado', !!W && capas.acabados !== false && zonasMuro(modelo.espacio, W.i, W.largo, W.alto).some((z) => z.acabado));
   if (W) { // contorno del muro que se está viendo, con su largo
     if (capas.acabados !== false) zonasFrente(W, M);
     el('rect', { x: M.X(0), y: M.Y(W.alto), width: W.largo * M.s, height: W.alto * M.s, class: 'muro-frente' }, plano);
