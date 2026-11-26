@@ -36,6 +36,8 @@ export const esEsquinero = (m) => m?.tipo === 'esquinero';
 // si el módulo es cuadrado. El aéreo solo ofrece 2a y 2b. El tipo actual siempre está.
 export function solucionesQueCalzan(m) {
   const lista = m?.aereo ? ORDEN_AEREO : ORDEN_SOLUCIONES;
+  // con un basal absorbido (anexo o reemplazado), otro tipo cambiaría a los vecinos: por ahora solo en el editor
+  if (+m?.anexo_a || +m?.anexo_b || m?.absorbido_a || m?.absorbido_b) return m.solucion ? [m.solucion] : [];
   return lista.filter((sol) => {
     if (sol === m.solucion) return true;
     const mm = { ...m, solucion: sol }, g = geoEsquinero(mm), s = SOLUCIONES[sol];
@@ -76,7 +78,10 @@ export function geoEsquinero(m) {
   // barra (soporte delantero): 7 cm en la puerta giratoria (dueño, 2026-11-25, editable), 10 cm en los demás
   const sop = sol === '1' ? Math.max(3, Math.min(20, +m.soporte_alto || 7)) : SOPORTE;
   // yTop: techo del interior útil (bajo la barra delantera; en el aéreo, bajo su techo de melamina)
-  return { m, T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, aereo, yTop: aereo ? H - T : H - sop, arriba: m.cubierta && !aereo ? 7 : 1, X: (x) => (izq ? W - x : x) };
+  // anexo (dueño, 2026-11-26): ancho del basal absorbido dentro de cada lado (solo space corner); el compartimento
+  // lateral termina en su costado
+  const ana = sol === '3' ? Math.max(0, +m.anexo_a || 0) : 0, anb = sol === '3' ? Math.max(0, +m.anexo_b || 0) : 0;
+  return { m, T, W, L, H, Z, fa, fb, xb: W - fb, izq, sol, niveles, ld, sop, aereo, ana, anb, yTop: aereo ? H - T : H - sop, arriba: m.cubierta && !aereo ? 7 : 1, X: (x) => (izq ? W - x : x) };
 }
 
 // Contorno en planta (cuerpo + frentes) en coordenadas locales del mueble
@@ -132,8 +137,9 @@ export function distanciaTirador(w, luz, sale) {
 // y si va horizontal (cajones). Los tiradores siguen las reglas de todos los muebles del proyecto.
 export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
   const { T, L, Z, H, fa, xb, sol, niveles: n, ld } = g, y1 = top ?? H - g.arriba, out = [], gR = luzRincon(g);
-  // Pegado a un basal (agrupado en L): el frente se ve continuo, con 3 mm de luz contra la puerta del vecino (dueño, 2026-11-25)
-  const iA = m.vecino_a ? LUZ : 0, iB = m.vecino_b ? LUZ : 0;
+  // Pegado a un basal (agrupado en L): el frente se ve continuo, con 3 mm de luz contra la puerta del vecino (dueño, 2026-11-25).
+  // Con anexo, la puerta lateral parte 3 mm después de la puerta del anexo.
+  const iA = g.ana ? g.ana + LUZ : m.vecino_a ? LUZ : 0, iB = g.anb ? g.anb + LUZ : m.vecino_b ? LUZ : 0;
   const A = [iA, xb - T - gR], B = [fa + T + gR, L - iB]; // cada hoja llega al rincón con su línea de aire
   const c4 = { ancho: 2, alto: 2 };
   const hoja = (lado, [s0, s1], clase, nombre, tir, extra = {}, y0 = Z, ya = y1) => { if (s1 - s0 > 1) out.push({ lado, s0, s1, corte: s1 - s0, y0, y1: ya, clase, nombre, cantos: c4, tir, ...extra }); };
@@ -165,8 +171,13 @@ export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
       hoja('A', [a0, xb - T], 'cajon', `Frente del cajón ${i + 1} en flecha, lado 1 (inglete a 45° en el rincón)`, { en: 'medio', horizontal: true }, { corte: xb - a0, cantos: c3, cajon: i }, y0, ya);
       hoja('B', [fa, b1], 'cajon', `Frente del cajón ${i + 1} en flecha, lado 2 (inglete a 45° en el rincón)`, { en: 'medio', horizontal: true }, { corte: b1 - fa, cantos: c3, cajon: i }, y0, ya);
     });
-    hoja('A', [iA, xb - ld - LUZ / 2], 'puerta', 'Puerta del compartimento lateral, lado 1', { en: 's1' });
-    hoja('B', [fa + ld + LUZ / 2, L - iB], 'puerta', 'Puerta del compartimento lateral, lado 2', { en: 's0' });
+    // sobre 60 cm la puerta lateral se divide en hojas iguales que abren desde el centro (dueño, 2026-11-26)
+    const lateral = (lado, s0, s1, nom, enUna) => {
+      const w = s1 - s0, n = Math.max(1, Math.ceil((w - .5) / 60)), h = w / n;
+      for (let j = 0; j < n; j++) hoja(lado, [s0 + j * h, s0 + (j + 1) * h], 'puerta', n > 1 ? `${nom} (hoja ${j + 1} de ${n})` : nom, { en: n > 1 ? (j === 0 ? 's1' : 's0') : enUna });
+    };
+    lateral('A', iA, xb - ld - LUZ / 2, 'Puerta del compartimento lateral, lado 1', 's1');
+    lateral('B', fa + ld + LUZ / 2, L - iB, 'Puerta del compartimento lateral, lado 2', 's0');
   }
   return out;
 }
@@ -177,12 +188,13 @@ export function hojasEditables(m, g = geoEsquinero(m)) {
   const s = SOLUCIONES[g.sol]; if (!s?.hojas) return null;
   const fr = frentesEsquinero(m, g).filter((f) => f.clase === 'puerta'), A = fr.find((f) => f.lado === 'A'), Bf = fr.find((f) => f.lado === 'B');
   const extra = g.sol === '3' ? g.ld + LUZ / 2 : g.T + luzRincon(g); // lo que va entre el fondo del otro lado y la hoja
-  const iA = m.vecino_a ? LUZ : 0, iB = m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado)
+  const iA = g.ana ? g.ana + LUZ : m.vecino_a ? LUZ : 0, iB = g.anb ? g.anb + LUZ : m.vecino_b ? LUZ : 0; // luz contra la puerta del basal vecino (agrupado) o del anexo
+  const nA = Math.max(1, fr.filter((f) => f.lado === 'A').length), nB = Math.max(1, fr.filter((f) => f.lado === 'B').length); // hojas de la puerta lateral
   if (s.cuadrado) { const f = Math.max(g.fa, g.fb), lado = (v) => v + f + g.T + AIRE_GIRO; /* hoja (hasta la punta del inglete) + lateral + 5 mm de aire */
     // la hoja no puede ser más larga que el fondo más corto − 1 cm: al girar, su punta tocaría la trasera
     const rango = [s.hojas[0], Math.min(s.hojas[1], Math.floor(Math.min(g.fa, g.fb) - 1))];
     return { rango, cuadrado: true, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: lado, profundidadPara: lado }; }
-  return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v + g.fb + extra + iA, profundidadPara: (v) => v + g.fa + extra + iB };
+  return { rango: s.hojas, a: A ? A.corte : 0, b: Bf ? Bf.corte : 0, anchoPara: (v) => v * nA + g.fb + extra + iA, profundidadPara: (v) => v * nB + g.fa + extra + iB };
 }
 
 // Divisiones diagonales del space corner (tipo 3), como cualquier división: se dibujan en Planta y en 3D y van en los
@@ -207,10 +219,10 @@ export function divisionesEsquinero(m, g = geoEsquinero(m)) {
 export function repisasTrapecio(g) {
   const { T, W, L, fa, fb, xb, ld } = g, d2 = T * Math.SQRT2, out = {};
   const cA = xb - ld + fa - d2, xDiv = (z) => cA - z;                      // cara de la división 1 hacia su compartimento: x + z = cA
-  const zf = fa - 1, xa = T + .1;
+  const zf = fa - 1, xa = (g.ana || T) + .1; // con anexo, desde su costado
   if (xDiv(zf) - .1 - xa > 5) out.A = { pts: [[xa, CHOL], [xDiv(CHOL) - .1, CHOL], [xDiv(zf) - .1, zf], [xa, zf]], corto: xDiv(zf) - .1 - xa, largo: xDiv(CHOL) - .1 - xa, prof: zf - CHOL };
   const cB = xb + fa + ld + d2, zDiv = (x) => cB - x;                      // división 2: x + z = cB
-  const xf = xb + 1, zl = L - T - .1, xw = W - CHOL;
+  const xf = xb + 1, zl = L - (g.anb || T) - .1, xw = W - CHOL;
   if (zl - zDiv(xf) - .1 > 5) out.B = { pts: [[xw, zDiv(xw) + .1], [xw, zl], [xf, zl], [xf, zDiv(xf) + .1]], corto: zl - zDiv(xf) - .1, largo: zl - zDiv(xw) - .1, prof: xw - xf };
   return out;
 }
@@ -542,7 +554,7 @@ export function despieceEsquinero(m, ctx) {
     const rt = repisasTrapecio(g), pl = placaTrapecios(g);
     if (pl) add('esq|repisa', pl.n === 2 ? `Placa para las 2 repisas en trapecio, intercaladas (corte en diagonal con 1 cm de sierra, en el taller): ${r1(rt.A.corto)}/${r1(rt.A.largo)} y ${r1(rt.B.corto)}/${r1(rt.B.largo)} × ${r1(Math.max(rt.A.prof, rt.B.prof))}` : 'Repisa en trapecio del compartimento (rectángulo; diagonal en el taller)',
       mat('esq|repisa', cuerpo), r1(pl.ancho), r1(pl.prof), undefined, 'tablero', { tapacanto_taller: r1((rt.A?.corto || 0) + (rt.B?.corto || 0)) });
-    semicurvas(4); // puertas laterales (dueño, 2026-11-24): 2 bisagras semicurvas cada una
+    semicurvas(2 * frs.filter((fr) => fr.clase === 'puerta').length); // puertas laterales (dueño, 2026-11-24): 2 bisagras semicurvas cada una (cada hoja si se dividió)
     // cajas: alto como un cajón normal (2 cm bajo el soporte en el de arriba; 2 cm bajo el canto de su frente en los demás)
     const hF = frs.filter((fr) => fr.cajon != null && fr.lado === 'A');
     const ranura = ' (ranura 3 × 5 mm a 5 mm del borde inferior; va al frente con tarugos)';
