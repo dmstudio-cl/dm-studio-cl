@@ -9,7 +9,7 @@ export function evaluarCubierta(c, mt) {
   if (con && v > con) { out.estado = 'no'; out.motivos.push(`vuelo ${v} cm, máx. ${con} cm`); }
   else if (sin && v > sin) { out.estado = 'refuerzo'; out.motivos.push(`vuelo ${v} cm: reforzar sobre ${sin} cm${pos(mt.distancia_max_apoyos) ? `, apoyos cada ${pos(mt.distancia_max_apoyos)} cm` : ''}`); }
   if (mt.permite_bajo === false && pos(c.bajo)) { out.estado = 'no'; out.motivos.push('no admite lavaplatos bajo cubierta'); }
-  if (lmax && pos(c.largo) > lmax) out.motivos.push(`${Math.ceil(pos(c.largo) / lmax) - 1} unión (largo máx. ${lmax} cm)`);
+  if (lmax && pos(c.largo) > lmax) { const n = Math.floor(pos(c.largo) / lmax); out.motivos.push(`${n} unión${n > 1 ? 'es' : ''} (largo máx. ${lmax} cm)`); } // como el Worker (2026-11-26)
   if (mt.requiere_base_continua) out.motivos.push('pide base continua bajo la cubierta');
   return out;
 }

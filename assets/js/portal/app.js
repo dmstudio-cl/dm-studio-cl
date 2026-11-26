@@ -271,7 +271,10 @@ export async function startApp(api) {
     box.hidden = !isOwner || !e;
     if (box.hidden) return;
     box.innerHTML = `<p class="eyebrow" style="margin:0 0 4px">Solo el estudio</p>
-      <div class="row"><span>Materiales${e.extras_costo ? ` <small class="muted">(incluye ${clp(e.extras_costo)} de extras)</small>` : ''}</span><span>${clp(e.materiales)}</span></div>
+      ${e.carpinteria != null // carpintería y cubiertas por separado (dueño, 2026-11-26); un Worker anterior solo trae «materiales»
+        ? `<div class="row"><span>Carpintería y herrajes${e.extras_costo ? ` <small class="muted">(incluye ${clp(e.extras_costo)} de extras)</small>` : ''}</span><span>${clp(e.carpinteria)}</span></div>
+      ${e.cubiertas > 0 ? `<div class="row"><span>Cubiertas <small class="muted">(costo, terceros incluidos; su margen va en la mano de obra)</small></span><span>${clp(e.cubiertas)}</span></div>` : ''}`
+        : `<div class="row"><span>Materiales${e.extras_costo ? ` <small class="muted">(incluye ${clp(e.extras_costo)} de extras)</small>` : ''}</span><span>${clp(e.materiales)}</span></div>`}
       <div class="row"><span>Luz (${Math.round(e.luz_pct * 100)}%)</span><span>${clp(e.luz)}</span></div>
       <div class="row"><span>Subtotal</span><span>${clp(e.subtotal)}</span></div>
       <div class="row fuerte"><span>Mano de obra (ganancia)</span><span>${clp(e.mano_obra)}</span></div>
