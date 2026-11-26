@@ -108,7 +108,7 @@ export async function startApp(api) {
   $('#bordetit').hidden = !bordes.length;
   $('#preclist').innerHTML = (proyecto.recomendados || []).map((r) => `
     <a class="opt" href="${esc(r.url)}" target="_blank" rel="noopener"><i class="mono">${esc((r.tipo || '').slice(0, 3))}</i><span>${esc(r.nombre)}${r.medida ? ` · ${esc(r.medida)}` : ''} ↗</span></a>`).join('') || '<p class="small muted">Sin recomendaciones.</p>';
-  $('#pdims').innerHTML = (proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join('');
+  pintarMedidas();
 
   function paintSelection() {
     document.querySelectorAll('#mellist [data-id]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === sel.melamina)));
@@ -198,18 +198,22 @@ export async function startApp(api) {
   });
   paintSelection();
 
+  // Medidas de los muebles como se ven (con el tipo de esquina elegido, los basales reacomodados)
+  function pintarMedidas() { $('#pdims').innerHTML = (scene.modulos().length ? scene.modulos() : proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join(''); }
   // ----- precio y guardado (con espera para no saturar)
   let qt = 0, lastQuote = null;
   async function quote() {
     const totales = ['#ptotal', '#ptotal3'].map((s) => $(s));
     totales.forEach((n) => n.classList.add('loading'));
     try {
-      lastQuote = await api.cotizar(sel);
+      const esq = esquineroFoco(); // con un esquinero enfocado, también el precio de su esquina completa por tipo
+      lastQuote = await api.cotizar(sel, esq ? { esquina: esq } : {});
       ['#ptotal', '#ptotal2', '#ptotal3'].forEach((s) => { $(s).textContent = clp(lastQuote.total); });
       ['#panticipo', '#panticipo3'].forEach((s) => { $(s).textContent = clp(lastQuote.anticipo); });
       pintarMuebles(lastQuote);
       pintarCostos(lastQuote);
       mostrarFoco(); // precio del mueble enfocado al día (ej. al cambiar el tipo de esquina)
+      pintarMedidas();
       pintarDespacho(lastQuote);
     } catch (e) {
       ['#ptotal', '#ptotal2', '#ptotal3', '#panticipo3'].forEach((s) => { $(s).textContent = '—'; });
@@ -481,7 +485,7 @@ export async function startApp(api) {
       // Mueble enfocado (dueño, 2026-11-25): el primer toque en un mueble lo acerca a una vista 3/4 y muestra sus
       // opciones; desde ahí, tocar una puerta o un cajón lo abre o lo cierra. Tocar el fondo vuelve a la vista general.
       const mid = (ref || '').split('|')[0];
-      if (scene.esMueble(mid) && scene.foco !== mid) { scene.enfocar(mid); mostrarFoco(); irA('personalizar', 'melamina'); return; }
+      if (scene.esMueble(mid) && scene.foco !== mid) { scene.enfocar(mid); mostrarFoco(); irA('personalizar', 'melamina'); if (esquineroFoco() && !lastQuote?.esquinas_precio?.[mid]) quote(); return; }
       if (scene.foco && mid === scene.foco && (mueve || hojaGiro)) { scene.alternar(mueve, hojaGiro); mostrarFoco(); return; }
       if (!ref && scene.foco) { scene.desenfocar(); mostrarFoco(); return; }
       if (/^obj\|/.test(ref || '')) { mostrarElectro(ref.slice(4)); return; } // un electrodoméstico: sus productos recomendados
@@ -496,13 +500,18 @@ export async function startApp(api) {
   cv.addEventListener('contextmenu', (e) => e.preventDefault()); // evita el menú del long tap
   // Esquinero enfocado (dueño, 2026-11-25): el cliente elige el tipo de esquina entre los que calzan con sus medidas;
   // el precio se recalcula al elegir. Tras aprobar, el cliente ya no lo cambia (el estudio sí, para revisar).
+  // Esquinero enfocado con varios tipos para elegir (su id), o null
+  function esquineroFoco() { const id = scene.foco; return id && (proyecto.esquineros_opciones?.[id] || []).length > 1 ? id : null; }
+  // (dueño, 2026-11-26) agrupado con basales, todos los tipos que se pueden armar: la cocina se reacomoda (el basal de
+  // al lado crece, se achica o lo absorbe el esquinero). Cada botón muestra el precio de la esquina completa (esquinero y
+  // los basales que cambian con él); se elige aquí, en la vista del esquinero, y al volver se ve la cocina reacomodada.
   function tiposEsquina(id) {
     const m = (proyecto.modulos || []).find((x) => x.id === id), ops = proyecto.esquineros_opciones?.[id] || [];
     if (m?.tipo !== 'esquinero' || ops.length < 2) return '';
     const actual = ops.includes(sel.esquineros?.[id]) ? sel.esquineros[id] : m.solucion, fijo = aprobado() && !isOwner;
-    const ayuda = (SOLUCIONES[actual]?.ayuda || '').split('. ')[0];
-    return `<p class="small" style="margin:8px 0 4px"><b>Tipo de esquina</b></p>
-      <div class="pfoco-btns">${ops.map((s) => `<button type="button" data-esq-tipo="${esc(s)}" aria-pressed="${s === actual}"${fijo ? ' disabled' : ''}>${esc(SOLUCIONES[s]?.nombre || s)}</button>`).join('')}</div>
+    const ayuda = (SOLUCIONES[actual]?.ayuda || '').split('. ')[0], precios = lastQuote?.esquinas_precio?.[id] || {};
+    return `<p class="small" style="margin:8px 0 4px"><b>Tipo de esquina</b> <span class="muted">· precio de la esquina completa</span></p>
+      <div class="pfoco-btns">${ops.map((s) => `<button type="button" data-esq-tipo="${esc(s)}" aria-pressed="${s === actual}"${fijo ? ' disabled' : ''}>${esc(SOLUCIONES[s]?.nombre || s)}${precios[s] ? `<br><span class="mono">${clp(precios[s])}</span>` : ''}</button>`).join('')}</div>
       ${ayuda ? `<p class="small muted" style="margin:4px 0 8px">${esc(ayuda)}.</p>` : ''}`;
   }
   // Panel del mueble enfocado: nombre, precio, abrir y cerrar, y volver a la vista general
@@ -511,7 +520,8 @@ export async function startApp(api) {
     const id = scene.foco;
     box.hidden = !id; if (!id) { box.innerHTML = ''; return; }
     const q = lastQuote?.modulos?.find((m) => m.id === id), abiertos = scene.abiertos(), partes = scene.partesEsquinero();
-    box.innerHTML = `<div class="pfoco-cab"><b>${esc(scene.nombreFoco() || 'Mueble')}</b>${q ? `<span class="mono">${q.por_confirmar ? 'desde ' : ''}${clp(q.precio)}</span>` : ''}</div>
+    const conTipos = !!esquineroFoco(); // el esquinero con tipos para elegir muestra solo el precio de cada tipo
+    box.innerHTML = `<div class="pfoco-cab"><b>${esc(scene.nombreFoco() || 'Mueble')}</b>${q && !conTipos ? `<span class="mono">${q.por_confirmar ? 'desde ' : ''}${clp(q.precio)}</span>` : ''}</div>
       <p class="small muted" style="margin:0">Toca una puerta o un cajón para abrirlo o cerrarlo. Para cambiar el color de una pieza, tócala o arrastra un color encima.</p>
       ${tiposEsquina(id)}
       <div class="pfoco-btns">${partes.length
@@ -526,6 +536,7 @@ export async function startApp(api) {
       const id = scene.foco; if (!id) return;
       sel.esquineros = { ...(sel.esquineros || {}), [id]: b.dataset.esqTipo };
       scene.update(sel); if (b.dataset.esqTipo === '1') scene.enfocar(id); // la puerta giratoria gira sola al enfocarla
+      pintarMedidas(); // las medidas de los muebles reacomodados
       mostrarFoco(); schedule(); return;
     }
     if (b.dataset.focoTodo != null) { scene.todos(b.dataset.focoTodo === '1'); mostrarFoco(); return; }
@@ -663,7 +674,7 @@ export async function startApp(api) {
     sel.materiales = { ...(p.seleccion?.materiales || {}) };           // y lo que el estudio decidió por pieza manda
     paintSelection();
     scene.update(resolved());
-    $('#pdims').innerHTML = (proyecto.modulos || []).map((m) => `<tr><th>${esc(m.nombre)}</th><td class="mono">${m.ancho} × ${m.profundidad} × ${m.alto} cm</td></tr>`).join('');
+    pintarMedidas();
     paintMeta(); paintApproval(); quote();
     status(`DM Studio publicó la versión ${proyecto.version}: ya la estás viendo.`);
   }

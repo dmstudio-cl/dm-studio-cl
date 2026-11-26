@@ -1,6 +1,6 @@
 import { despiece } from './despiece.js';
 import { optimizarDespiece } from './optimizador.js';
-import { solucionesQueCalzan } from './esquinero.js';
+import { tiposPosibles, tieneVecinos, cambiarTipoConVecinos, aplicarEsquinerosCliente } from './vecinos.js';
 // Proyectos de clientes en el editor: abrir desde el repo privado, ver y responder comentarios,
 // y "Publicar versión" (commit en el repo + registro en el chat + aviso al cliente).
 //
@@ -128,7 +128,8 @@ export function aModelo(raw, uid) {
 // melamina (si la eligió él) y sus colores por pieza; tirador, cubierta, borde y muebles a cotizar se muestran encima
 // (capa «Elección del cliente»). Lo último que se cambia manda: lo que publicas queda como base y el cliente puede volver a
 // cambiarlo. Si el cliente cambia algo con el editor abierto, aparece un aviso para aplicarlo.
-export const firmaMat = (s) => JSON.stringify({ m: s?.melamina_propia ? s.melamina || '' : '', x: s?.materiales || {} });
+export const firmaMat = (s) => JSON.stringify({ m: s?.melamina_propia ? s.melamina || '' : '', x: s?.materiales || {}, e: s?.esquineros || {} });
+export { aplicarEsquinerosCliente };
 // Pasa al modelo la melamina y los colores por pieza del cliente. Devuelve qué cambió: { melamina, piezas }.
 export function aplicarCliente(mod, s) {
   const out = { melamina: '', piezas: 0 };
@@ -402,18 +403,25 @@ export function iniciarProyectos(ed) {
       raw.despiece.planchas = optimizarDespiece(raw.despiece).map((g) => ({ material: g.material, espesor: g.espesor, planchas: g.planchas, m2: Math.round(g.m2Piezas * 100) / 100 }));
       // melaminas que se pueden girar en la plancha (unicolor): el Worker re-optimiza las planchas de los muebles elegidos
       raw.despiece.libres = (window.MELAMINAS || []).filter((x) => /unicolor/i.test(x.linea || '')).map((x) => x.id);
-      // Esquineros (dueño, 2026-11-25): el cliente elige en el portal entre los tipos que calzan con las medidas del
-      // mueble. Por cada uno se manda el despiece de ese mueble con ese tipo; el Worker cotiza el que elija.
-      const variantes = {};
+      // Esquineros (dueño, 2026-11-25/26): el cliente elige el tipo en el portal. Sin vecinos, entre los que calzan con
+      // sus medidas; agrupado con basales, entre todos los que se pueden armar reacomodando la cocina. Por cada tipo se
+      // manda la esquina completa: los muebles que cambian (esquinero y vecinos, como quedan), los que desaparecen
+      // (absorbidos) y su despiece. El Worker cotiza el elegido y el precio de cada esquina; el portal la dibuja.
+      const variantes = {}, esquinas = {}, enRaw = (m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m));
+      const grupoIds = (M, e) => M.modulos.filter((x) => x.id === e.id || (e.grupo && x.grupo === e.grupo && !x.artefacto && x.tipo !== 'esquinero')).map((x) => x.id);
       for (const m of modelo.modulos.filter((x) => x.tipo === 'esquinero')) {
-        for (const sol of solucionesQueCalzan(m)) {
+        const base = grupoIds(modelo, m); esquinas[m.id] = base;
+        for (const sol of tiposPosibles(modelo, m)) {
           if (sol === m.solucion) continue;
-          const dv = despiece({ ...modelo, modulos: modelo.modulos.map((x) => (x.id === m.id ? { ...m, solucion: sol } : x)) }), deEste = (o) => o.m === m.id;
-          (variantes[m.id] ||= {})[sol] = { piezas: dv.piezas.filter(deEste), por_modulo: dv.por_modulo?.[m.id] || {}, esquinero: (dv.esquineros || []).find(deEste) || null,
-            cajones: (dv.cajones || []).filter(deEste), cubiertas: (dv.cubiertas || []).filter(deEste) };
+          const c = JSON.parse(JSON.stringify(modelo)), ce = c.modulos.find((x) => x.id === m.id);
+          if (tieneVecinos(c, ce)) cambiarTipoConVecinos(c, ce, sol); else ce.solucion = sol; // sin vecinos: mismas medidas (solo los tipos que calzan)
+          const ids = grupoIds(c, ce), todos = new Set([...ids, ...base]), dv = despiece(c), deEsta = (o) => todos.has(o.m);
+          (variantes[m.id] ||= {})[sol] = { ids, quitados: base.filter((id) => !ids.includes(id)), modulos: c.modulos.filter((x) => ids.includes(x.id)).map(enRaw),
+            piezas: dv.piezas.filter(deEsta), por_modulo: Object.fromEntries(ids.map((id) => [id, dv.por_modulo?.[id] || {}])),
+            esquinero: (dv.esquineros || []).find((o) => o.m === m.id) || null, cajones: (dv.cajones || []).filter(deEsta), cubiertas: (dv.cubiertas || []).filter(deEsta) };
         }
       }
-      if (Object.keys(variantes).length) raw.despiece.variantes_esquinero = variantes;
+      if (Object.keys(variantes).length) { raw.despiece.variantes_esquinero = variantes; raw.despiece.esquinas = esquinas; }
       // espacio: muros y etiquetas del editor; se conservan los datos que solo viven en Decap (fotos, etc.)
       if (modelo.espacio) raw.espacio = { ...(raw.espacio || {}), ...modelo.espacio };
       raw.opciones = { ...(raw.opciones || {}), melamina_inicial: modelo.frente || raw.opciones?.melamina_inicial };
