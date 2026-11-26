@@ -933,7 +933,10 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     d.className = 'c3-pin esq-pin';
     // flota 15 cm sobre la cubierta (o el mueble) para que se vea entero desde cualquier ángulo (dueño, 2026-11-26)
     d.style.transform = `translate3d(${+m.x + dx}em, ${-(+m.elevacion + g.H + (m.cubierta ? CT : 0) + 15)}em, ${+m.z + dz}em)`;
-    d.innerHTML = '<span title="Falta elegir la solución de esta esquina" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:grid;place-items:center;width:26px;height:26px;border-radius:50% 50% 50% 0;rotate:-45deg;background:#b4322e;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);font:700 14px/1 sans-serif;color:#fff"><b style="rotate:45deg">?</b></span>';
+    // la gota (girada) y el «?» van por separado: el «?» queda en el centro del círculo, sin girar (dueño, 2026-11-26)
+    d.innerHTML = '<span title="Falta elegir la solución de esta esquina" style="position:absolute;left:-15px;top:-36px;width:30px;height:30px">'
+      + '<i style="position:absolute;inset:0;box-sizing:border-box;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#b4322e;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5)"></i>'
+      + '<b style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 15px/1 sans-serif;color:#fff">?</b></span>';
     st.rig.append(d);
   }
   // Marca de selección: las caras de la pieza seleccionada se resaltan
