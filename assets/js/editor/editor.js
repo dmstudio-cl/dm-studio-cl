@@ -1994,7 +1994,9 @@ const biblio = $('#biblio');
 function bloqueMaterialesCub(m) {
   if (!materialesCub.length) return `<p class="ed-ayuda">${tokenGitHub() ? 'Cargando los materiales de cubierta…' : 'Entra a /admin/proyectos/ con GitHub para ver qué materiales de cubierta sirven con estos vuelos.'}</p>`;
   const cb = cubiertaDe(m), arts = artefactosDe(m);
-  const c = { largo: cb.x1 - cb.x0, vuelo_max: Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der), bajo: arts.filter((a) => String(a.tipo).startsWith('lavaplatos') && a.montaje === 'bajo').length };
+  // el largo es el de la tira completa de ese muro (los muebles seguidos van en una sola cubierta; 2026-11-26)
+  let largoTira = cb.x1 - cb.x0; try { const t = despiece(modelo).cubiertas.find((x) => (x.partes || [x]).some((p) => p.m === m.id)); if (t) largoTira = t.largo; } catch (e) {}
+  const c = { largo: largoTira, vuelo_max: Math.max(cb.v.frente, cb.v.atras, cb.v.izq, cb.v.der), bajo: arts.filter((a) => String(a.tipo).startsWith('lavaplatos') && a.montaje === 'bajo').length };
   const ev = materialesCub.map((mt) => ({ mt, ...evaluarCubierta(c, mt) }));
   const fila = (e) => `<li class="ed-cub-${e.estado}"><b>${esc(e.mt.nombre)}</b>${e.motivos.length ? ` <small>${esc(e.motivos.join(' · '))}</small>` : ''}</li>`;
   const grupo = (est, tit) => { const l = ev.filter((e) => e.estado === est); return l.length ? `<p class="ed-ayuda" style="margin:8px 0 2px"><b>${tit}</b></p><ul class="ed-cub-lista">${l.map(fila).join('')}</ul>` : ''; };
@@ -2501,6 +2503,8 @@ function panelEsquinero(m) {
       ${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
     </div>
     ${g.aereo ? '' : `<label class="ed-check"><input type="checkbox" data-k="cubierta"${m.cubierta ? ' checked' : ''}> Lleva cubierta (en L)</label>`}
+    ${g.aereo || !m.cubierta ? '' : `<p class="ed-ayuda" style="margin:8px 0 4px"><b>Unión de la cubierta en el rincón</b></p><div class="ed-botones"><button data-a="union-cub:90"${modelo.union_cubierta !== '45' ? ' class="ed-primario"' : ''}>90° (recta estándar)</button><button data-a="union-cub:45"${modelo.union_cubierta === '45' ? ' class="ed-primario"' : ''}>45° (ingletada)</button></div>
+    <p class="ed-ayuda">Vale para todo el proyecto y el cliente la puede cambiar en su portal (pestaña Cubierta). La 45° cuesta más (mecanizado y desperdicio en diagonal); si el material de la cubierta no la permite, se cobra en 90°. Cada brazo es una sola tira hasta donde terminan los muebles de ese muro.</p>`}
     ${g.sol ? (v34?.id === m.id
       ? `<div class="ed-plantilla" style="margin-top:12px"><p class="sub">Vista 3/4 · abrir y cerrar</p><div class="ed-botones">${partesInterior(m, g).map((p) => `<button data-a="esq34:${p.key}"${v34.abiertos.includes(p.key) ? ' class="ed-primario"' : ''}>${esc(p.nombre)}</button>`).join('')}</div>
         <div class="ed-botones"><button data-a="esq34-salir">Salir de la vista 3/4</button></div><p class="ed-ayuda">También con un clic sobre el cajón o la puerta. La vista queda fija; Esc sale.</p></div>`
@@ -2802,6 +2806,10 @@ $('#props').addEventListener('click', (e) => {
   if (b.dataset.a === 'ver-muro') { muroFrente = sel.i; sel = null; setVista('frente'); return; }
   if (b.dataset.a === 'agrupar') {
     const ids = sel.ids, gid = uid('g'), nombre = 'Mueble en L';
+    { // directriz del dueño (2026-11-26): 2 basales no se unen en L; para una esquina está el módulo esquinero
+      const ms = modelo.modulos.filter((m) => ids.includes(m.id) && !m.artefacto), giros = new Set(ms.filter((m) => m.tipo !== 'esquinero').map((m) => (((+m.rotacion || 0) % 360) + 360) % 360));
+      if (!ms.some((m) => m.tipo === 'esquinero') && giros.size > 1) { aviso('Para una esquina usa un módulo esquinero (Cocinas de referencia → «Módulo esquinero»): 2 basales no se unen en L.'); return; }
+    }
     let pegados = 0;
     cambiar((d) => {
       d.modulos.forEach((m) => { if (ids.includes(m.id)) { m.grupo = gid; m.grupo_nombre = nombre; } });
@@ -2857,6 +2865,7 @@ $('#props').addEventListener('click', (e) => {
   if (a === 'esq34-entrar') { entrar34(m); return; }
   if (a === 'esq34-salir') { salir34(); props(); return; }
   if (a.startsWith('esq34:')) { alternar34.boton = true; alternar34(a.slice(6)); alternar34.boton = false; return; }
+  if (a.startsWith('union-cub:')) { const v = a.slice(10) === '45' ? '45' : '90'; cambiar((d) => { d.union_cubierta = v; }); aviso(`Unión de la cubierta en el rincón: ${v}°.`); return; }
   if (a === 'esq-sugerido') { const s1 = medidasSugeridas(m); cambiar(() => { anchoEsquinero(m, s1.ancho); m.profundidad = s1.profundidad; repegar(modelo, m); }); return; }
   if (a === 'borrar-modulo') { cambiar((d) => { d.modulos = d.modulos.filter((x) => x.id !== m.id); }); sel = null; render(); return; }
   if (a === 'div-h') { const c = celdas(m).find((k) => k.col === sel.col && k.fila === sel.fila); cambiar(() => dividirH(m, sel.col, sel.fila, c.y)); return; }
@@ -3464,7 +3473,7 @@ iniciarProyectos({
         }
       }
       if (modelo.modulos.some((m) => +m.rotacion)) aviso('Ojo: hay módulos girados (muro izquierdo); el editor los muestra sin girar.');
-      if (deCliente && (deCliente.melamina || deCliente.piezas)) aviso(`Cargué lo que eligió el cliente en su portal: ${textoCambios(deCliente)}. Queda como base al publicar.`);
+      if (deCliente && (deCliente.melamina || deCliente.piezas || deCliente.union)) aviso(`Cargué lo que eligió el cliente en su portal: ${textoCambios(deCliente)}. Queda como base al publicar.`);
       if (esqCliente.length) aviso(`El cliente eligió en su portal: ${esqCliente.join('; ')}.`);
     }
     document.querySelector('.ed-cliente-aviso')?.remove();
@@ -3490,6 +3499,9 @@ iniciarProyectos({
       let av = []; cambiar((d) => { av = aplicarEsquinerosCliente(d, cli.sel); });
       aviso(`El cliente eligió en su portal: ${av.join('; ')}. Ctrl+Z lo deshace.`);
     }
+    // unión del rincón de la cubierta: también se aplica sola (la decide el cliente en su pestaña Cubierta)
+    const uc = cli.sel.union_cubierta;
+    if ((uc === '45' || uc === '90') && uc !== (modelo.union_cubierta || '90')) { cambiar((d) => { d.union_cubierta = uc; }); aviso(`El cliente eligió la unión del rincón en ${uc}°. Ctrl+Z lo deshace.`); }
     const c = aplicarCliente(JSON.parse(JSON.stringify(modelo)), cli.sel);
     if (!c.melamina && !c.piezas) return false;
     avisoCliente(c, cli.sel);

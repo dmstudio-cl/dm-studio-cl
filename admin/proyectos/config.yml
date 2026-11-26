@@ -424,7 +424,9 @@ collections:
               - { label: Permite lavaplatos bajo cubierta, name: permite_bajo, widget: boolean, default: true, required: false, hint: "Desactivado: si el proyecto tiene un lavaplatos bajo cubierta, el cliente no puede elegir este material." }
               - { label: Trasera integrada (no cobra respaldo), name: trasera_integrada, widget: boolean, default: false, required: false }
               - { label: Respaldo por metro lineal (CLP), name: respaldo_ml, widget: number, value_type: int, default: 0, required: false, hint: "Zócalo contra el muro. Vacío o 0 = 15 % del precio por m² por metro." }
-              - { label: Costo por unión (CLP), name: costo_union, widget: number, value_type: int, default: 0, required: false, hint: "Se cobra por cada unión que obliga el largo máximo." }
+              - { label: Costo por unión (CLP), name: costo_union, widget: number, value_type: int, default: 0, required: false, hint: "Se cobra por cada unión que obliga el largo máximo y por la unión en 90° del rincón del esquinero." }
+              - { label: Costo por unión en 45° (CLP), name: costo_union_45, widget: number, value_type: int, required: false, hint: "Unión ingletada del rincón del esquinero (corte diagonal). Además se cobra el triángulo de desperdicio. Vacío = el costo por unión." }
+              - { label: Permite unión en 45°, name: permite_union_45, widget: boolean, default: true, required: false, hint: "Si no, el rincón del esquinero se cobra siempre en 90° aunque el cliente elija 45°." }
               - { label: Largo máximo sin unión (cm), name: largo_max_sin_union, widget: number, value_type: int, required: false }
               - { label: Vuelo máximo sin apoyo (cm), name: vuelo_max_sin_apoyo, widget: number, value_type: int, required: false, hint: "Sobre esto el editor avisa que necesita refuerzo." }
               - { label: Vuelo máximo con refuerzo (cm), name: vuelo_max_con_refuerzo, widget: number, value_type: int, required: false, hint: "Sobre esto el cliente no puede elegir el material." }
