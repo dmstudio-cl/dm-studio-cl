@@ -931,7 +931,8 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
     const g = geoEsquinero(m), [dx, dz] = girar(g.X(g.xb - g.T), g.fa + g.T, +m.rotacion || 0);
     const d = document.createElement('div');
     d.className = 'c3-pin esq-pin';
-    d.style.transform = `translate3d(${+m.x + dx}em, ${-(+m.elevacion + g.H + (m.cubierta ? CT : 0) + 1)}em, ${+m.z + dz}em)`;
+    // flota 15 cm sobre la cubierta (o el mueble) para que se vea entero desde cualquier ángulo (dueño, 2026-11-26)
+    d.style.transform = `translate3d(${+m.x + dx}em, ${-(+m.elevacion + g.H + (m.cubierta ? CT : 0) + 15)}em, ${+m.z + dz}em)`;
     d.innerHTML = '<span title="Falta elegir la solución de esta esquina" style="position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:grid;place-items:center;width:26px;height:26px;border-radius:50% 50% 50% 0;rotate:-45deg;background:#b4322e;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.5);font:700 14px/1 sans-serif;color:#fff"><b style="rotate:45deg">?</b></span>';
     st.rig.append(d);
   }
