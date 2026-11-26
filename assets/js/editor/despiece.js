@@ -110,7 +110,9 @@ export function despiece(modelo) {
     const T = tablero(m), W = +m.ancho, H = +m.alto, D = +m.profundidad;
     const E = estructura(m), Z = E.Z, isla = !!E.isla, G = grosorCostado(m); // G: costado (doble en la isla, crece hacia adentro)
     const Dk = r1(D - (isla ? T : CHOLGUAN)), Hc = H - Z; // profundidad (desde la trasera: cholguán atrás, o melamina adentro en la isla) y alto del cuerpo
-    const quitar = Array.isArray(m.quitar) ? m.quitar : [], ext = Math.max(0, +m.costados_atras || 0);
+    // anexo de un esquinero (dueño, 2026-11-26): sin su costado de afuera, trasera, base, soportes ni zócalo (los del esquinero)
+    const anexo = m.anexo || null;
+    const quitar = [...(Array.isArray(m.quitar) ? m.quitar : []), ...(anexo ? [anexo.fuera, 'fondo', 'soporte'] : [])], ext = Math.max(0, +m.costados_atras || 0);
     const conBase = E.base && !quitar.includes('piso'), conTecho = E.techo && !quitar.includes('techo');
     const mat = (k, def) => limpio(m.materiales?.[k]) || def;
     // tapacanto propio del canto a la vista de una división (se suelta el material sobre el canto, clave «…|canto»)
@@ -164,6 +166,7 @@ export function despiece(modelo) {
         continue;
       }
       const ps = partesCostado(m, p), vis = def === 'frente' ? ' (visible)' : '';
+      if (!ps && anexo) { add(`cuerpo|${p}`, `${n} (separa el anexo del compartimento del esquinero; rebaje para sus soportes)`, mat(`cuerpo|${p}`, mat('cuerpo', cuerpoDef)), Dk, hs, { ancho: 0, alto: 1 }); continue; }
       if (!ps) { add(`cuerpo|${p}`, `${n}${vis}`, mat(`cuerpo|${p}`, mat('cuerpo', def)), Dk + ext, ext ? Hc : hs, { ancho: ext ? 1 : 0, alto: ext ? 2 : 1 }); continue; }
       // Costado dividido (dueño, 2026-11-25): cada parte que queda es una pieza aparte. Canto en el borde delantero
       // (y, si se alarga atrás, también en el trasero y el inferior), igual que el costado entero.
@@ -187,7 +190,7 @@ export function despiece(modelo) {
       });
     }
     // (las bases de los aéreos se ven desde abajo, pero van en blanco por decisión del estudio)
-    if (conBase) add('cuerpo|piso', 'Base', mat('cuerpo|piso', mat('cuerpo', cuerpoDef)), W, isla ? D : Dk, isla ? { ancho: 2, alto: 2 } : { ancho: 1, alto: 2 }, 'tablero', isla ? { canto_color: 1 } : {}); // isla: sus 4 cantos se ven
+    if (conBase && !anexo) add('cuerpo|piso', 'Base', mat('cuerpo|piso', mat('cuerpo', cuerpoDef)), W, isla ? D : Dk, isla ? { ancho: 2, alto: 2 } : { ancho: 1, alto: 2 }, 'tablero', isla ? { canto_color: 1 } : {}); // isla: sus 4 cantos se ven
     if (conTecho) add('cuerpo|techo', 'Techo', mat('cuerpo|techo', mat('cuerpo', cuerpoDef)), W, Dk, { ancho: 1, alto: 2 });
     if (!quitar.includes('fondo') && isla) add('cuerpo|fondo', 'Trasera de melamina 15 mm (entre los costados; la isla no lleva cholguán)', mat('cuerpo|fondo', mat('frentes', 'frente')), r1(W - 2 * G), hs, { ancho: 0, alto: 0 });
     else if (!quitar.includes('fondo')) { // trasera de cholguán por detrás del cuerpo: tapa todos los cantos
@@ -205,7 +208,7 @@ export function despiece(modelo) {
       const uL = uniones.find((u) => u.A === m || u.B === m), sL = uL ? soportesL(uL, PINO.espesor)[uL.A === m ? 'A' : 'B'] : null;
       const enL = sL ? ', en L: corte a 45° en la esquina' : '';
       if (conSoporte) add('soporte|frente', `Soporte superior delantero${enL}`, matSoporte, sL ? sL.frente.largo : li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
-      pino(`Soporte superior trasero (pino${enL}${isla ? ', por dentro: lo tapa la trasera de melamina' : ''})`, r1(sL ? sL.atras.largo : li), 'soporte|atras');
+      if (!anexo) pino(`Soporte superior trasero (pino${enL}${isla ? ', por dentro: lo tapa la trasera de melamina' : ''})`, r1(sL ? sL.atras.largo : li), 'soporte|atras');
     }
     if (E.clase === 'aereo') {
       if (conSoporte) add('soporte|frente', 'Soporte superior delantero', matSoporte, li, SOPORTE, { ancho: 1, alto: 0 }, 'tablero', { edges: { inf: 1 } });
@@ -306,7 +309,7 @@ export function despiece(modelo) {
     }
     // ---- zócalo: marco de pino bajo la base (frente y atrás de largo completo; costados entre ambos)
     const uA = uniones.find((u) => u.A === m);
-    if (Z > 0 && conBase && uA) { // mueble en L: un solo zócalo en L (lo lleva el de la esquina; el otro no lleva)
+    if (anexo) { /* zócalo: el del esquinero */ } else if (Z > 0 && conBase && uA) { // mueble en L: un solo zócalo en L (lo lleva el de la esquina; el otro no lleva)
       for (const t of zocaloL(uA, PINO.espesor)) pino(`Zócalo en L, ${t.nombre} (pino)`, r1(t.largo), 'zocalo');
     } else if (Z > 0 && conBase && !uniones.some((u) => u.B === m)) {
       const z = marcoZocalo(m, T);

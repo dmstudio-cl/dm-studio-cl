@@ -223,7 +223,7 @@ export function marcoZocalo(m, T = tablero(m)) {
 // Devuelve [{ A, B, s, ladoB, caja }]: s = costado de A en la esquina ('izq' | 'der'); ladoB = extremo de B que toca a A;
 // caja = rectángulo del cuerpo de B en coordenadas locales de A.
 export function unionesL(modelo) {
-  const ms = (modelo.modulos || []).filter((m) => m && !m.artefacto && m.tipo !== 'esquinero'), out = [];
+  const ms = (modelo.modulos || []).filter((m) => m && !m.artefacto && m.tipo !== 'esquinero' && !m.anexo), out = [];
   const aLocal = (A, [x, z]) => girar(x - +A.x, z - +A.z, -(+A.rotacion || 0));
   const mundo = (m, lx, lz) => { const [dx, dz] = girar(lx, lz, +m.rotacion || 0); return [+m.x + dx, +m.z + dz]; };
   for (const A of ms) for (const B of ms) {
@@ -754,12 +754,15 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
       for (const k of claves) { const mid = m.materiales?.[k]; const bg = mid && mats.material?.(mid); if (bg) return { bg }; }
       return null;
     };
-    const quitada = (p) => Array.isArray(m.quitar) && m.quitar.includes(p);
+    // Anexo de un esquinero (dueño, 2026-11-26): el basal que absorbió el esquinero va dentro de él, sin zócalo, base,
+    // trasera ni soportes propios (los del esquinero siguen por encima) y sin su costado de afuera (lo pone el esquinero)
+    const anexo = m.anexo || null;
+    const quitada = (p) => (Array.isArray(m.quitar) && m.quitar.includes(p)) || (!!anexo && (p === anexo.fuera || p === 'fondo' || p === 'soporte'));
     const uA = uniones.find((u) => u.A === m), uB = uniones.find((u) => u.B === m);
     // Mueble enfocado en el portal (dueño, 2026-11-25): sus puertas abren según su bisagra (recta 90°, semicurva 110°) y
     // sus cajones salen lo que mide su corredera. Cada parte que se mueve va en un grupo con su posición cerrada y abierta.
     const abre = abrir?.id === id && !m.artefacto, abiertos = abrir?.abiertos || [], grupos = {};
-    if (ver('zocalo') && Z > 0 && uA) { // mueble en L: un solo zócalo en L (6 tablas) bajo los dos
+    if (anexo) { /* sin zócalo propio: va el del esquinero */ } else if (ver('zocalo') && Z > 0 && uA) { // mueble en L: un solo zócalo en L (6 tablas) bajo los dos
       const MZ = propio('zocalo') || (fab ? PINO : M.zocalo);
       for (const t of zocaloL(uA, T)) B({ w: t.x1 - t.x0, h: Z, d: t.z1 - t.z0, x: (t.x0 + t.x1) / 2, y: Z / 2, z: (t.z0 + t.z1) / 2 }, MZ, `${id}|zocalo`);
     } else if (ver('zocalo') && Z > 0 && !uB) { // marco de 4 tablas bajo el cuerpo (no se ve vacío por los costados)
@@ -790,7 +793,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         });
       };
       costado('izq', TC / 2, 'left'); costado('der', W - TC / 2, 'right');
-      if (!quitada('piso')) B({ w: W - 2 * TC, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, canto(tab('piso')), `${id}|cuerpo|piso`); // base
+      if (!quitada('piso') && !anexo) B({ w: W - 2 * TC, h: T, d: D, x: W / 2, y: Z + T / 2, z: D / 2 }, canto(tab('piso')), `${id}|cuerpo|piso`); // base (el anexo se apoya en la del esquinero)
       if (isla) { // divisiones entre columnas: sus cantos se ven entre las puertas empotradas
         const xs = [...new Set(celdas(m).filter((c) => c.x1 < W - .05).map((c) => +c.x1.toFixed(2)))];
         xs.forEach((x, i) => B({ w: T, h: H - piso, d: D - T, x, y: piso + (H - piso) / 2, z: T + (D - T) / 2 }, canto(propio(`div|${i}`, 'cuerpo') || M.cuerpo, `div|${i}`), `${id}|cuerpo|dv${i}`));
@@ -806,7 +809,7 @@ export function dibujar(st, modelo, { capas = {}, mats = {}, sel = null, fabrica
         B({ w: x1 - x0, h: H - Z, d: .3, x: (x0 + x1) / 2, y: Z + (H - Z) / 2, z: -.15 }, tab('fondo'), `${id}|cuerpo|fondo`);
       }
       // Soportes horizontales de 10 cm (fabricación): delantero de melamina, trasero(s) de pino tapa
-      if (fab && (esBasal || m.tipo === 'aereo')) {
+      if (fab && !anexo && (esBasal || m.tipo === 'aereo')) {
         // en L (basales): cada soporte llega hasta la unión a 45° de la esquina
         const uS = esBasal && (uA || uB), sL = uS ? soportesL(uS)[uA ? 'A' : 'B'] : null;
         const tramo = (k) => (sL ? sL[k] : { x0: TC, x1: W - TC });
