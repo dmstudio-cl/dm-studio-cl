@@ -86,13 +86,19 @@ function ponerAncho(b, W, r) {
     b.tiradores = (b.tiradores || []).filter((t) => !(t.col === i && t.fila > 0));
   }
 }
-export function cambiarTipoConVecinos(modelo, e, sol) {
+// Las puertas del esquinero mandan (dueño, 2026-11-26): al cambiar su hoja, su diámetro de bandeja o el largo de un lado,
+// el lateral (la división con el basal de al lado) se corre y el basal absorbe la diferencia con las mismas reglas que
+// al cambiar el tipo. medidas = { ancho, profundidad } nuevas del esquinero.
+export const ajustarEsquineroConVecinos = (modelo, e, medidas) => cambiarTipoConVecinos(modelo, e, e.solucion, medidas);
+export function cambiarTipoConVecinos(modelo, e, sol, medidas = null) {
   const grupo = e.grupo ? modelo.modulos.filter((x) => x.grupo === e.grupo && x !== e && !x.artefacto && x.tipo !== 'esquinero' && (x.tipo === 'aereo') === !!e.aereo) : [];
   const vec = { a: null, b: null };
   for (const b of grupo) { const l = b.anexo?.esq === e.id ? b.anexo.lado : ladoDelEsquinero(e, b); if (l && !vec[l]) vec[l] = b; }
   const s0 = medidasSugeridas(e), eraSugerida = +e.ancho === s0.ancho && +e.profundidad === s0.profundidad;
   if (!vec.a && !vec.b && !e.absorbido_a && !e.absorbido_b) { // sin vecinos: como antes
-    e.solucion = sol; if (eraSugerida) { const s1 = medidasSugeridas(e); anchoEsquinero(e, s1.ancho); e.profundidad = s1.profundidad; repegar(modelo, e); }
+    e.solucion = sol;
+    if (medidas) { anchoEsquinero(e, r1(medidas.ancho)); e.profundidad = r1(medidas.profundidad); repegar(modelo, e); }
+    else if (eraSugerida) { const s1 = medidasSugeridas(e); anchoEsquinero(e, s1.ancho); e.profundidad = s1.profundidad; repegar(modelo, e); }
     return [];
   }
   const largo = (l) => (l === 'a' ? +e.ancho : +e.profundidad), fijar = (l, v) => { if (l === 'a') anchoEsquinero(e, r1(v)); else e.profundidad = r1(v); };
@@ -108,9 +114,9 @@ export function cambiarTipoConVecinos(modelo, e, sol) {
     if (vec[l]) antes[l] = +vec[l].ancho;
   }
   e.solucion = sol; // 2) el esquinero toma las medidas sugeridas del tipo nuevo (en los lados con vecino)
-  const s1 = medidasSugeridas(e);
-  if (vec.a || eraSugerida) fijar('a', s1.ancho);
-  if (vec.b || eraSugerida) fijar('b', s1.profundidad);
+  const s1 = medidas || medidasSugeridas(e);
+  if (vec.a || eraSugerida || medidas) fijar('a', s1.ancho);
+  if (vec.b || eraSugerida || medidas) fijar('b', s1.profundidad);
   for (const l of ['a', 'b']) { // 3) cada vecino absorbe la diferencia
     const b = vec[l]; if (!b) continue;
     const w = r1(total[l] - largo(l)), anchos = w > 0 ? anchosVecino(b, w) : null;
