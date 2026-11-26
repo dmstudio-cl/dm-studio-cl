@@ -21,7 +21,7 @@ export function workerApi(token, { owner = null, proyecto = null } = {}) {
   return {
     mode: owner ? 'owner' : 'worker',
     proyecto: () => call('proyecto'),
-    cotizar: (sel) => call('cotizar', { method: 'POST', body: JSON.stringify({ seleccion: sel }) }),
+    cotizar: (sel, extra = {}) => call('cotizar', { method: 'POST', body: JSON.stringify({ seleccion: sel, ...extra }) }), // extra.esquina: precio de cada tipo de esa esquina
     guardar: (sel) => call('seleccion', { method: 'PUT', body: JSON.stringify({ seleccion: sel }) }),
     mensajes: (since = 0) => call('mensajes', {}, { since }),
     listar: () => call('admin/proyectos'),

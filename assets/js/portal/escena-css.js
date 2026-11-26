@@ -43,14 +43,25 @@ export function createScene(el) {
     const id = m.id || `m${i}`, sol = s.esquineros?.[id];
     return m.tipo === 'esquinero' && sol && (proyecto.esquineros_opciones?.[id] || []).includes(sol) ? sol : null;
   }
+  // La cocina con el tipo de esquina que eligió el cliente (dueño, 2026-11-26): los muebles de esa esquina como quedan
+  // (esquinero y basales reacomodados) y sin los que absorbió el esquinero. Lo mismo que cotiza el Worker.
+  function conVariantes(mods, s) {
+    for (const [id, sol] of Object.entries(s.esquineros || {})) {
+      const v = proyecto.esquineros_variantes?.[id]?.[sol]; if (!v) continue;
+      const nuevos = Object.fromEntries(v.modulos.map((m) => [m.id, m]));
+      mods = mods.filter((m) => !v.quitados.includes(m.id)).map((m) => nuevos[m.id] || m);
+      for (const m of v.modulos) if (!mods.some((x) => x.id === m.id)) mods.push(m); // un basal que reaparece
+    }
+    return mods;
+  }
   function modelo(s) {
     // muebles que el cliente desmarcó en «Muebles a cotizar»: desaparecen (las cocinas de piso no se cotizan y quedan)
     const elegidos = Array.isArray(s.modulos) && s.modulos.length ? new Set(s.modulos) : null;
-    const visible = (m, i) => !elegidos || m.artefacto || elegidos.has(m.id || `m${i}`);
+    const visible = (m, i) => !elegidos || m.artefacto || elegidos.has(m.id || `m${i}`) || !(proyecto.modulos || []).some((x) => x.id === m.id); // uno que reaparece con el tipo de esquina se ve
     return {
       espacio: espacioPortal(proyecto.espacio),
       objetos: soloMuebles ? [] : proyecto.objetos || [], // «Solo muebles»: sin electrodomésticos ni referencias
-      modulos: (proyecto.modulos || []).map((m, i) => ({ m, i })).filter(({ m, i }) => !(soloMuebles && m.artefacto) && visible(m, i)).map(({ m, i }) => ({
+      modulos: conVariantes(proyecto.modulos || [], s).map((m, i) => ({ m, i })).filter(({ m, i }) => !(soloMuebles && m.artefacto) && visible(m, i)).map(({ m, i }) => ({
         ...m, id: m.id || `m${i}`,
         ...(soloMuebles ? { artefactos: [] } : {}), // sin encimeras ni lavaplatos de referencia
         // materiales por pieza: los del estudio y encima los que eligió el cliente ("idMódulo|pieza")
@@ -176,6 +187,7 @@ export function createScene(el) {
     // mover) y sus puertas y cajones se abren y cierran con un toque
     get foco() { return foco?.id || null; },
     esMueble(id) { return !!modeloActual?.modulos.find((m) => m.id === id && !m.artefacto); },
+    modulos() { return modeloActual?.modulos || []; }, // como se ven (con el tipo de esquina elegido)
     enfocar(id) {
       const m = modeloActual?.modulos.find((x) => x.id === id); if (!m) return;
       const esq = m.tipo === 'esquinero' ? geoEsquinero(m) : null;
