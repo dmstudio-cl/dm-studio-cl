@@ -179,8 +179,9 @@ export function frentesEsquinero(m, g = geoEsquinero(m), top = null) {
       hoja('B', [fa, b1], 'cajon', `Frente del cajón ${i + 1} en flecha, lado 2 (inglete a 45° en el rincón)`, { en: 'medio', horizontal: true }, { corte: b1 - fa, cantos: c3, cajon: i }, y0, ya);
     });
     // sobre 60 cm la puerta lateral se divide en hojas iguales que abren desde el centro (dueño, 2026-11-26)
+    const fijas = String(m.hojas_lateral) === '1' ? 1 : String(m.hojas_lateral) === '2' ? 2 : 0; // hojas elegidas en el panel (si no, automático)
     const lateral = (lado, s0, s1, nom, enUna) => {
-      const w = s1 - s0, n = Math.max(1, Math.ceil((w - .5) / 60)), h = w / n;
+      const w = s1 - s0, n = fijas || Math.max(1, Math.ceil((w - .5) / 60)), h = w / n;
       for (let j = 0; j < n; j++) hoja(lado, [s0 + j * h, s0 + (j + 1) * h], 'puerta', n > 1 ? `${nom} (hoja ${j + 1} de ${n})` : nom, { en: n > 1 ? (j === 0 ? 's1' : 's0') : enUna });
     };
     lateral('A', iA, xb - ld - LUZ / 2, 'Puerta del compartimento lateral, lado 1', 's1');
@@ -384,6 +385,8 @@ function bandejaRecortada(r, kx, kz, espejo) {
 // Alturas de las repisas en L del 2a: repartidas parejo entre la base y la barra (dueño, 2026-11-25: la cantidad se
 // cambia en el panel; la altura queda regulable en el taller)
 export const repisasL = (m) => Math.max(0, Math.min(4, Math.round(m.repisas_l ?? 1)));
+// Space corner (dueño, 2026-11-26): repisas de cada compartimento en trapecio (0 a 4; 1 por defecto)
+export const repisasTrap = (m) => Math.max(0, Math.min(4, Math.round(m.repisas_trap ?? 1)));
 export function nivelesL(g, n = repisasL(g.m || {})) {
   const y0 = g.Z + g.T, y1 = g.yTop;
   return Array.from({ length: n }, (_, i) => y0 + (y1 - y0) * (i + 1) / (n + 1));
@@ -454,9 +457,12 @@ function dibujarInterior(G, m, g, o, top) {
       gr.box({ w, h: .1, d, x: (x0 + x1) / 2, y, z: (z0 + z1) / 2, tex: { bg: tex.bg, clip }, ref: ref2, caras: ['top'] });
     };
     const NEG = { bg: '#141210' }, e = .4;
-    const ym = (yIn + yTop) / 2, rt = repisasTrapecio(g); // repisas en trapecio de los compartimentos, con contorno negro en los cantos que se ven
-    if (rt.A) { const [a, b, c, d] = rt.A.pts; placa(G, [a, [b[0] + e, b[1]], [c[0] + e, c[1] + e], [d[0], d[1] + e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.A.pts, ym + T / 2, MC, `${id}|esq|int`); }
-    if (rt.B) { const [a, b, c, d] = rt.B.pts; placa(G, [[a[0], a[1] - e], b, [c[0] - e, c[1]], [d[0] - e, d[1] - e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.B.pts, ym + T / 2, MC, `${id}|esq|int`); }
+    const rt = repisasTrapecio(g), nR = repisasTrap(m); // repisas en trapecio de los compartimentos (repartidas parejo), con contorno negro en los cantos que se ven
+    for (let i = 1; i <= nR; i++) {
+      const ym = yIn + ((yTop - yIn) * i) / (nR + 1);
+      if (rt.A) { const [a, b, c, d] = rt.A.pts; placa(G, [a, [b[0] + e, b[1]], [c[0] + e, c[1] + e], [d[0], d[1] + e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.A.pts, ym + T / 2, MC, `${id}|esq|int`); }
+      if (rt.B) { const [a, b, c, d] = rt.B.pts; placa(G, [[a[0], a[1] - e], b, [c[0] - e, c[1]], [d[0] - e, d[1] - e]], ym + T / 2 - .15, NEG, `${id}|esq|int`); placa(G, rt.B.pts, ym + T / 2, MC, `${id}|esq|int`); }
+    }
     for (let i = 0; i < g.niveles; i++) {
       const fA = fr.find((f) => f.cajon === i && f.lado === 'A'), fB = fr.find((f) => f.cajon === i && f.lado === 'B'); if (!fA || !fB) continue;
       const key = `c${i}`, gr = anim(key, { x: 0, y: 0, z: 0 }, { x: dx, y: 0, z: dz }, .9);
@@ -559,7 +565,7 @@ export function despieceEsquinero(m, ctx) {
     // rectangular, intercaladas (una girada), con 1 cm entre ambas para la sierra; el corte en diagonal y el tapacanto
     // del frente se hacen en el taller
     const rt = repisasTrapecio(g), pl = placaTrapecios(g);
-    if (pl) add('esq|repisa', pl.n === 2 ? `Placa para las 2 repisas en trapecio, intercaladas (corte en diagonal con 1 cm de sierra, en el taller): ${r1(rt.A.corto)}/${r1(rt.A.largo)} y ${r1(rt.B.corto)}/${r1(rt.B.largo)} × ${r1(Math.max(rt.A.prof, rt.B.prof))}` : 'Repisa en trapecio del compartimento (rectángulo; diagonal en el taller)',
+    if (pl) for (let i = 0; i < repisasTrap(m); i++) add('esq|repisa', pl.n === 2 ? `Placa para las 2 repisas en trapecio, intercaladas (corte en diagonal con 1 cm de sierra, en el taller): ${r1(rt.A.corto)}/${r1(rt.A.largo)} y ${r1(rt.B.corto)}/${r1(rt.B.largo)} × ${r1(Math.max(rt.A.prof, rt.B.prof))}` : 'Repisa en trapecio del compartimento (rectángulo; diagonal en el taller)',
       mat('esq|repisa', cuerpo), r1(pl.ancho), r1(pl.prof), undefined, 'tablero', { tapacanto_taller: r1((rt.A?.corto || 0) + (rt.B?.corto || 0)) });
     semicurvas(2 * frs.filter((fr) => fr.clase === 'puerta').length); // puertas laterales (dueño, 2026-11-24): 2 bisagras semicurvas cada una (cada hoja si se dividió)
     // cajas: alto como un cajón normal (2 cm bajo el soporte en el de arriba; 2 cm bajo el canto de su frente en los demás)

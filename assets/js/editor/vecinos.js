@@ -1,7 +1,7 @@
 // Vecinos del esquinero (dueño, 2026-11-24/26): pegar los basales agrupados a los laterales del esquinero y reacomodar
 // la cocina al cambiar el tipo de esquina. Lo usan el editor (al elegir el tipo), la publicación (una variante por tipo
 // para el portal) y la elección del cliente (el editor la aplica sola). Funciones puras sobre el modelo que reciben.
-import { girar } from './modelo.js';
+import { girar, nuevoModulo, uid } from './modelo.js';
 import { geoEsquinero, medidasSugeridas, ORDEN_SOLUCIONES, ORDEN_AEREO, solucionesQueCalzan } from './esquinero.js';
 
 const r1 = (v) => Math.round(v * 10) / 10;
@@ -154,6 +154,42 @@ export function cambiarTipoConVecinos(modelo, e, sol, medidas = null) {
 // Esquinero agrupado: al cambiar sus medidas, los basales del grupo lo siguen (quedan pegados a 0 cm)
 export function repegar(modelo, m) { if (m.grupo) pegarAlEsquinero(modelo.modulos.filter((x) => x.grupo === m.grupo)); }
 
+// Anexos del space corner al día (dueño, 2026-11-26): si se borró la sección (el basal absorbido), la puerta lateral
+// vuelve a ocupar todo; si se cambió su ancho en su panel, el esquinero lo toma, sin dejar la puerta lateral bajo 35 cm.
+// Devuelve los avisos.
+export function limpiarAnexos(modelo) {
+  const avisos = [];
+  for (const e of modelo.modulos.filter((m) => m.tipo === 'esquinero')) {
+    let mover = false;
+    for (const l of ['a', 'b']) {
+      const ax = modelo.modulos.find((m) => m.anexo?.esq === e.id && m.anexo.lado === l), k = `anexo_${l}`;
+      if (!ax) { if (e[k]) { delete e[k]; mover = true; } continue; }
+      if (e.solucion !== '3') continue;
+      const g = geoEsquinero({ ...e, [k]: 0 }), base0 = (l === 'a' ? g.fb : g.fa) + g.ld + .15, largo = l === 'a' ? +e.ancho : +e.profundidad;
+      const max = Math.floor((largo - base0 - .3 - 35) * 10) / 10; // la puerta lateral no baja de 35 cm
+      if (+ax.ancho > max) { ax.ancho = Math.max(10, max); ax.columnas?.forEach((c, i, cs) => { c.ancho = +(ax.ancho / cs.length).toFixed(3); }); avisos.push(`La sección del lado ${l === 'a' ? 1 : 2} queda de ${cm(ax.ancho)} cm: la puerta lateral no baja de 35 cm`); }
+      if (+e[k] !== +ax.ancho) { e[k] = r1(+ax.ancho); mover = true; }
+    }
+    if (mover) repegar(modelo, e);
+  }
+  return avisos;
+}
+// Agrega una sección después de la puerta lateral del space corner (dueño, 2026-11-26): un basal dentro del esquinero
+// (anexo) que se edita como cualquier mueble (puertas, cajones, divisiones, repisas). Devuelve el aviso o el error.
+export function agregarSeccion(modelo, e, l, ancho = 40) {
+  if (e.solucion !== '3') return { error: 'Solo el space corner lleva secciones después de la puerta lateral.' };
+  if (modelo.modulos.some((m) => m.anexo?.esq === e.id && m.anexo.lado === l)) return { error: 'Ese lado ya tiene una sección: tócala para editarla.' };
+  const g = geoEsquinero(e), base0 = (l === 'a' ? g.fb : g.fa) + g.ld + .15, largo = l === 'a' ? +e.ancho : +e.profundidad;
+  const max = Math.floor((largo - base0 - .3 - 35) * 10) / 10;
+  if (max < 25) return { error: `No cabe: con este largo, la puerta lateral quedaría bajo 35 cm. Alarga el lado ${l === 'a' ? 1 : 2}.` };
+  const w = Math.min(ancho, max);
+  if (!e.grupo) { e.grupo = uid('g'); e.grupo_nombre = e.grupo_nombre || 'Mueble en L'; }
+  const fondo = l === 'a' ? g.fa : g.fb, b = nuevoModulo({ ancho: w, alto: +e.alto, profundidad: fondo, zocalo: +e.zocalo || 0 });
+  Object.assign(b, { nombre: `Sección del esquinero (lado ${l === 'a' ? 1 : 2})`, grupo: e.grupo, grupo_nombre: e.grupo_nombre, cubierta: false,
+    anexo: { esq: e.id, lado: l, fuera: l === 'a' ? (e.esquina === 'izq' ? 'der' : 'izq') : (e.esquina === 'izq' ? 'izq' : 'der'), antes: { cubierta: !!e.cubierta, profundidad: fondo } } });
+  modelo.modulos.push(b); e[`anexo_${l}`] = r1(w); repegar(modelo, e);
+  return { aviso: `Sección de ${cm(w)} cm en el lado ${l === 'a' ? 1 : 2}, después de la puerta lateral: tócala para ponerle puertas, cajones, divisiones o repisas.`, id: b.id };
+}
 // Basales agrupados con el esquinero (o absorbidos por él)
 export const tieneVecinos = (modelo, e) => !!(e.absorbido_a || e.absorbido_b || (e.grupo && modelo.modulos.some((x) => x !== e && x.grupo === e.grupo && !x.artefacto && x.tipo !== 'esquinero' && (x.tipo === 'aereo') === !!e.aereo)));
 // Tipos que se ofrecen (dueño, 2026-11-26): agrupado con basales, todos los que se pueden armar reacomodando a los

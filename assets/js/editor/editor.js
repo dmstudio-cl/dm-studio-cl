@@ -14,12 +14,12 @@ import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios, aplicarCliente, textoCambios } from './proyecto.js';
-import { pegarAlEsquinero, repegar, anchoEsquinero, cambiarTipoConVecinos, ajustarEsquineroConVecinos, aplicarEsquinerosCliente } from './vecinos.js';
+import { pegarAlEsquinero, repegar, anchoEsquinero, cambiarTipoConVecinos, ajustarEsquineroConVecinos, aplicarEsquinerosCliente, limpiarAnexos, agregarSeccion } from './vecinos.js';
 import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
 import { descargarImperial, skuDe, bajoMinimo } from './imperial.js';
 import { planoHTML } from './plano.js';
-import { SOLUCIONES, ORDEN_SOLUCIONES, ORDEN_AEREO, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria, holgurasBandeja, partesInterior, repisasL } from './esquinero.js';
+import { SOLUCIONES, ORDEN_SOLUCIONES, ORDEN_AEREO, geoEsquinero, nuevoEsquinero, medidasSugeridas, luzRincon, cajonSpaceCorner, hojasEditables, bandejaGiratoria, holgurasBandeja, partesInterior, repisasL, repisasTrap } from './esquinero.js';
 const CORREDERAS_LARGOS = [25, 30, 35, 40, 45, 50, 55, 60];
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -103,6 +103,7 @@ function cambiar(fn) {
   hist.push(vivoSnap ?? JSON.stringify(modelo)); vivoSnap = null; if (hist.length > 150) hist.shift(); // (vivoSnap: color probado en vivo)
   fut.length = 0;
   fn(modelo);
+  const avAnexos = limpiarAnexos(modelo); if (avAnexos.length) setTimeout(() => aviso(avAnexos.join('; ') + '.'), 0); // secciones del space corner al día
   modelo.modulos.forEach(normalizar);
   guardar(); render();
 }
@@ -2502,6 +2503,9 @@ function panelEsquinero(m) {
       ${g.sol === '2a' ? `<div class="ed-repisas ancho2"><span>Repisas en L</span><button data-a="esq-rep-" title="Quitar una repisa">−</button><b>${repisasL(m)}</b><button data-a="esq-rep+" title="Agregar una repisa">+</button></div>` : ''}
       ${S?.niveles ? opciones('niveles', 'Cajones por lado', String(g.niveles), { 2: '2 cajones', 3: '3 cajones' }, 'ancho2') : ''}
       ${S?.frenteCajon ? num('frente_cajon', 'Frente del cajón (por lado)', g.ld) : ''}
+      ${g.sol === '3' ? opciones('hojas_lateral', 'Hojas de la puerta lateral', String(m.hojas_lateral || 'auto'), { auto: 'Automático (2 sobre 60 cm)', 1: '1 hoja', 2: '2 hojas' }, 'ancho2') : ''}
+      ${g.sol === '3' ? `<div class="ed-repisas ancho2"><span>Repisas del trapecio (cada lado)</span><button data-a="esq-trap-" title="Quitar una repisa">−</button><b>${repisasTrap(m)}</b><button data-a="esq-trap+" title="Agregar una repisa">+</button></div>` : ''}
+      ${g.sol === '3' ? `<div class="ancho2"><p class="ed-ayuda" style="margin:6px 0 4px"><b>Secciones después de la puerta lateral</b> (se editan como un basal: puertas, cajones, divisiones, repisas)</p><div class="ed-botones">${['a', 'b'].map((l) => (g[`an${l}`] ? `<button data-a="esq-sec-ver:${l}">Editar la sección del lado ${l === 'a' ? 1 : 2} (${cm(g[`an${l}`])} cm)</button>` : `<button data-a="esq-sec:${l}">+ Sección en el lado ${l === 'a' ? 1 : 2}</button>`)).join('')}</div><p class="ed-ayuda">Para quitarla, elígela y bórrala: la puerta lateral vuelve a ocupar ese espacio.</p></div>` : ''}
       ${num('x', 'Posición X', m.x, { min: -9999 })}${num('z', 'Posición Z (fondo)', m.z, { min: -9999 })}
       ${num('rotacion', 'Giro en planta', m.rotacion, { u: '°', step: 90, min: -360 })}
     </div>
@@ -2874,6 +2878,9 @@ $('#props').addEventListener('click', (e) => {
     aviso((k ? `«${m.nombre}»: ${SOLUCIONES[k].nombre}.` : `«${m.nombre}» queda sin solución (se ve el «?» rojo).`) + (av.length ? ` ${av.join('; ')}.` : ''));
     return;
   }
+  if (a === 'esq-trap-' || a === 'esq-trap+') { cambiar(() => { m.repisas_trap = Math.max(0, Math.min(4, repisasTrap(m) + (a === 'esq-trap+' ? 1 : -1))); }); return; } // repisas del trapecio (space corner)
+  if (a.startsWith('esq-sec:')) { let r = {}; cambiar(() => { r = agregarSeccion(modelo, m, a.slice(8) === 'b' ? 'b' : 'a'); }); if (r.error) aviso(r.error); else { sel = { tipo: 'modulo', m: r.id }; render(); aviso(r.aviso); } return; }
+  if (a.startsWith('esq-sec-ver:')) { const ax = modelo.modulos.find((x) => x.anexo?.esq === m.id && x.anexo.lado === a.slice(12)); if (ax) { sel = { tipo: 'modulo', m: ax.id }; render(); } return; }
   if (a === 'esq-rep-' || a === 'esq-rep+') { cambiar(() => { m.repisas_l = Math.max(0, Math.min(4, repisasL(m) + (a === 'esq-rep+' ? 1 : -1))); }); return; } // repisas en L del 2a (se reparten parejo)
   if (a === 'esq34-entrar') { entrar34(m); return; }
   if (a === 'esq34-salir') { salir34(); props(); return; }
