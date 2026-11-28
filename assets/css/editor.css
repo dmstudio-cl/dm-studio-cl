@@ -441,3 +441,9 @@ html.ed-bloqueado body.ed > :not(.ed-acceso) { display: none !important; }
 .ed-gotas .ed-ico { flex: none; }
 /* Mueble seleccionado en 3D: los demás semitransparentes (siguen tocables) */
 .c3-tenue-ed { opacity: .22; }
+
+/* mover la vista en Planta y Frente (2026-11-27) */
+.ed-espacio-vista, .ed-espacio-vista .ed-plano { cursor: grab !important; }
+.ed-moviendo-vista, .ed-moviendo-vista .ed-plano { cursor: grabbing !important; }
+.ed-mover2d { z-index: 6; left: auto !important; right: 12px; } /* abajo a la derecha: la ayuda va abajo a la izquierda */
+#lienzo:has(.ed-mover2d:not([hidden])) #estado { right: 132px; } /* la ayuda no queda bajo las flechas */

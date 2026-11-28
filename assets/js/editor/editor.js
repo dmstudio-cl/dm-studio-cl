@@ -44,6 +44,8 @@ let medF = null, cursorF = null; // huincha en Frente: primer punto y cursor
 let aislado = null; // «Ver solo este mueble» (dueño, 2026-11-25): id del mueble que se ve solo en 3D, desde sus 4 lados
 let v34 = null; // vista fija 3/4 del interior de un esquinero: { id, abiertos: [claves] }
 let zoom = 1;
+const pan2d = { planta: [0, 0], frente: [0, 0] }; // desplazamiento de la vista en Planta y Frente (cm)
+let pad2d = null; // flechas para mover la vista (se crean más abajo)
 const capas = { zocalo: true, cuerpo: true, frentes: true, tiradores: true, cubierta: true, muros: true, acabados: true, repisas: false, luces: true, noche: false, cliente: true };
 let proyActual = null;     // { id, sha, raw } cuando se edita un proyecto de cliente
 let materialesCub = [];    // materiales de cubierta de la Configuración de precios (reglas físicas: vuelo, largo, lavaplatos bajo cubierta)
@@ -1159,7 +1161,8 @@ function encuadrar(forzar = true) {
   }
   if (!forzar && encuadreHecho && (herr === 'muros' || herr === 'medir')) return; // dibujando muros o midiendo: la vista no se mueve
   const L = limites(modeloVista(), { conMuros: vista === 'frente' ? !!muroActivo() : capas.muros });
-  const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
+  const pv = pan2d[vista] || [0, 0]; // desplazamiento de la vista en Planta y Frente (cm)
+  const clave = `${vista}|${L.x0}|${L.x1}|${L.y1}|${L.z0}|${L.z1}|${zoom}|${pv}|${lienzo.clientWidth}x${lienzo.clientHeight}`;
   if (!forzar && clave === encuadreHecho) return;
   encuadreHecho = clave;
   const Wp = lienzo.clientWidth || 800, Hp = lienzo.clientHeight || 600;
@@ -1170,7 +1173,9 @@ function encuadrar(forzar = true) {
   else if (vista === 'inferior') px = Math.min(Wp / ((L.w + 70) * 1.15), Hp / ((L.d + 70) * 1.15));
   else { const diag = Math.hypot(L.w, L.h, L.d); px = Math.min(Wp, Hp) / (diag * 1.25); }
   px *= zoom;
-  st.frame([(L.x0 + L.x1) / 2, vista === 'frente' ? L.h / 2 + 5 : vista === 'planta' || vista === 'inferior' ? 0 : L.h / 2, (L.z0 + L.z1) / 2], s0 / px, 1);
+  if (vista === 'planta') st.frame([(L.x0 + L.x1) / 2 + pv[0], 0, (L.z0 + L.z1) / 2 + pv[1]], s0 / px, 1);
+  else if (vista === 'frente') st.frame([(L.x0 + L.x1) / 2 + pv[0], L.h / 2 + 5 + pv[1], (L.z0 + L.z1) / 2], s0 / px, 1);
+  else st.frame([(L.x0 + L.x1) / 2, vista === 'inferior' ? 0 : L.h / 2, (L.z0 + L.z1) / 2], s0 / px, 1);
 }
 
 // ----- vista frontal: coordenadas mundo (cm) ↔ pantalla (px)
@@ -3083,6 +3088,7 @@ function setVista(v) {
   lienzo.classList.toggle('frente', v === 'frente');
   lienzo.classList.toggle('planta', v === 'planta');
   lienzo.classList.toggle('inferior', v === 'inferior');
+  if (pad2d) pad2d.hidden = !(v === 'planta' || v === 'frente'); // flechas para mover la vista
   planta.cancelar();
   if (v === 'frente') { st.lock(true); st.limits(-89, 89); st.ortho(true); st.set(0, 0); if (herr === 'muros') setHerr('sel'); }
   else if (v === 'planta') { st.lock(true); st.limits(-90, 90); st.ortho(true); st.set(-90, 0); if (herr.startsWith('div')) setHerr('sel'); }
@@ -3110,13 +3116,13 @@ function ayuda() {
   if (vista === '3d') return 'Arrastra para girar · clic para seleccionar · rueda para acercar';
   if (vista === 'inferior') return 'Vista desde abajo · arrastra un lado del zócalo para cambiar su retiro, o el centro para moverlo · clic en una cota para escribirla';
   if (vista === 'planta') return {
-    sel: 'Arrastra un mueble para moverlo (imán a los muros, Alt sin imán) · R gira · clic en una cota para escribirla',
+    sel: 'Arrastra un mueble para moverlo (imán a los muros, Alt sin imán) · R gira · clic en una cota para escribirla · clic derecho y arrastrar (o Espacio) mueve la vista',
     dibujar: 'Arrastra para dibujar la huella de un mueble (ancho × fondo)',
     muros: 'Clic en un punto y clic en otro: queda un muro (90°; Mayús libre). Si empiezas o terminas en la punta de otro muro, se unen · Esc cancela',
     medir: 'Huincha: clic en un punto y clic en otro (se pega a la línea más cercana de un mueble o muro) · clic derecho sobre una medida y Supr la borra',
   }[herr] || '';
   return {
-    sel: 'Clic selecciona · arrastra divisores y tiradores',
+    sel: 'Clic selecciona · arrastra divisores y tiradores · clic derecho y arrastrar (o Espacio) mueve la vista',
     dibujar: 'Arrastra para dibujar un módulo (se apoya en el piso si empiezas cerca)',
     'div-v': 'Clic en un frente para dividirlo en columnas, o en el muro para cortarlo en zonas de material (imán a la mitad)',
     'div-h': 'Clic en un frente para dividirlo en filas, o en el muro para cortarlo en zonas de material (imán a la mitad)',
@@ -3151,7 +3157,7 @@ $('.ed-acciones').addEventListener('click', (e) => {
   const a = e.target.closest('[data-acc]')?.dataset.acc; if (!a) return;
   if (a === 'deshacer') deshacer();
   if (a === 'rehacer') rehacer();
-  if (a === 'encuadrar') { zoom = 1; st.resetPan(); encuadrar(true); dibujarPlano(); }
+  if (a === 'encuadrar') { zoom = 1; st.resetPan(); pan2d.planta = [0, 0]; pan2d.frente = [0, 0]; encuadrar(true); dibujarPlano(); }
   if (a === 'respaldos') abrirRespaldos();
   if (a === 'despiece') abrirDespiece();
   if (a === 'plano') abrirPlano();
@@ -3351,9 +3357,54 @@ $('#archivo').addEventListener('change', async (e) => {
 // Zoom con la rueda (ambas vistas)
 lienzo.addEventListener('wheel', (e) => {
   e.preventDefault();
+  const r = lienzo.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, antes = pan2d[vista] && mundo2d(px, py);
   zoom = Math.max(.3, Math.min(6, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-  encuadrar(true); dibujarPlano();
+  encuadrar(true);
+  if (antes) { const d = mundo2d(px, py), pv = pan2d[vista]; pv[0] += antes[0] - d[0]; pv[1] += antes[1] - d[1]; encuadrar(true); } // el punto bajo el cursor queda quieto
+  dibujarPlano();
 }, { passive: false });
+// ===================== mover la vista en Planta y Frente (dueño, 2026-11-27) =====================
+// Clic derecho (o la rueda apretada) y arrastrar, o Espacio + arrastrar, desplaza la vista; las flechas en pantalla
+// hacen lo mismo (para quien no usa atajos) y ● vuelve a encuadrar. La rueda acerca hacia el cursor.
+function mundo2d(px, py) { // punto de la pantalla → (x, z) en Planta o (x, y) en Frente
+  const Wp = lienzo.clientWidth, Hp = lienzo.clientHeight, s = st.scale, c = st.center;
+  return vista === 'planta' ? [c[0] + (px - Wp / 2) / s, c[2] + (py - Hp / 2) / s] : [c[0] + (px - Wp / 2) / s, c[1] - (py - Hp / 2) / s];
+}
+function moverVista2d(dxPx, dyPx) { // desplaza la vista lo que se arrastró en pantalla (px)
+  const pv = pan2d[vista]; if (!pv) return;
+  const s = st.scale || 1; pv[0] -= dxPx / s; pv[1] += (vista === 'planta' ? -dyPx : dyPx) / s;
+  encuadrar(true); dibujarPlano();
+}
+pad2d = document.createElement('div');
+pad2d.className = 'c3-mover ed-mover2d'; pad2d.hidden = !(vista === 'planta' || vista === 'frente');
+pad2d.innerHTML = '<span></span><button type="button" data-m="0,1" title="Mover la vista hacia arriba" aria-label="Mover la vista hacia arriba">↑</button><span></span>'
+  + '<button type="button" data-m="-1,0" title="Mover la vista a la izquierda" aria-label="Mover la vista a la izquierda">←</button><button type="button" data-m="c" title="Volver a encuadrar" aria-label="Volver a encuadrar">●</button><button type="button" data-m="1,0" title="Mover la vista a la derecha" aria-label="Mover la vista a la derecha">→</button>'
+  + '<span></span><button type="button" data-m="0,-1" title="Mover la vista hacia abajo" aria-label="Mover la vista hacia abajo">↓</button><span></span>';
+for (const ev of ['pointerdown', 'pointerup', 'click', 'wheel']) pad2d.addEventListener(ev, (e) => e.stopPropagation());
+pad2d.addEventListener('click', (e) => {
+  const m = e.target.closest('button')?.dataset.m; if (!m || !pan2d[vista]) return;
+  if (m === 'c') { pan2d[vista] = [0, 0]; zoom = 1; encuadrar(true); dibujarPlano(); return; }
+  const [a, b] = m.split(',').map(Number), paso = Math.min(lienzo.clientWidth, lienzo.clientHeight) * .2; // un quinto de la vista
+  moverVista2d(-a * paso, b * paso);
+});
+lienzo.append(pad2d);
+let arrastreVista = null, espacioVista = false, sinMenu = false;
+lienzo.addEventListener('pointerdown', (e) => {
+  if (!pan2d[vista] || !(e.button === 1 || e.button === 2 || (e.button === 0 && espacioVista))) return;
+  e.preventDefault(); e.stopPropagation(); // no elige ni arrastra muebles
+  arrastreVista = { x: e.clientX, y: e.clientY, movio: false, id: e.pointerId }; try { lienzo.setPointerCapture(e.pointerId); } catch { /* puntero ya suelto */ } lienzo.classList.add('ed-moviendo-vista');
+}, true);
+lienzo.addEventListener('pointermove', (e) => {
+  if (!arrastreVista || e.pointerId !== arrastreVista.id) return;
+  e.stopPropagation();
+  const dx = e.clientX - arrastreVista.x, dy = e.clientY - arrastreVista.y; if (!arrastreVista.movio && Math.hypot(dx, dy) < 4) return;
+  arrastreVista.movio = true; arrastreVista.x = e.clientX; arrastreVista.y = e.clientY; moverVista2d(dx, dy);
+}, true);
+const soltarVista = (e) => { if (!arrastreVista || e.pointerId !== arrastreVista.id) return; e.stopPropagation(); sinMenu = arrastreVista.movio; arrastreVista = null; lienzo.classList.remove('ed-moviendo-vista'); };
+lienzo.addEventListener('pointerup', soltarVista, true); lienzo.addEventListener('pointercancel', soltarVista, true);
+lienzo.addEventListener('contextmenu', (e) => { if (pan2d[vista] && (sinMenu || !e.target.closest?.('[data-tipo="medida"]'))) e.preventDefault(); if (sinMenu) { e.stopPropagation(); sinMenu = false; } }, true); // tras arrastrar no se abre el menú
+window.addEventListener('keydown', (e) => { if (e.code === 'Space' && pan2d[vista] && !e.target.closest?.('input, select, textarea, button')) { e.preventDefault(); if (!espacioVista) { espacioVista = true; lienzo.classList.add('ed-espacio-vista'); } } });
+window.addEventListener('keyup', (e) => { if (e.code === 'Space') { espacioVista = false; lienzo.classList.remove('ed-espacio-vista'); } });
 
 // Teclado
 window.addEventListener('keydown', (e) => {
@@ -3377,7 +3428,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'm') setHerr('dibujar');
   else if (k === 'd') setHerr('div-v');
   else if (k === 'h') setHerr('div-h');
-  else if (k === 'f') { zoom = 1; st.resetPan(); encuadrar(true); dibujarPlano(); }
+  else if (k === 'f') { zoom = 1; st.resetPan(); pan2d.planta = [0, 0]; pan2d.frente = [0, 0]; encuadrar(true); dibujarPlano(); }
   else if (k === 'delete' || k === 'backspace') { e.preventDefault(); borrarSel(); }
   else if (k === 'r' && sel?.tipo === 'tirador') { const m = modulo(sel.m), t = m.tiradores.find((x) => x.id === sel.t); cambiar(() => { t.rot = ((+t.rot || 0) + 90) % 360; }); }
   else if (e.key.startsWith('Arrow') && sel?.tipo === 'vano') { // mover la ventana o puerta en su muro
@@ -3545,7 +3596,7 @@ iniciarProyectos({
     modelo.modulos.forEach(normalizar);
     selMel.value = modelo.frente || ''; pintarColores();
     guardar(); render();
-    if (!conservarVista) { zoom = 1; encuadrar(true); dibujarPlano(); }
+    if (!conservarVista) { zoom = 1; pan2d.planta = [0, 0]; pan2d.frente = [0, 0]; encuadrar(true); dibujarPlano(); }
     if (raw && modelo.modulos.length === 0) { setVista('frente'); setHerr('dibujar'); aviso('Proyecto vacío: dibuja el primer módulo arrastrando.'); }
   },
   pines(lista) { pines = lista; render({ panel: false }); },
