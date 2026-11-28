@@ -135,6 +135,15 @@ export function crearPlanta(ctx) {
       const [cx, cz] = centro(m);
       el('text', { x: M.X(cx), y: M.Y(cz) + 4, 'text-anchor': 'middle', class: 'nombre' }, plano).textContent = m.nombre;
     }
+    // revisión de la cocina (dueño, 2026-11-27): dónde irían el lavaplatos y la encimera para cumplir la marcha
+    // adelante y los apoyos, semitransparentes sobre los muebles, con una flecha desde su lugar actual
+    for (const s of ctx.sugerencia?.() || []) {
+      const g = el('g', { class: 'sugerencia' }, plano);
+      el('line', { x1: M.X(s.desde[0]), y1: M.Y(s.desde[1]), x2: M.X(s.wx), y2: M.Y(s.wz), class: 'sugerencia-flecha' }, g);
+      el('polygon', { points: s.poly.map(([x, z]) => `${M.X(x)},${M.Y(z)}`).join(' ') }, g);
+      el('circle', { cx: M.X(s.wx), cy: M.Y(s.wz), r: 3.5 }, g);
+      el('text', { x: M.X(s.wx), y: M.Y(s.wz) - 8, 'text-anchor': 'middle' }, g).textContent = `${s.nombre} aquí`;
+    }
     // apertura de las puertas (arco como en los planos): se toca para elegir la puerta y cambiar hacia dónde abre
     for (const m of modelo.modulos) aperturas(m, M, sel);
     // cubierta seleccionada: su contorno con los vuelos; cada borde se arrastra para extruirla (ej. barra de desayuno)

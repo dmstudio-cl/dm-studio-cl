@@ -115,6 +115,7 @@ export function aModelo(raw, uid) {
     nombre: raw.titulo || 'Proyecto',
     frente: raw.opciones?.melamina_inicial || '',
     union_cubierta: raw.union_cubierta === '45' ? '45' : '90', // unión del rincón de la cubierta (esquinero)
+    ...(+raw.personas_cocina === 2 ? { personas_cocina: 2 } : {}), // revisión de la cocina: cambia el pasillo mínimo
     espacio: raw.espacio ? JSON.parse(JSON.stringify(raw.espacio)) : null,
     colores: raw.colores ? { ...raw.colores } : {},
     objetos: Array.isArray(raw.objetos) ? raw.objetos.map((o) => ({ ...o })) : [],
@@ -403,6 +404,7 @@ export function iniciarProyectos(ed) {
       raw.modulos = modelo.modulos.map((m) => (m.materiales && Object.keys(m.materiales).length ? { ...m, materiales: JSON.stringify(m.materiales) } : (({ materiales, ...r }) => r)(m)));
       raw.colores = modelo.colores || {};
       raw.union_cubierta = modelo.union_cubierta === '45' ? '45' : '90'; // unión del rincón de la cubierta del esquinero
+      if (+modelo.personas_cocina === 2) raw.personas_cocina = 2; else delete raw.personas_cocina; // revisión de la cocina
       raw.objetos = modelo.objetos || [];
       raw.despiece = despiece(modelo); // cantidades de materiales y herrajes: el Worker las cotiza
       // planchas enteras por melamina (optimizador); «frente» queda sin resolver (la elige el cliente) y con veta fija

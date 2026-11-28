@@ -6,6 +6,7 @@ sitemap: false
 body_class: portal-page
 ---
 <link rel="stylesheet" href="{{ '/assets/css/portal.css' | relative_url }}">
+<script>window.REGLAS_COCINA = {{ site.data.reglas_cocina | jsonify }};</script>
 <div class="portal-gate" data-portal>
   <div class="gate-card">
     <img src="{{ '/assets/img/marca/logo-192.webp' | relative_url }}" alt="DM Studio" width="96" height="96">
@@ -83,6 +84,7 @@ body_class: portal-page
       <div class="pdespacho small" id="pdespacho" hidden></div>
       <div class="pmuebles" id="pmuebles" hidden></div>
       <div class="pcostos" id="pcostos" hidden></div>
+      <div class="psello" id="psello" hidden></div>
       <p class="small muted" id="pvalid"></p>
       <p class="small note note-red" id="pdemo" hidden>Proyecto de ejemplo: el precio es ficticio. En tu proyecto real el precio se calcula con tus medidas y terminaciones.</p>
     </div>

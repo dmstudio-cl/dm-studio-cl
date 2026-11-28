@@ -3,6 +3,7 @@ import { clp } from '../cart.js';
 import { createScene } from './escena-css.js'; // CSS 3D: sin WebGL ni Three.js
 import { iconoBorde } from '../editor/modelo.js';
 import { SOLUCIONES } from '../editor/esquinero.js';
+import { evaluarCocina } from '../editor/reglas-cocina.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -219,6 +220,21 @@ export async function startApp(api) {
     if (aprobado() && !isOwner) { status('La propuesta ya fue aprobada. Para cambios, escríbenos en la conversación.'); return; }
     sel.union_cubierta = b.dataset.union === '45' ? '45' : '90'; pintarUnion(); schedule();
   });
+  // Sello «Cocina revisada» (dueño, 2026-11-27): si la cocina que ve el cliente cumple la marcha adelante y ninguna
+  // regla de diseño queda en rojo (las mismas reglas que revisa el editor, sin costos), un resumen corto.
+  function pintarSello() {
+    const box = $('#psello'); if (!box) return;
+    let ev = null;
+    try { ev = evaluarCocina({ modulos: scene.modulos().length ? scene.modulos() : proyecto.modulos || [], objetos: proyecto.objetos || [], espacio: proyecto.espacio, personas_cocina: proyecto.personas_cocina }, window.REGLAS_COCINA); } catch (e) { ev = null; }
+    const R = (id) => ev?.reglas.find((r) => r.tipo === id), sec = R('secuencia');
+    box.hidden = !ev || ev.rojos > 0 || sec?.nivel !== 'verde'; if (box.hidden) return;
+    const m = (v) => `${(Math.round(v / 10) / 10).toString().replace('.', ',')} m`, pre = R('libre_entre'), tri = R('triangulo'), pas = R('pasillo');
+    const items = ['Recorrido sin cruces: del refrigerador al lavaplatos, a preparar y a la cocción.',
+      pre?.med != null && pre.nivel !== 'na' ? `${Math.round(pre.med)} cm de cubierta para preparar entre el lavaplatos y la cocción.` : '',
+      tri?.med != null && tri.nivel !== 'na' ? `Triángulo de trabajo de ${m(tri.med)}.` : '',
+      pas?.med != null && pas.nivel !== 'na' ? `Pasillo de trabajo de ${Math.round(pas.med)} cm.` : ''].filter(Boolean);
+    box.innerHTML = `<p class="eyebrow" style="margin:0 0 6px">Cocina revisada con criterio de flujo de trabajo</p><ul class="small">${items.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`;
+  }
   // ----- precio y guardado (con espera para no saturar)
   let qt = 0, lastQuote = null;
   async function quote() {
@@ -234,6 +250,7 @@ export async function startApp(api) {
       mostrarFoco(); // precio del mueble enfocado al día (ej. al cambiar el tipo de esquina)
       pintarUnion();
       pintarMedidas();
+      pintarSello();
       pintarDespacho(lastQuote);
     } catch (e) {
       ['#ptotal', '#ptotal2', '#ptotal3', '#panticipo3'].forEach((s) => { $(s).textContent = '—'; });

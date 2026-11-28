@@ -114,6 +114,37 @@ collections:
               - { label: Comuna, name: nombre, widget: string }
               - { label: Distancia (km, solo ida), name: km, widget: number, value_type: float }
               - { label: TAG / peajes (CLP), name: tag, widget: number, value_type: int, default: 0 }
+      - name: reglas_cocina
+        label: Reglas de diseño de cocina
+        file: _data/reglas_cocina.yml
+        fields:
+          - { label: Personas que cocinan (por defecto), name: personas_cocina, widget: select, options: ["1", "2"], default: "1", hint: "Cambia el pasillo mínimo. Cada proyecto lo puede cambiar en el panel «Revisión de la cocina»." }
+          - label: Zonas (cómo se reconoce cada una)
+            name: zonas
+            widget: object
+            collapsed: true
+            fields:
+              - { label: Frío, name: frio, widget: object, fields: [{ label: Nombre, name: nombre, widget: string }, { label: Electrodomésticos, name: objetos, widget: select, multiple: true, options: [refri1, refri2, conservadora], required: false }] }
+              - { label: Lavado, name: lavado, widget: object, fields: [{ label: Nombre, name: nombre, widget: string }, { label: Artefactos, name: artefactos, widget: select, multiple: true, options: [lavaplatos_1, lavaplatos_2], required: false }, { label: Electrodomésticos, name: objetos, widget: select, multiple: true, options: [lavavajillas], required: false }] }
+              - { label: Cocción, name: coccion, widget: object, fields: [{ label: Nombre, name: nombre, widget: string }, { label: Artefactos, name: artefactos, widget: select, multiple: true, options: [encimera_gas, encimera_electrica, encimera_2], required: false }, { label: Cocinas de piso, name: cocinas_piso, widget: select, multiple: true, options: [cocina4, cocina6], required: false }, { label: Electrodomésticos, name: objetos, widget: select, multiple: true, options: [horno], required: false }] }
+          - label: Reglas
+            name: reglas
+            widget: list
+            summary: "{{fields.nombre}} · {{fields.tipo}}"
+            hint: "verde = desde aquí está bien; rojo = bajo esto es un problema (entre ambos, amarillo). verde_2 y rojo_2 se usan en algunos tipos (el otro lado, la suma del triángulo). Medidas en cm."
+            fields:
+              - { label: Identificador, name: id, widget: string }
+              - { label: Nombre, name: nombre, widget: string }
+              - { label: Tipo, name: tipo, widget: select, options: [secuencia, libre_entre, libre_lados, apoyo, separacion, cerca_de, triangulo, pasillo, vano, campana, altura] }
+              - { label: Zonas, name: zonas, widget: select, multiple: true, options: [frio, lavado, coccion], required: false }
+              - { label: Electrodoméstico (cerca_de, altura), name: objeto, widget: select, options: [lavavajillas, microondas, horno, refri1, refri2, conservadora], required: false }
+              - { label: Verde (cm), name: verde, widget: number, value_type: float, required: false }
+              - { label: Verde 2 (cm), name: verde_2, widget: number, value_type: float, required: false }
+              - { label: Rojo (cm), name: rojo, widget: number, value_type: float, required: false }
+              - { label: Rojo 2 (cm), name: rojo_2, widget: number, value_type: float, required: false }
+              - { label: Límite (cm), name: limite, widget: number, value_type: float, required: false, hint: "Triángulo: sobre esta suma es rojo." }
+              - { label: Ayuda (la ves en el panel), name: ayuda, widget: text, required: false }
+              - { label: Activa, name: activa, widget: boolean, default: true }
       - name: acabados
         label: Acabados de muros y suelo
         file: _data/acabados.yml
