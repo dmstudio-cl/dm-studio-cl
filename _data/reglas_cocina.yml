@@ -1,0 +1,122 @@
+# Reglas de diseño de cocina (dueño, 2026-11-27): la «marcha adelante» de una cocina residencial
+# (guardar en frío → lavar → preparar → cocinar → servir), el triángulo de trabajo y los espacios de apoyo.
+# El editor las revisa solo (panel «Revisión de la cocina») y el portal muestra un sello si ninguna queda en rojo.
+# No son precios ni costos: se pueden ver en el navegador. Medidas en cm. Se editan en /admin → Ajustes.
+#
+# zonas: cómo se reconoce cada zona en el modelo (por los artefactos y electrodomésticos que ya tiene).
+# reglas: cada una tiene un tipo (qué mide), sus zonas y sus límites:
+#   verde = desde aquí está bien · rojo = bajo esto es un problema (entre ambos, amarillo).
+#   verde_2 / rojo_2 = segundo límite cuando el tipo lo usa (el otro lado, la suma del triángulo).
+zonas:
+  frio:
+    nombre: Frío
+    objetos: [refri1, refri2, conservadora]
+  lavado:
+    nombre: Lavado
+    artefactos: [lavaplatos_1, lavaplatos_2]
+    objetos: [lavavajillas]
+  coccion:
+    nombre: Cocción
+    artefactos: [encimera_gas, encimera_electrica, encimera_2]
+    cocinas_piso: [cocina4, cocina6]
+    objetos: [horno]
+personas_cocina: 1
+reglas:
+  - id: secuencia
+    nombre: Marcha adelante
+    tipo: secuencia
+    zonas: [frio, lavado, coccion]
+    ayuda: "La comida avanza sin volver atrás: del refrigerador al lavaplatos, de ahí a preparar y a la cocción. El lavaplatos va entre el frío y la cocción; si la cocción queda entre el refrigerador y el lavaplatos, se cruza el recorrido."
+    activa: true
+  - id: preparacion
+    nombre: Cubierta para preparar
+    tipo: libre_entre
+    zonas: [lavado, coccion]
+    verde: 90
+    rojo: 60
+    ayuda: "Entre el lavaplatos y la cocción se pica y se prepara: deja al menos 90 cm de cubierta libre."
+    activa: true
+  - id: lados_coccion
+    nombre: Apoyo junto a la cocción
+    tipo: libre_lados
+    zonas: [coccion]
+    verde: 40
+    verde_2: 30
+    rojo: 15
+    ayuda: "A cada lado de la cocción hace falta cubierta para dejar una olla caliente: 40 cm a un lado y 30 al otro. Nunca pegada a un muro o al final de la cubierta."
+    activa: true
+  - id: lados_lavaplatos
+    nombre: Apoyo junto al lavaplatos
+    tipo: libre_lados
+    zonas: [lavado]
+    verde: 60
+    verde_2: 45
+    rojo: 10
+    ayuda: "Al lavaplatos se llega con loza sucia y se deja escurrir la limpia: 60 cm a un lado y 45 al otro. Rojo si queda pegado a un muro o al final de la cubierta."
+    activa: true
+  - id: apoyo_frio
+    nombre: Apoyo del refrigerador
+    tipo: apoyo
+    zonas: [frio]
+    verde: 40
+    rojo: 120
+    ayuda: "Al sacar algo del refrigerador hay que dejarlo en una cubierta cercana: al menos 40 cm libres a menos de 120 cm."
+    activa: true
+  - id: frio_calor
+    nombre: Frío lejos del calor
+    tipo: separacion
+    zonas: [frio, coccion]
+    verde: 30
+    rojo: 15
+    ayuda: "El refrigerador pegado a la cocción o al horno trabaja de más y se gasta antes: sepáralos al menos 30 cm o pon un costado de mueble entre ambos."
+    activa: true
+  - id: lavavajillas
+    nombre: Lavavajillas junto al lavaplatos
+    tipo: cerca_de
+    zonas: [lavado]
+    objeto: lavavajillas
+    verde: 90
+    rojo: 150
+    ayuda: "El lavavajillas va junto al lavaplatos (a menos de 90 cm) para pasar la loza sin gotear el piso; nunca en el rincón, donde su puerta choca."
+    activa: true
+  - id: triangulo
+    nombre: Triángulo de trabajo
+    tipo: triangulo
+    zonas: [frio, lavado, coccion]
+    verde: 120
+    verde_2: 270
+    rojo: 400
+    rojo_2: 790
+    limite: 900
+    ayuda: "Refrigerador, lavaplatos y cocción forman un triángulo: cada lado entre 120 y 270 cm y la suma entre 400 y 790. Muy grande cansa; muy chico choca."
+    activa: true
+  - id: pasillo
+    nombre: Pasillo de trabajo
+    tipo: pasillo
+    verde: 110
+    verde_2: 120
+    rojo: 90
+    ayuda: "Frente a la cubierta o la isla: 110 cm para una persona y 120 si cocinan dos (se cambia en el panel). Bajo 90 no se abre bien un cajón con alguien detrás."
+    activa: true
+  - id: coccion_vanos
+    nombre: Cocción lejos de ventanas y puertas
+    tipo: vano
+    zonas: [coccion]
+    verde: 30
+    rojo: 15
+    ayuda: "Bajo una ventana, el viento apaga la llama y la cortina se quema; junto a una puerta, alguien choca con una olla caliente: deja al menos 30 cm."
+    activa: true
+  - id: campana
+    nombre: Campana
+    tipo: campana
+    zonas: [coccion]
+    ayuda: "La campana debe ser al menos tan ancha como la encimera (mejor un poco más) para tomar todo el vapor."
+    activa: true
+  - id: microondas
+    nombre: Altura del microondas
+    tipo: altura
+    objeto: microondas
+    verde: 75
+    verde_2: 135
+    ayuda: "La base del microondas entre 75 y 135 cm: se ve el plato sin agacharse ni levantar líquidos calientes sobre la cara. Nunca sobre la encimera."
+    activa: true

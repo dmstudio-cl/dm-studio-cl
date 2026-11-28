@@ -14,6 +14,7 @@ import { crearReferencias } from './referencia.js';
 import { PLANTILLAS, ETIQUETAS, generar, parametrosIniciales, leerPlantilla, CERO_OK, SELECTS } from './plantillas.js';
 import { unirModulos } from './unir.js';
 import { iniciarProyectos, aModelo, api, tokenGitHub, leerPrecios, aplicarCliente, textoCambios } from './proyecto.js';
+import { evaluarCocina, sugerirOrden } from './reglas-cocina.js';
 import { pegarAlEsquinero, repegar, anchoEsquinero, cambiarTipoConVecinos, ajustarEsquineroConVecinos, aplicarEsquinerosCliente, limpiarAnexos, agregarSeccion } from './vecinos.js';
 import { evaluarCubierta } from './cubiertas.js';
 import { optimizarDespiece, optimizarCholguan, svgPlancha, vetaLibre } from './optimizador.js';
@@ -1059,7 +1060,49 @@ $('#muro-frente').addEventListener('change', (e) => {
 // No en Planta, Frente ni en la vista 3/4 fija. Ajustar el radio aquí después de probarlo.
 const RADIO_PAN = 300;
 let panActual = -1;
+// ===================== revisión de la cocina (dueño, 2026-11-27) =====================
+// Marcha adelante, triángulo de trabajo, apoyos, pasillos y vanos (reglas en _data/reglas_cocina.yml, Decap). El
+// panel muestra el semáforo; «Ver sugerencia» dibuja en Planta, semitransparentes, el lavaplatos y la encimera donde
+// cumplen la secuencia y los apoyos; «Aplicar sugerencia» los mueve (Ctrl+Z deshace). No mueve nada solo.
+let verSugerencia = false, revision = null;
+const NIVEL_TXT = { rojo: 'Corregir', amarillo: 'Revisar', verde: 'Bien', info: 'Sugerencia', na: 'No aplica' };
+function revisarCocina() {
+  try { const ev = evaluarCocina(modelo, window.REGLAS_COCINA, { personas: modelo.personas_cocina }); revision = { ev, sug: sugerirOrden(modelo, window.REGLAS_COCINA, ev) }; }
+  catch (e) { console.warn('Revisión de la cocina:', e); revision = null; }
+  return revision;
+}
+function pintarRevision() {
+  const box = $('#revision'); if (!box) return;
+  const r = revision; if (!r) { box.innerHTML = '<p class="ed-ayuda">No se pudo revisar la cocina.</p>'; return; }
+  const { ev, sug } = r, orden = { rojo: 0, amarillo: 1, info: 2, verde: 3, na: 4 };
+  const lista = ev.reglas.map((x, i) => ({ ...x, i })).sort((a, b) => orden[a.nivel] - orden[b.nivel]);
+  const fila = (x) => `<button type="button" class="ed-rev ed-rev-${x.nivel}" data-rev="${x.i}" title="${esc(x.ayuda)}"><i></i><span><b>${esc(x.nombre)}</b> <small class="ed-rev-nivel">${NIVEL_TXT[x.nivel]}</small><br><small>${esc(x.valor)}</small>${x.nivel === 'rojo' || x.nivel === 'amarillo' ? `<small class="ed-rev-ayuda">${esc(x.ayuda)}</small>` : ''}</span></button>`;
+  const vivas = lista.filter((x) => x.nivel !== 'na'), na = lista.filter((x) => x.nivel === 'na');
+  box.innerHTML = `<p class="ed-rev-resumen">${ev.rojos ? `<span class="r">${ev.rojos} por corregir</span>` : ''}${ev.amarillos ? `<span class="a">${ev.amarillos} por revisar</span>` : ''}<span class="v">${ev.verdes} bien</span></p>
+    <label class="ed-campo">Personas que cocinan<select data-rev-personas>${[1, 2].map((n) => `<option value="${n}"${(+modelo.personas_cocina || +window.REGLAS_COCINA?.personas_cocina || 1) === n ? ' selected' : ''}>${n === 1 ? '1 persona' : '2 personas'}</option>`).join('')}</select></label>
+    ${sug.length ? `<div class="ed-botones"><button type="button" data-rev-ver class="${verSugerencia ? 'ed-primario' : ''}">${verSugerencia ? 'Ocultar sugerencia' : 'Ver sugerencia en Planta'}</button><button type="button" data-rev-aplicar>Aplicar sugerencia</button></div><p class="ed-ayuda">La sugerencia mueve el lavaplatos y la encimera para cumplir la marcha adelante y los apoyos. En Planta se ve semitransparente sobre tus muebles; no cambia nada hasta que la apliques.</p>` : ''}
+    <div class="ed-rev-lista">${vivas.map(fila).join('')}</div>
+    ${na.length ? `<details class="ed-rev-na"><summary>No aplica (${na.length})</summary>${na.map(fila).join('')}</details>` : ''}
+    <p class="ed-ayuda">Las medidas se ajustan en /admin → Ajustes → Reglas de diseño de cocina. Toca una regla para ver las piezas.</p>`;
+}
+$('#revision')?.addEventListener('click', (e) => {
+  if (e.target.closest('[data-rev-ver]')) { verSugerencia = !verSugerencia; if (verSugerencia && vista !== 'planta') setVista('planta'); else render(); return; }
+  if (e.target.closest('[data-rev-aplicar]')) {
+    const sug = revision?.sug || []; if (!sug.length) return;
+    let n = 0; cambiar((d) => { for (const s of sug) if (moverArtefacto(d, s.ref.m, s.ref.a, s.wx, s.wz)) n++; });
+    verSugerencia = false; aviso(n ? `Apliqué la sugerencia: moví ${n === 1 ? 'un artefacto' : `${n} artefactos`} (Ctrl+Z deshace).` : 'No se pudo mover: revisa que haya cubierta donde va.'); return;
+  }
+  const b = e.target.closest('[data-rev]'); if (!b) return;
+  const x = revision?.ev.reglas[+b.dataset.rev], ref = x?.refs?.[0]; if (!ref) return;
+  sel = ref.o ? { tipo: 'objeto', o: ref.o } : ref.a ? { tipo: 'artefacto', m: ref.m, a: ref.a } : { tipo: 'modulo', m: ref.m };
+  render();
+});
+$('#revision')?.addEventListener('change', (e) => {
+  const s = e.target.closest('[data-rev-personas]'); if (!s) return;
+  cambiar((d) => { d.personas_cocina = +s.value === 2 ? 2 : 1; });
+});
 function render({ panel = true } = {}) {
+  revisarCocina(); // antes de dibujar: la Planta usa la sugerencia
   const panOn = vista === '3d' && !v34 ? RADIO_PAN : 0; if (panOn !== panActual) { panActual = panOn; st.panLimit(panOn); }
   const mv = modeloVista();
   if (v34 && (vista !== '3d' || !modulo(v34.id) || !geoEsquinero(modulo(v34.id)).sol)) salir34(false);
@@ -1073,7 +1116,7 @@ function render({ panel = true } = {}) {
   if (vista !== 'frente' && vista !== 'inferior') dibujarPines();
   encuadrar(false);
   dibujarPlano();
-  if (panel) { arbol(); props(); pintarAcabTab(); }
+  if (panel) { arbol(); props(); pintarAcabTab(); pintarRevision(); }
   if (v34) giroAuto(); // la puerta giratoria sigue girando después de redibujar
   opcionesMuroFrente();
   ponerManija();
@@ -3457,6 +3500,7 @@ const planta = crearPlanta({
   apoyar: (o) => apoyar(o),
   alternar: (id) => alternar(id),
   estado: (t) => { estadoEl.textContent = `${ayuda()}   ·   ${t}`; },
+  sugerencia: () => (verSugerencia ? revision?.sug || [] : []), // revisión de la cocina: plantilla semitransparente
   plano, lienzo,
 });
 

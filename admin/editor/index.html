@@ -135,6 +135,10 @@ permalink: /admin/editor/
         <button type="button" data-objeto="colgante">Lámpara colgante</button>
       </div>
     </details>
+    <details class="ed-sec" data-sec="revisioncoc" open>
+      <summary>Revisión de la cocina</summary>
+      <div id="revision"></div>
+    </details>
     <details class="ed-sec" data-sec="ventanasypue">
       <summary>Ventanas y puertas</summary>
       <p class="ed-ayuda">Elige un muro (en Planta o con el selector de la vista Frente) y agrega un modelo; luego ajusta sus medidas.</p>
@@ -219,6 +223,7 @@ permalink: /admin/editor/
   window.MELAMINAS = {{ site.data.melaminas | jsonify }};
   window.ACABADOS = {{ site.data.acabados.acabados | default: empty | jsonify }};
   window.PINTURAS = {{ site.data.acabados.pinturas | default: empty | jsonify }};
+  window.REGLAS_COCINA = {{ site.data.reglas_cocina | jsonify }}; // reglas de diseño de cocina (Decap → Ajustes)
 </script>
 <script type="module" src="{{ '/assets/js/editor/acceso.js' | relative_url }}"></script>
 <script type="module" src="{{ '/assets/js/editor/editor.js' | relative_url }}"></script>

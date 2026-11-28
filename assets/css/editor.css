@@ -408,6 +408,27 @@ html.ed-bloqueado body.ed > :not(.ed-acceso) { display: none !important; }
 .ed-acab-ajustes { margin-top: 8px; }
 .ed-acab-ajustes summary { cursor: pointer; font-size: .78rem; color: var(--bone); }
 .ed-plano .zona-muro { stroke: rgba(236, 231, 221, .45); stroke-width: 1; cursor: pointer; }
+/* revisión de la cocina (2026-11-27): sugerencia semitransparente en Planta y panel con semáforo */
+.ed-plano .sugerencia { pointer-events: none; }
+.ed-plano .sugerencia polygon { fill: rgba(180, 50, 46, .24); stroke: var(--red-accent); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.ed-plano .sugerencia .sugerencia-flecha { stroke: var(--red-accent); stroke-width: 1.4; stroke-dasharray: 4 3; }
+.ed-plano .sugerencia circle { fill: var(--red-accent); }
+.ed-plano .sugerencia text { fill: var(--bone); font-family: var(--mono); font-size: 11px; paint-order: stroke; stroke: rgba(0, 0, 0, .6); stroke-width: 3px; }
+.ed-rev-resumen { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; font-family: var(--mono); font-size: 11px; }
+.ed-rev-resumen span { padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(236, 231, 221, .18); }
+.ed-rev-resumen .r { color: #f0a29e; border-color: rgba(180, 50, 46, .6); }
+.ed-rev-resumen .a { color: #e6c773; border-color: rgba(230, 199, 115, .45); }
+.ed-rev-resumen .v { color: #9fd3a8; border-color: rgba(159, 211, 168, .4); }
+.ed-rev-lista { display: grid; gap: 6px; margin: 10px 0; }
+.ed-rev { display: grid; grid-template-columns: 12px 1fr; gap: 8px; align-items: start; width: 100%; text-align: left; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(236, 231, 221, .1); background: rgba(236, 231, 221, .03); color: var(--bone); cursor: pointer; }
+.ed-rev:hover { border-color: rgba(236, 231, 221, .28); }
+.ed-rev i { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; background: #6b6862; }
+.ed-rev-rojo i { background: #d0463f; } .ed-rev-amarillo i { background: #e0b84f; } .ed-rev-verde i { background: #6fb47c; } .ed-rev-info i { background: #8aa3c4; }
+.ed-rev small { color: rgba(236, 231, 221, .72); line-height: 1.35; }
+.ed-rev-nivel { font-family: var(--mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.ed-rev-ayuda { display: block; margin-top: 4px; color: rgba(236, 231, 221, .55) !important; }
+.ed-rev-na summary { cursor: pointer; font-size: 12px; color: rgba(236, 231, 221, .6); margin: 4px 0; }
+.ed-rev-na .ed-rev { opacity: .6; margin-top: 6px; }
 /* muro con acabado en la vista Frente: los muebles con relleno oscuro para que se vean sobre el material (2026-11-26) */
 .ed-plano.con-acabado .celda, .ed-plano.con-acabado .zona-zocalo { fill: #141416; stroke: rgba(236, 231, 221, .45); }
 .ed-plano.con-acabado .celda:hover, .ed-plano.con-acabado .zona-zocalo:hover { fill: #1e1e21; }
